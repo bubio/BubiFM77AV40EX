@@ -11,6 +11,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 11)
 
+# ホスト側の検査用ターゲット（最小ホスト、C ABIテスト、Dart FFI検証用dylib）を
+# 作るかどうか。scripts/ から呼ぶときは ON、Flutterプラグインから
+# add_subdirectory() するときは OFF にして、アプリのビルドへ
+# 実行ファイルやctestの登録を持ち込まない。
+option(BUBI_BUILD_HOST_TOOLS "Build host-side smoke/test executables" ON)
+
 if(APPLE)
   # .app の LSMinimumSystemVersion と一致させる。指定しないとビルド機の
   # SDK最小版が刻まれ、それより古いmacOSで起動できなくなる。
@@ -84,6 +90,9 @@ list(TRANSFORM CORE_SOURCES PREPEND "${CORE_SRC}/")
 # P2着手時に、コアを変更しない形での有効化方法を改めて技術検証する。
 
 # ホスト非依存OSDとWindows互換シム。GLOBは新規ファイルを追跡しないため明示する。
+# 製品用C ABI（bridge/src/bubi_fm77av.cpp）もこのライブラリに含める。
+# Flutterプラグインはこの1つの .a を -force_load するため、
+# 公開シンボルとコア本体が同じアーカイブに入っている必要がある。
 set(BRIDGE_SOURCES
   bridge/osd/sdl/osd.cpp
   bridge/osd/sdl/osd_bitmap.cpp
@@ -92,6 +101,7 @@ set(BRIDGE_SOURCES
   bridge/osd/sdl/osd_midi.cpp
   bridge/osd/sdl/osd_screen.cpp
   bridge/osd/sdl/osd_sound.cpp
+  bridge/src/bubi_fm77av.cpp
   bridge/compat/core_feature_shim.cpp
   bridge/compat/core_host_symbols.cpp
   bridge/compat/debugger_stubs.cpp
@@ -102,6 +112,8 @@ add_library(bubi_fm77av40ex_core STATIC ${CORE_SOURCES} ${BRIDGE_SOURCES})
 
 target_include_directories(bubi_fm77av40ex_core
   PUBLIC
+    # 製品用 C ABI の公開ヘッダー
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/include"
     # Windows専用ヘッダー（<io.h>, <malloc.h>）の互換シム。
     # コアを1行も変更せずに非Windowsでビルドするために置く。
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat"
@@ -153,37 +165,34 @@ set_source_files_properties(
 # 定義していないため、zlib へはリンクしない。gzip入りイメージへ対応する場合は
 # USE_ZLIB を明示的に定義し、そのときに ZLIB を追加する。
 
-# 最小ホスト: VMを生成して破棄できることだけを確認する（development_plan.md 5.2）。
-# ROMを1つも必要とせず、CIで実行できる。
-add_executable(core_smoke "${CMAKE_CURRENT_SOURCE_DIR}/host/core_smoke.cpp")
-target_link_libraries(core_smoke PRIVATE bubi_fm77av40ex_core)
-target_include_directories(core_smoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat")
+if(BUBI_BUILD_HOST_TOOLS)
+  # 最小ホスト: VMを生成して破棄できることだけを確認する（development_plan.md 5.2）。
+  # ROMを1つも必要とせず、CIで実行できる。
+  add_executable(core_smoke "${CMAKE_CURRENT_SOURCE_DIR}/host/core_smoke.cpp")
+  target_link_libraries(core_smoke PRIVATE bubi_fm77av40ex_core)
+  target_include_directories(core_smoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat")
 
-# 技術検証spike（development_plan.md 5.3）。破棄可能な最小検証であり、
-# 製品コードではない。結論を design.md へ反映したうえで M1 WP1 で作り直す。
-add_executable(session_spike
-  "${CMAKE_CURRENT_SOURCE_DIR}/spike/session/bfm_session_spike.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/spike/session/spike_main.cpp"
-)
-target_link_libraries(session_spike PRIVATE bubi_fm77av40ex_core)
-target_include_directories(session_spike PRIVATE
-  "${CMAKE_CURRENT_SOURCE_DIR}/spike/session"
-  "${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat"
-)
+  # 製品用 C ABI の検査（development_plan.md 6 WP1）。
+  # 見張りの自己検証にテストフックが要るため、この実行ファイルにだけ
+  # BUBI_ENABLE_TEST_HOOKS を定義する。配布物には含まれない。
+  add_executable(session_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/host/session_test.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/bubi_fm77av.cpp"
+  )
+  target_compile_definitions(session_test PRIVATE BUBI_ENABLE_TEST_HOOKS)
+  target_link_libraries(session_test PRIVATE bubi_fm77av40ex_core)
 
-# 同じC ABIをDart FFIから呼べるかを確かめるための共有ライブラリ。
-# Flutterランナーへの組み込み方式（プラグイン/直接リンク/Frameworks配置）は
-# M1 WP1で決める。ここではシンボルがDartから解決できることだけを見る。
-add_library(bfm_session_spike SHARED
-  "${CMAKE_CURRENT_SOURCE_DIR}/spike/session/bfm_session_spike.cpp"
-)
-target_link_libraries(bfm_session_spike PRIVATE bubi_fm77av40ex_core)
-target_include_directories(bfm_session_spike PRIVATE
-  "${CMAKE_CURRENT_SOURCE_DIR}/spike/session"
-  "${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat"
-)
+  # 同じC ABIをDart FFIから呼べることを確かめるための共有ライブラリ。
+  # アプリへの組み込みは packages/bubi_fm77av40ex_core/ の静的リンクで行う
+  # （design.md 16.1）。ここはシンボル解決と呼び出しの検証専用である。
+  add_library(bubi_fm77av40ex_shared SHARED
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/bubi_fm77av.cpp"
+  )
+  set_target_properties(bubi_fm77av40ex_shared PROPERTIES OUTPUT_NAME bubi_fm77av40ex)
+  target_link_libraries(bubi_fm77av40ex_shared PRIVATE bubi_fm77av40ex_core)
 
-enable_testing()
-# 書込み先をビルドディレクトリ配下へ閉じ込め、ホームディレクトリを汚さない。
-add_test(NAME core_smoke COMMAND core_smoke "${CMAKE_CURRENT_BINARY_DIR}/smoke-home")
-add_test(NAME session_spike COMMAND session_spike "${CMAKE_CURRENT_BINARY_DIR}/spike-home")
+  enable_testing()
+  # 書込み先をビルドディレクトリ配下へ閉じ込め、ホームディレクトリを汚さない。
+  add_test(NAME core_smoke COMMAND core_smoke "${CMAKE_CURRENT_BINARY_DIR}/smoke-home")
+  add_test(NAME session_test COMMAND session_test "${CMAKE_CURRENT_BINARY_DIR}/session-home")
+endif()

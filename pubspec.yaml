@@ -15,8 +15,12 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  # C ABI呼び出し（M0 5.3のspike、M1 WP1のcore_ffi）
+  # C ABI呼び出し（lib/platform/core_ffi/）
   ffi: 2.2.0
+  # 無改変エミュレーションコアのFFIプラグイン（design.md 16.1）。
+  # ビルド定義の正は native/CMakeLists.txt にある。
+  bubi_fm77av40ex_core:
+    path: packages/bubi_fm77av40ex_core
   # 状態管理・依存注入（BluePrint 技術スタック）
   flutter_riverpod: 3.4.2
   # エミュレーター音声出力（BluePrint 技術スタック）

@@ -58,6 +58,41 @@ void main() {
     );
   });
 
+  // design.md 3.1、16.1: ネイティブ境界へ触れてよいのは platform/core_ffi だけ。
+  // ここを緩めると、featuresがコアの型やFFIへ直接依存し始める。
+  const nativeBoundaryPackages = {
+    'dart:ffi',
+    'package:ffi/',
+    'package:bubi_fm77av40ex_core/',
+  };
+  const nativeBoundaryDirectory = 'lib/platform/core_ffi';
+
+  test('NFR-架構 only platform/core_ffi touches the native boundary', () {
+    final violations = <String>[];
+    for (final file in _dartFilesUnder('lib')) {
+      final path = file.path.replaceAll(Platform.pathSeparator, '/');
+      if (path.startsWith('$nativeBoundaryDirectory/')) {
+        continue;
+      }
+      for (final uri in _importedUris(file)) {
+        final offender = nativeBoundaryPackages.firstWhere(
+          (candidate) => uri == candidate || uri.startsWith(candidate),
+          orElse: () => '',
+        );
+        if (offender.isNotEmpty) {
+          violations.add('$path -> $uri');
+        }
+      }
+    }
+    expect(
+      violations,
+      isEmpty,
+      reason:
+          'ネイティブ境界は$nativeBoundaryDirectory/へ閉じる\n'
+          '違反:\n${violations.join('\n')}',
+    );
+  });
+
   for (final rule in rules) {
     test('NFR-架構 ${rule.layer} keeps its dependency direction', () {
       final violations = <String>[];

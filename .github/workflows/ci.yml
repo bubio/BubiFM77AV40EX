@@ -70,7 +70,7 @@ jobs:
       - name: Run core smoke test
         run: ./scripts/build_native_core.sh test
 
-      # spike の Dart FFI 検証に必要。
+      # Dart FFI 検証に必要。
       - uses: dart-lang/setup-dart@v1
       - name: Install FVM and pin Flutter SDK
         run: |
@@ -78,11 +78,11 @@ jobs:
           echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
           "$HOME/.pub-cache/bin/fvm" install "${FLUTTER_VERSION}" --setup
 
-      # 技術検証spike（C ABI / Core thread）。
+      # 製品用C ABIのリーク検査とDart FFI検証（development_plan.md 6 WP1）。
       # leaks(1) はサンドボックスで応答しないことがあるため時間制限付きで実行し、
       # 計測できない場合は未実施として続行する（検出0とは扱わない）。
-      - name: Run technical spikes
-        run: ./scripts/run_spikes.sh
+      - name: Run native ABI checks
+        run: ./scripts/run_native_checks.sh
         timeout-minutes: 10
         env:
           # 対話的な問い合わせでステップが止まらないようにする。
@@ -100,6 +100,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false
+
+      # M1 WP1 以降、アプリは packages/bubi_fm77av40ex_core 経由で
+      # ネイティブコアをリンクする。ビルドにコアの実体が要る。
+      # .gitmodules はSSHで記述しているがCIには鍵がないため、
+      # 取得URLだけをHTTPSへ読み替える（.gitmodules 自体は変更しない）。
+      - name: Use HTTPS for submodule fetch
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
       - uses: dart-lang/setup-dart@v1
       - name: Install FVM and pin Flutter SDK

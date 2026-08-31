@@ -50,6 +50,13 @@ app.*.map.json
 
 # Build outputs and packaging
 /dist/
+# FFIプラグインがCMakeで作る中間生成物
+/packages/*/macos/cmake_build/
+
+# 利用者のグローバル .gitignore に `Packages/` があると、macOSの
+# 大文字小文字を区別しないファイルシステムでは `packages/` にも一致し、
+# FFIプラグインが丸ごとコミットから漏れる。明示的に除外を解く。
+!/packages/
 
 # Never commit ROM, media images or credentials
 *.ROM

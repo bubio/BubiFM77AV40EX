@@ -1,0 +1,28 @@
+name: bubi_fm77av40ex_core
+description: "FFI bindings to the unmodified eFM77AV40EX emulation core (native/)."
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.13.2
+  flutter: '>=3.47.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ffi: 2.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+
+flutter:
+  plugin:
+    # FFIプラグイン。Dart側から直接ネイティブを呼ぶため、
+    # プラットフォームチャネルのクラスは持たない。
+    # macOS以外はM4〜M6で各マイルストーンの担当時に追加する。
+    # 動かせないOSの定義を先に置かない。
+    platforms:
+      macos:
+        ffiPlugin: true

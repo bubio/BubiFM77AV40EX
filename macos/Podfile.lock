@@ -1,0 +1,22 @@
+PODS:
+  - bubi_fm77av40ex_core (0.1.0):
+    - FlutterMacOS
+  - FlutterMacOS (1.0.0)
+
+DEPENDENCIES:
+  - bubi_fm77av40ex_core (from `Flutter/ephemeral/.symlinks/plugins/bubi_fm77av40ex_core/macos`)
+  - FlutterMacOS (from `Flutter/ephemeral`)
+
+EXTERNAL SOURCES:
+  bubi_fm77av40ex_core:
+    :path: Flutter/ephemeral/.symlinks/plugins/bubi_fm77av40ex_core/macos
+  FlutterMacOS:
+    :path: Flutter/ephemeral
+
+SPEC CHECKSUMS:
+  bubi_fm77av40ex_core: df512e73534a088ead6a4978596fba50d7d4d1ac
+  FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
+
+PODFILE CHECKSUM: d41f7d8fe395791b3088f85bba0a8a7505481876
+
+COCOAPODS: 1.17.0

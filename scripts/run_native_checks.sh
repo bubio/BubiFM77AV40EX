@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# 技術検証spikeのうち、ctestに載せない検査を実行する
-# （development_plan.md 5.3）。
+# 製品用C ABIのうち、ctestに載せない検査を実行する
+# （development_plan.md 5.3、6 WP1）。
 #
-# session_spike 本体は ctest（scripts/build_native_core.sh test）が実行する。
-# ここは同じバイナリに対するリーク検査と、Dart FFI からの呼び出し検証を行う。
+# session_test 本体は ctest（scripts/build_native_core.sh test）が実行する。
+# ここは同じバイナリに対するリーク検査と、
+# packages/bubi_fm77av40ex_core の束縛を使った Dart FFI 呼び出し検証を行う。
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -39,9 +40,9 @@ run_with_timeout() {
   return "${status}"
 }
 
-SPIKE="${BUILD_DIR}/session_spike"
-SPIKE_HOME="${BUILD_DIR}/spike-home"
-SPIKE_DYLIB="${BUILD_DIR}/libbfm_session_spike.dylib"
+SESSION_TEST="${BUILD_DIR}/session_test"
+SESSION_HOME="${BUILD_DIR}/session-home"
+CORE_DYLIB="${BUILD_DIR}/libbubi_fm77av40ex.dylib"
 LEAK_LOG="${BUILD_DIR}/leaks.log"
 
 log "build"
@@ -49,13 +50,13 @@ log "build"
 
 # leaks(1) やctestが残した子プロセスがstdoutを掴んだままだと、
 # シェルが終了してもCIのステップが終わらない。節目で必ず掃除する。
-cleanup_spike_processes() {
-  # 実行ファイルのパスで厳密に一致させる。libbfm_session_spike.dylib を
+cleanup_test_processes() {
+  # 実行ファイルのパスで厳密に一致させる。libbubi_fm77av40ex.dylib を
   # 引数に持つ dart のコマンドラインを巻き込まないため。
-  pkill -9 -f "${BUILD_DIR}/session_spike" 2>/dev/null || true
+  pkill -9 -f "${BUILD_DIR}/session_test" 2>/dev/null || true
 }
-trap cleanup_spike_processes EXIT
-cleanup_spike_processes
+trap cleanup_test_processes EXIT
+cleanup_test_processes
 
 # --- リーク検査（合格条件「リークがない」） ---
 if [ "$(uname -s)" != "Darwin" ]; then
@@ -70,7 +71,7 @@ else
   # ツールを実行できない場合と取り違えない。
   leaks_status=0
   run_with_timeout "${LEAK_TIMEOUT_SECONDS}" \
-    env MallocStackLogging=0 leaks --atExit -- "${SPIKE}" "${SPIKE_HOME}" \
+    env MallocStackLogging=0 leaks --atExit -- "${SESSION_TEST}" "${SESSION_HOME}" \
     >"${LEAK_LOG}" 2>&1 || leaks_status=$?
 
   if [ "${leaks_status}" -eq 124 ]; then
@@ -89,20 +90,20 @@ else
   fi
 fi
 
-# --- Dart FFI からの呼び出し（M1 WP1が最初に当たる境界） ---
-[ -f "${SPIKE_DYLIB}" ] || { echo "error: ${SPIKE_DYLIB} がありません" >&2; exit 1; }
+# --- Dart FFI からの呼び出し（packages/bubi_fm77av40ex_core の束縛） ---
+[ -f "${CORE_DYLIB}" ] || { echo "error: ${CORE_DYLIB} がありません" >&2; exit 1; }
 
-cleanup_spike_processes
+cleanup_test_processes
 
-log "dart ffi spike: flutter pub get"
+log "dart ffi check: flutter pub get"
 # sdk: flutter の依存があるため解決は flutter pub get で行う。
 # これを省くと dart run が暗黙に dart pub get を実行し、package:ffi を
 # 解決できないまま失敗する。
 # 対話的な問い合わせでCIが止まらないよう、標準入力を閉じて実行する。
 (cd "${REPO_ROOT}" && fvm flutter pub get >/dev/null </dev/null)
 
-log "dart ffi spike: run"
-(cd "${REPO_ROOT}" && fvm dart run native/spike/session/dart_ffi_spike.dart \
-  "${SPIKE_DYLIB}" "${SPIKE_HOME}" </dev/null)
+log "dart ffi check: run"
+(cd "${REPO_ROOT}" && fvm dart run tool/native_ffi_check.dart \
+  "${CORE_DYLIB}" "${SESSION_HOME}" </dev/null)
 
-log "spikes passed"
+log "native checks passed"

@@ -1,0 +1,212 @@
+import 'dart:async';
+import 'dart:ffi';
+
+import 'package:bubi_fm77av40ex_core/bubi_fm77av40ex_core.dart';
+import 'package:ffi/ffi.dart';
+
+import '../../emulator/emulator_error.dart';
+import '../../emulator/emulator_event.dart';
+import '../../emulator/emulator_session.dart';
+import '../../emulator/emulator_stats.dart';
+import '../../emulator/session_state.dart';
+import 'native_conversions.dart';
+
+/// C ABI（native/bridge/）で実装した [EmulatorSession]。
+///
+/// FFI 呼び出しはコマンド投入とスナップショット読出しに限る（design.md 5.1）。
+/// VM を触るのは Core thread だけで、この実体は一度も VM に触れない。
+class FfiEmulatorSession implements EmulatorSession {
+  FfiEmulatorSession._(this._bindings, this._handle, this._pollInterval);
+
+  /// セッションを生成する。
+  ///
+  /// [homeDir] はコアがアプリケーションデータを置く位置で、
+  /// `AppDataPaths` が返す値を渡す。コアの既定に任せると
+  /// `~/CommonSourceCodeProject/` を作ってしまい design.md 11.3 と食い違う。
+  ///
+  /// [pollInterval] はイベントを引き取る間隔。画面描画周期には結合させない。
+  factory FfiEmulatorSession.create({
+    required String homeDir,
+    BubiCoreBindings? bindings,
+    int commandQueueCapacity = 0,
+    int eventQueueCapacity = 0,
+    Duration pollInterval = const Duration(milliseconds: 16),
+  }) {
+    if (homeDir.isEmpty) {
+      throw const EmulatorException(
+        EmulatorErrorCode.invalidArgument,
+        'homeDir を空にできません。',
+      );
+    }
+
+    final resolved = bindings ?? BubiCoreBindings.open();
+    final options = calloc<BfmCreateOptions>();
+    final out = calloc<Pointer<BfmSession>>();
+    final homeDirUtf8 = homeDir.toNativeUtf8();
+    try {
+      options.ref.homeDir = homeDirUtf8.cast<Char>();
+      options.ref.commandQueueCapacity = commandQueueCapacity;
+      options.ref.eventQueueCapacity = eventQueueCapacity;
+
+      final result = resolved.create(options, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return FfiEmulatorSession._(resolved, out.value, pollInterval);
+    } finally {
+      // C境界を跨いだメモリは確保側が解放する。home_dir はネイティブ側が
+      // 複製するため、この時点で手放してよい。
+      calloc.free(homeDirUtf8);
+      calloc.free(out);
+      calloc.free(options);
+    }
+  }
+
+  final BubiCoreBindings _bindings;
+  final Duration _pollInterval;
+
+  Pointer<BfmSession> _handle;
+  Timer? _pollTimer;
+  bool _disposed = false;
+
+  final StreamController<EmulatorEvent> _events =
+      StreamController<EmulatorEvent>.broadcast();
+
+  SessionState _lastKnownState = SessionState.stopped;
+
+  /// 直近の状態。
+  ///
+  /// イベントキューは飽和時に古いものから捨てるため（design.md 16.1）、
+  /// [LifecycleChanged] の受信だけで状態を組み立てると、取りこぼした
+  /// 瞬間から永久にずれる。権威はネイティブ側のスナップショットに置く。
+  @override
+  SessionState get state {
+    if (_disposed) {
+      return _lastKnownState;
+    }
+    _lastKnownState = sessionStateFromNative(_bindings.getState(_handle));
+    return _lastKnownState;
+  }
+
+  @override
+  Stream<EmulatorEvent> get events => _events.stream;
+
+  @override
+  Future<void> start() async {
+    _ensureUsable();
+    final result = _bindings.start(_handle);
+    if (result != BfmResult.ok) {
+      final code = errorCodeFromNative(result);
+      throw EmulatorException(code, describeErrorCode(code));
+    }
+    _lastKnownState = SessionState.starting;
+    _pollTimer ??= Timer.periodic(_pollInterval, (_) => _drainEvents());
+  }
+
+  @override
+  Future<void> stop() async {
+    if (_disposed) {
+      return; // 破棄済みの停止は無害に済ませる
+    }
+    final result = _bindings.stop(_handle);
+    if (result != BfmResult.ok) {
+      final code = errorCodeFromNative(result);
+      throw EmulatorException(code, describeErrorCode(code));
+    }
+    // 停止までに積まれたイベントを取りこぼさない。
+    _drainEvents();
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  @override
+  Future<int> reset(ResetKind kind) async {
+    _ensureUsable();
+    final out = calloc<Uint64>();
+    try {
+      final result = _bindings.reset(_handle, resetKindToNative(kind), out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+    }
+  }
+
+  @override
+  EmulatorStats readStats() {
+    _ensureUsable();
+    final out = calloc<BfmStats>();
+    try {
+      final result = _bindings.getStats(_handle, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return EmulatorStats(
+        framesRun: out.ref.framesRun,
+        commandsAccepted: out.ref.commandsAccepted,
+        commandsRejected: out.ref.commandsRejected,
+        eventsDropped: out.ref.eventsDropped,
+        vmAccessViolations: out.ref.vmAccessViolations,
+      );
+    } finally {
+      calloc.free(out);
+    }
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (_disposed) {
+      return; // 破棄は冪等
+    }
+    _disposed = true;
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    // 終了順序: コマンド受付停止 → コア停止 → セッション破棄（design.md 5.1）。
+    _bindings.destroy(_handle);
+    _handle = nullptr;
+    await _events.close();
+  }
+
+  /// コアが積んだイベントを空になるまで引き取る。
+  ///
+  /// 引き取れなかった分はネイティブ側で古いものから捨てられる。
+  /// UIの遅れでコアを待たせない方針（design.md 16.1）に合わせる。
+  void _drainEvents() {
+    if (_disposed) {
+      return;
+    }
+    final buffer = calloc<BfmEvent>();
+    try {
+      while (_bindings.pollEvent(_handle, buffer) == BfmResult.ok) {
+        final event = emulatorEventFromNative(
+          kind: buffer.ref.kind,
+          code: buffer.ref.code,
+          commandId: buffer.ref.commandId,
+          arg0: buffer.ref.arg0,
+        );
+        if (event is LifecycleChanged) {
+          _lastKnownState = event.state;
+        }
+        if (!_events.isClosed) {
+          _events.add(event);
+        }
+      }
+    } finally {
+      calloc.free(buffer);
+    }
+  }
+
+  void _ensureUsable() {
+    if (_disposed) {
+      throw const EmulatorException(
+        EmulatorErrorCode.invalidState,
+        '破棄済みのセッションは操作できません。',
+      );
+    }
+  }
+}
