@@ -69,6 +69,22 @@ bool wait_for_state(bfm_session* session, bfm_state expected, int timeout_ms)
 	return false;
 }
 
+// フレーム数が baseline を超えるまで待つ。
+//
+// 「一定時間眠って数える」方式にすると、負荷の高いCIランナーで
+// スケジューリングに負けて偽陽性になる。時間ではなく条件で待つ。
+bool wait_for_frames_beyond(bfm_session* session, uint64_t baseline, int timeout_ms)
+{
+	for (int i = 0; i < timeout_ms; ++i) {
+		bfm_stats stats{};
+		if (bfm_get_stats(session, &stats) == BFM_OK && stats.frames_run > baseline) {
+			return true;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	return false;
+}
+
 // 指定IDの completed イベントを待つ。見つかれば code を out_code へ返す。
 bool wait_for_completion(bfm_session* session, uint64_t id, int timeout_ms, int32_t* out_code)
 {
@@ -188,10 +204,7 @@ void test_repeated_cycles()
 
 		bfm_stats stats{};
 		bfm_get_stats(session, &stats);
-		std::this_thread::sleep_for(std::chrono::milliseconds(40));
-		bfm_stats after{};
-		bfm_get_stats(session, &after);
-		if (after.frames_run <= stats.frames_run) {
+		if (!wait_for_frames_beyond(session, stats.frames_run, 5000)) {
 			every_cycle_advanced = false;
 		}
 
