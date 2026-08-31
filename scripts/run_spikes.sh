@@ -81,7 +81,12 @@ fi
 [ -f "${SPIKE_DYLIB}" ] || { echo "error: ${SPIKE_DYLIB} がありません" >&2; exit 1; }
 
 log "dart ffi spike"
-(cd "${REPO_ROOT}" && fvm dart run native/spike/session/dart_ffi_spike.dart \
-  "${SPIKE_DYLIB}" "${SPIKE_HOME}")
+# sdk: flutter の依存があるため解決は flutter pub get で行う。
+# これを省くと dart run が暗黙に dart pub get を実行し、package:ffi を
+# 解決できないまま失敗する。
+(cd "${REPO_ROOT}" \
+  && fvm flutter pub get >/dev/null \
+  && fvm dart run native/spike/session/dart_ffi_spike.dart \
+    "${SPIKE_DYLIB}" "${SPIKE_HOME}")
 
 log "spikes passed"
