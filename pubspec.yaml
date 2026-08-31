@@ -1,0 +1,35 @@
+name: bubi_fm77av40ex
+description: "FM77AV40EX emulator front-end built on the Common Source Code Project core."
+publish_to: 'none'
+
+# セマンティックバージョニング。P0プレビューは0.x、P1完成版で1.0.0とする。
+# ビルド番号は1からの連番。
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # 状態管理・依存注入（BluePrint 技術スタック）
+  flutter_riverpod: 3.4.2
+  # エミュレーター音声出力（BluePrint 技術スタック）
+  flutter_soloud: 4.1.7
+  intl: 0.20.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+  # design.md 15.3 でバージョンを固定
+  flutter_launcher_icons: 0.14.4
+
+flutter:
+  uses-material-design: true
+  generate: true
+  assets:
+    - assets/branding/

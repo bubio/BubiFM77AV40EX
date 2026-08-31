@@ -1,0 +1,18 @@
+# design.md 15.3 の構成。正本は assets/branding/app_icon.png のみとし、
+# 生成済みのプラットフォーム別ファイルは直接編集しない。
+#
+# android / ios / windows は該当プラットフォームのランナーを生成する
+# M4〜M6 で true へ戻す。現在は macos ランナーのみ存在するため、
+# 未生成のプラットフォームを有効にすると生成が失敗する。
+flutter_launcher_icons:
+  image_path: assets/branding/app_icon.png
+  android: false # M6で true（design.md 15.3）
+  ios: false # M6で true（design.md 15.3）
+  remove_alpha_ios: true
+  windows:
+    generate: false # M5で true（design.md 15.3）
+    image_path: assets/branding/app_icon.png
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: assets/branding/app_icon.png

@@ -2,3 +2,7 @@
 	path = docs/dev
 	url = git@github.com:bubio/dev-docs.git
 	branch = bubifm77av40ex
+[submodule "core"]
+	path = native/core/upstream
+	url = git@github.com:bubio/common_source_project.git
+	branch = main

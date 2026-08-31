@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # .fvmrc と同じ版を使う。更新時は両方を合わせる。
+  FLUTTER_VERSION: 3.47.2
+
+jobs:
+  quality-gate:
+    name: format / analyze / test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      # SDKの取得はFVMへ一本化する。スクリプトはすべて fvm 経由で呼ぶ。
+      - uses: dart-lang/setup-dart@v1
+      - name: Install FVM and pin Flutter SDK
+        run: |
+          dart pub global activate fvm
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+          "$HOME/.pub-cache/bin/fvm" install "${FLUTTER_VERSION}" --setup
+
+      # ローカルと同じ入口を呼ぶ（development_plan.md 11.1）
+      - name: Quality gate
+        run: ./scripts/check.sh
+
+      - name: Verify app icon is reproducible from its source PNG
+        run: |
+          python3 tool/generate_placeholder_icon.py assets/branding/app_icon.png
+          fvm dart run flutter_launcher_icons
+          git diff --exit-code
+
+  native-core:
+    name: native core build / smoke test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      # .gitmodules はSSHで記述しているが、CIには鍵がない。
+      # コアのリポジトリは公開のため、取得URLだけをHTTPSへ読み替える。
+      # .gitmodules 自体は変更しない。
+      - name: Use HTTPS for submodule fetch
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      # コアだけを取得する（docs/dev は非公開サブモジュールのため取得しない）。
+      - name: Fetch pinned emulation core
+        run: ./scripts/build_native_core.sh fetch
+
+      # 固定リビジョンかつ無改変（未追跡ファイルも含む）であることを検査する。
+      - name: Verify core is unmodified
+        run: ./scripts/build_native_core.sh verify
+
+      - name: Build core and minimal host
+        run: ./scripts/build_native_core.sh build
+
+      # ROMを必要としない最小ホスト。EMU/VMの生成・リセット・破棄だけを見る。
+      - name: Run core smoke test
+        run: ./scripts/build_native_core.sh test
+
+      - name: Collect core license inventory
+        run: ./scripts/build_native_core.sh licenses
+
+  macos-build:
+    name: macOS build
+    runs-on: macos-15
+    needs: quality-gate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: dart-lang/setup-dart@v1
+      - name: Install FVM and pin Flutter SDK
+        run: |
+          dart pub global activate fvm
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+          "$HOME/.pub-cache/bin/fvm" install "${FLUTTER_VERSION}" --setup
+
+      - name: Build macOS app bundle
+        run: ./scripts/build_macos.sh release
+
+      # upload-artifact はシンボリックリンクと実行権を保持しないため、
+      # アプリバンドルは ditto で ZIP 化してから添付する。
+      - name: Archive app bundle
+        run: |
+          mkdir -p dist
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
+            build/macos/Build/Products/Release/BubiFM77AV40EX.app \
+            dist/BubiFM77AV40EX-macos-unsigned.zip
+
+      - name: Upload app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: BubiFM77AV40EX-macos-unsigned
+          path: dist/BubiFM77AV40EX-macos-unsigned.zip
+          if-no-files-found: error

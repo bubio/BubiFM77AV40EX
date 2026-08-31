@@ -1,0 +1,15 @@
+{
+  "@@locale": "en",
+  "appTitle": "BubiFM77AV40EX",
+  "@appTitle": {
+    "description": "Application name shown in the window title and About dialog."
+  },
+  "sessionStateStopped": "Stopped",
+  "@sessionStateStopped": {
+    "description": "Status bar label for a session that is not running."
+  },
+  "romDirectoryNotSelected": "ROM directory is not selected.",
+  "@romDirectoryNotSelected": {
+    "description": "Message shown when no ROM directory has been chosen yet."
+  }
+}
