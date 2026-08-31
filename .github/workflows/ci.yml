@@ -83,7 +83,11 @@ jobs:
       # 計測できない場合は未実施として続行する（検出0とは扱わない）。
       - name: Run technical spikes
         run: ./scripts/run_spikes.sh
-        timeout-minutes: 15
+        timeout-minutes: 10
+        env:
+          # 対話的な問い合わせでステップが止まらないようにする。
+          CI: true
+          FLUTTER_SUPPRESS_ANALYTICS: true
 
       - name: Collect core license inventory
         run: ./scripts/build_native_core.sh licenses

@@ -13,7 +13,8 @@ BUILD_DIR="${REPO_ROOT}/build/native"
 # 必ず時間制限を掛ける。
 LEAK_TIMEOUT_SECONDS="${BUBI_LEAK_TIMEOUT_SECONDS:-120}"
 
-log() { printf '==> %s\n' "$*"; }
+# 進捗は必ず時刻付きで出す。CIで停止した位置を後から特定できるようにする。
+log() { printf '==> [%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 
 # コマンドを時間制限付きで実行する。超過時は 124 を返す（macOSにtimeout(1)がない）。
 run_with_timeout() {
@@ -38,12 +39,23 @@ run_with_timeout() {
   return "${status}"
 }
 
-"${REPO_ROOT}/scripts/build_native_core.sh" build >/dev/null
-
 SPIKE="${BUILD_DIR}/session_spike"
 SPIKE_HOME="${BUILD_DIR}/spike-home"
 SPIKE_DYLIB="${BUILD_DIR}/libbfm_session_spike.dylib"
 LEAK_LOG="${BUILD_DIR}/leaks.log"
+
+log "build"
+"${REPO_ROOT}/scripts/build_native_core.sh" build >/dev/null
+
+# leaks(1) やctestが残した子プロセスがstdoutを掴んだままだと、
+# シェルが終了してもCIのステップが終わらない。節目で必ず掃除する。
+cleanup_spike_processes() {
+  # 実行ファイルのパスで厳密に一致させる。libbfm_session_spike.dylib を
+  # 引数に持つ dart のコマンドラインを巻き込まないため。
+  pkill -9 -f "${BUILD_DIR}/session_spike" 2>/dev/null || true
+}
+trap cleanup_spike_processes EXIT
+cleanup_spike_processes
 
 # --- リーク検査（合格条件「リークがない」） ---
 if [ "$(uname -s)" != "Darwin" ]; then
@@ -80,13 +92,17 @@ fi
 # --- Dart FFI からの呼び出し（M1 WP1が最初に当たる境界） ---
 [ -f "${SPIKE_DYLIB}" ] || { echo "error: ${SPIKE_DYLIB} がありません" >&2; exit 1; }
 
-log "dart ffi spike"
+cleanup_spike_processes
+
+log "dart ffi spike: flutter pub get"
 # sdk: flutter の依存があるため解決は flutter pub get で行う。
 # これを省くと dart run が暗黙に dart pub get を実行し、package:ffi を
 # 解決できないまま失敗する。
-(cd "${REPO_ROOT}" \
-  && fvm flutter pub get >/dev/null \
-  && fvm dart run native/spike/session/dart_ffi_spike.dart \
-    "${SPIKE_DYLIB}" "${SPIKE_HOME}")
+# 対話的な問い合わせでCIが止まらないよう、標準入力を閉じて実行する。
+(cd "${REPO_ROOT}" && fvm flutter pub get >/dev/null </dev/null)
+
+log "dart ffi spike: run"
+(cd "${REPO_ROOT}" && fvm dart run native/spike/session/dart_ffi_spike.dart \
+  "${SPIKE_DYLIB}" "${SPIKE_HOME}" </dev/null)
 
 log "spikes passed"
