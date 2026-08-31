@@ -159,6 +159,31 @@ add_executable(core_smoke "${CMAKE_CURRENT_SOURCE_DIR}/host/core_smoke.cpp")
 target_link_libraries(core_smoke PRIVATE bubi_fm77av40ex_core)
 target_include_directories(core_smoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat")
 
+# 技術検証spike（development_plan.md 5.3）。破棄可能な最小検証であり、
+# 製品コードではない。結論を design.md へ反映したうえで M1 WP1 で作り直す。
+add_executable(session_spike
+  "${CMAKE_CURRENT_SOURCE_DIR}/spike/session/bfm_session_spike.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/spike/session/spike_main.cpp"
+)
+target_link_libraries(session_spike PRIVATE bubi_fm77av40ex_core)
+target_include_directories(session_spike PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/spike/session"
+  "${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat"
+)
+
+# 同じC ABIをDart FFIから呼べるかを確かめるための共有ライブラリ。
+# Flutterランナーへの組み込み方式（プラグイン/直接リンク/Frameworks配置）は
+# M1 WP1で決める。ここではシンボルがDartから解決できることだけを見る。
+add_library(bfm_session_spike SHARED
+  "${CMAKE_CURRENT_SOURCE_DIR}/spike/session/bfm_session_spike.cpp"
+)
+target_link_libraries(bfm_session_spike PRIVATE bubi_fm77av40ex_core)
+target_include_directories(bfm_session_spike PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/spike/session"
+  "${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat"
+)
+
 enable_testing()
 # 書込み先をビルドディレクトリ配下へ閉じ込め、ホームディレクトリを汚さない。
 add_test(NAME core_smoke COMMAND core_smoke "${CMAKE_CURRENT_BINARY_DIR}/smoke-home")
+add_test(NAME session_spike COMMAND session_spike "${CMAKE_CURRENT_BINARY_DIR}/spike-home")

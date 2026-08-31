@@ -70,6 +70,10 @@ jobs:
       - name: Run core smoke test
         run: ./scripts/build_native_core.sh test
 
+      # 技術検証spike（C ABI / Core thread）。リーク検査を含む。
+      - name: Run technical spikes
+        run: ./scripts/run_spikes.sh
+
       - name: Collect core license inventory
         run: ./scripts/build_native_core.sh licenses
 
