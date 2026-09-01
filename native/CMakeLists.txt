@@ -192,6 +192,15 @@ if(BUBI_BUILD_HOST_TOOLS)
   target_compile_definitions(rom_boot_check PRIVATE BUBI_ENABLE_TEST_HOOKS)
   target_link_libraries(rom_boot_check PRIVATE bubi_fm77av40ex_core)
 
+  # 【破棄可能なspike】M0 5.3 Textureゲート。WP3で製品コードへ作り直し、
+  # native/spike/texture/ ごと消す。コアには依存しない。
+  add_executable(texture_ring_spike
+    "${CMAKE_CURRENT_SOURCE_DIR}/spike/texture/ring_stress.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/spike/texture/frame_ring.cpp"
+  )
+  target_include_directories(texture_ring_spike
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/spike/texture")
+
   # 同じC ABIをDart FFIから呼べることを確かめるための共有ライブラリ。
   # アプリへの組み込みは packages/bubi_fm77av40ex_core/ の静的リンクで行う
   # （design.md 16.1）。ここはシンボル解決と呼び出しの検証専用である。
@@ -205,6 +214,7 @@ if(BUBI_BUILD_HOST_TOOLS)
   # 書込み先をビルドディレクトリ配下へ閉じ込め、ホームディレクトリを汚さない。
   add_test(NAME core_smoke COMMAND core_smoke "${CMAKE_CURRENT_BINARY_DIR}/smoke-home")
   add_test(NAME session_test COMMAND session_test "${CMAKE_CURRENT_BINARY_DIR}/session-home")
+  add_test(NAME texture_ring_spike COMMAND texture_ring_spike)
   # home_dir はプロセス全体で1つに固定されるため、書込み不能な home_dir の
   # 検査だけは別プロセスで走らせる。
   add_test(NAME session_test_unwritable_home
