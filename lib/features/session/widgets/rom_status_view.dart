@@ -30,6 +30,20 @@ class RomStatusView extends ConsumerWidget {
         children: [
           _DirectorySection(state: state, controller: controller),
           const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton(
+              key: const Key('emulatorStart'),
+              // 起動必須ROMが揃っていなければ押させない。
+              onPressed: (state.inventory?.canBoot ?? false)
+                  ? () => ref
+                        .read(emulatorControllerProvider.notifier)
+                        .launch(bootMode: state.bootMode)
+                  : null,
+              child: Text(l10n.emulatorStart),
+            ),
+          ),
+          const SizedBox(height: 16),
           _BootModeSection(state: state, controller: controller),
           const SizedBox(height: 16),
           if (state.inventory != null) _InventorySection(state: state),

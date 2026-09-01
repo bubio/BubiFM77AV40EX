@@ -731,6 +731,132 @@ void test_home_dir_is_process_wide()
 
 } // namespace
 
+// --- 12. 映像 ---
+void test_video()
+{
+	group("映像");
+
+	bfm_session* session = make_session();
+	if (session == nullptr) {
+		check(false, "生成できる");
+		return;
+	}
+
+	bfm_video_frame frame{};
+	check(bfm_acquire_video_frame(session, &frame) == BFM_ERR_NO_EVENT,
+	      "起動前は取り出せる面がない");
+	check(bfm_acquire_video_frame(nullptr, &frame) == BFM_ERR_INVALID_ARGUMENT,
+	      "sessionがnullなら invalidArgument");
+	check(bfm_acquire_video_frame(session, nullptr) == BFM_ERR_INVALID_ARGUMENT,
+	      "outがnullなら invalidArgument");
+	bfm_release_video_frame(nullptr, 1); // 落ちないこと
+	bfm_release_video_frame(session, 0); // 未知の世代も落ちないこと
+
+	bfm_start(session);
+	check(wait_for_state(session, BFM_STATE_RUNNING, 5000), "running へ遷移する");
+	check(wait_for_frames_beyond(session, 0, 5000), "フレームが進む");
+
+	// ROMがなくても、起動直後の1枚は無条件に出す。
+	// 出さないと、コアが画面へ触るまで真っ黒のままになる。
+	bool got = false;
+	for (int i = 0; i < 200 && !got; ++i) {
+		got = bfm_acquire_video_frame(session, &frame) == BFM_OK;
+		if (!got) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
+	}
+	check(got, "起動直後に1枚は公開される");
+	if (!got) {
+		bfm_stop(session);
+		bfm_destroy(session);
+		return;
+	}
+
+	check(frame.pixels != nullptr, "画素の領域がある");
+	check(frame.width == 640 || frame.width == 320, "幅がコアの論理解像度である");
+	check(frame.height == 400 || frame.height == 200, "高さがコアの論理解像度である");
+	check(frame.generation > 0, "世代が振られている");
+
+	// コアはアルファを書かない。埋めていないと画面全体が背景と混ざる。
+	bool alpha_filled = true;
+	const size_t count = static_cast<size_t>(frame.width) * frame.height;
+	for (size_t i = 0; i < count; ++i) {
+		if ((frame.pixels[i] & 0xff000000u) != 0xff000000u) {
+			alpha_filled = false;
+			break;
+		}
+	}
+	check(alpha_filled, "全画素のアルファが0xffで埋まっている");
+
+	// 借りているあいだは書き潰されない。
+	const uint32_t first = frame.pixels[0];
+	const uint64_t borrowed = frame.generation;
+	std::this_thread::sleep_for(std::chrono::milliseconds(200));
+	check(frame.pixels[0] == first, "借りているあいだ内容が変わらない");
+	bfm_release_video_frame(session, borrowed);
+
+	// VID-07 画面が変わらない期間は転送しない。
+	bfm_stats before{};
+	bfm_get_stats(session, &before);
+	const uint64_t frames_before = before.frames_run;
+	std::this_thread::sleep_for(std::chrono::milliseconds(500));
+	bfm_stats after{};
+	bfm_get_stats(session, &after);
+	check(after.frames_run > frames_before, "コアはフレームを進めている");
+	check(after.frames_published < after.frames_run,
+	      "VID-07 全フレームを転送してはいない");
+	check(after.frames_dropped == 0, "面が尽きて捨てたフレームがない");
+	check(after.vm_access_violations == 0, "VM操作はCore threadに閉じている");
+
+	bfm_stop(session);
+	bfm_destroy(session);
+}
+
+// --- 13. 入力 ---
+void test_input()
+{
+	group("入力");
+
+	bfm_session* session = make_session();
+	if (session == nullptr) {
+		check(false, "生成できる");
+		return;
+	}
+	bfm_start(session);
+	check(wait_for_state(session, BFM_STATE_RUNNING, 5000), "running へ遷移する");
+
+	bfm_command command{};
+	command.kind = BFM_CMD_KEY_DOWN;
+	command.arg0 = 0x41; // win32 VK_A
+	uint64_t id = 0;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "キー押下を投入できる");
+	int32_t code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_OK, "押下が成功で完了する");
+
+	command.kind = BFM_CMD_KEY_UP;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "キー解放を投入できる");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_OK, "解放が成功で完了する");
+
+	command.kind = BFM_CMD_KEY_DOWN;
+	command.arg0 = -1;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "範囲外も受理はする");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "範囲外の完了通知が届く");
+	check(code == BFM_ERR_INVALID_ARGUMENT, "負のキーコードは invalidArgument で完了");
+
+	command.arg0 = 0x100;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "上限超えも受理はする");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "上限超えの完了通知が届く");
+	check(code == BFM_ERR_INVALID_ARGUMENT, "0xffを超えるキーコードは invalidArgument で完了");
+
+	bfm_stop(session);
+	bfm_destroy(session);
+}
+
 int main(int argc, char** argv)
 {
 	if (argc < 2) {
@@ -758,6 +884,8 @@ int main(int argc, char** argv)
 	test_single_live_session();
 	test_rom_wiring();
 	test_boot_mode();
+	test_video();
+	test_input();
 	test_home_dir_is_process_wide();
 
 	std::printf("\n%s\n", failures == 0 ? "すべて合格" : "失敗あり");

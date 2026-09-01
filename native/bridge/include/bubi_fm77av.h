@@ -140,7 +140,7 @@ typedef enum {
 	BFM_EVENT_MEDIA_ACCESS_CHANGED = 4,/* WP5 */
 	BFM_EVENT_TAPE_POSITION_CHANGED = 5,/* M7 P2 */
 	BFM_EVENT_FDD_MECHANICAL = 6,      /* M3 AUD-04 */
-	BFM_EVENT_LED_CHANGED = 7,         /* WP6 */
+	BFM_EVENT_LED_CHANGED = 7,         /* WP3 INP-02 */
 	BFM_EVENT_SCREEN_MODE_CHANGED = 8, /* WP3 */
 	BFM_EVENT_PERFORMANCE_CHANGED = 9, /* WP6 */
 	BFM_EVENT_STATE_SLOT_CHANGED = 10, /* M3 STA-01 */
@@ -151,7 +151,8 @@ typedef struct {
 	uint32_t kind;       /* bfm_event_kind */
 	int32_t code;        /* ERROR のとき bfm_result、COMMAND_COMPLETED のとき結果 */
 	uint64_t command_id; /* COMMAND_COMPLETED のとき、対応するコマンドの連番 */
-	int64_t arg0;        /* LIFECYCLE_CHANGED のとき bfm_state */
+	int64_t arg0;        /* LIFECYCLE_CHANGED のとき bfm_state、
+	                      * LED_CHANGED のとき0x1=INS/0x2=KANA/0x4=CAPSのビット合成 */
 	int64_t arg1;
 } bfm_event;
 
@@ -214,6 +215,47 @@ BFM_API int32_t bfm_get_state(bfm_session* session);
 BFM_API bfm_result bfm_get_core_directory(bfm_session* session, char* out,
                                           uint32_t out_size);
 
+
+/*
+ * 映像（design.md 6、16.1「映像の受け渡しとmacOS Texture方式」）。
+ *
+ * コアのバッファは渡さない。解像度が変わるとコアが確保し直すため、
+ * 渡したポインターがその瞬間に無効になる。ここで返すのはブリッジが
+ * 所有する面であり、release するまで内容も大きさも変わらない。
+ *
+ * pixels は BGRA8888、上から下へ、幅×高さの連続領域である。
+ * コアはアルファを書かないため、ブリッジが 0xff を埋めてある。
+ * 埋めないと画面全体が背景と混ざる。
+ */
+typedef struct {
+	const uint32_t* pixels;
+	uint32_t width;
+	uint32_t height;
+	uint32_t reserved; /* 0。構造体の詰め物を明示する。 */
+	uint64_t generation;
+} bfm_video_frame;
+
+/*
+ * 最新の完成フレームを借りる。まだ1枚もなければ BFM_ERR_NO_EVENT を返す。
+ * 借りたら必ず bfm_release_video_frame を同じ generation で呼ぶこと。
+ * 返すまでその面は書き潰されない。
+ *
+ * どのスレッドから呼んでもよい。VMには触れない。
+ * 呼び手を待たせないため、Core threadの複製が終わるのを待つことはない。
+ */
+BFM_API bfm_result bfm_acquire_video_frame(bfm_session* session,
+                                           bfm_video_frame* out);
+
+/* 借りた面を返す。未知の generation は黙って無視する。 */
+BFM_API void bfm_release_video_frame(bfm_session* session, uint64_t generation);
+
+/*
+ * 最新の完成フレームの世代番号。まだ1枚もなければ0。
+ * 借りずに「変わったかどうか」だけを知りたいときに使う。
+ * 描画側はこれで変化を見てから転送すればよい（VID-07）。
+ */
+BFM_API uint64_t bfm_video_generation(bfm_session* session);
+
 typedef struct {
 	uint64_t frames_run;
 	uint64_t commands_accepted;
@@ -225,6 +267,9 @@ typedef struct {
 	 * 「Core threadだけがVMを操作することをテストする」）。
 	 */
 	uint64_t vm_access_violations;
+	/* 公開したフレーム数と、書ける面が尽きて捨てたフレーム数。 */
+	uint64_t frames_published;
+	uint64_t frames_dropped;
 } bfm_stats;
 
 BFM_API bfm_result bfm_get_stats(bfm_session* session, bfm_stats* out);

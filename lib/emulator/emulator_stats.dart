@@ -6,6 +6,8 @@ class EmulatorStats {
     required this.commandsRejected,
     required this.eventsDropped,
     required this.vmAccessViolations,
+    required this.framesPublished,
+    required this.framesDropped,
   });
 
   final int framesRun;
@@ -19,4 +21,10 @@ class EmulatorStats {
 
   /// Core thread 以外から VM 操作境界へ入った回数。常に 0 でなければならない。
   final int vmAccessViolations;
+
+  /// 描画側へ公開したフレーム数。画面が変わらないフレームは数えない（VID-07）。
+  final int framesPublished;
+
+  /// 書ける面が尽きて捨てたフレーム数。
+  final int framesDropped;
 }

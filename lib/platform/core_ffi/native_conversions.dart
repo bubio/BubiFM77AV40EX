@@ -8,6 +8,7 @@ import 'package:bubi_fm77av40ex_core/bubi_fm77av40ex_core.dart';
 
 import '../../emulator/emulator_error.dart';
 import '../../emulator/emulator_event.dart';
+import '../../emulator/led_state.dart';
 import '../../emulator/session_state.dart';
 
 /// `bfm_result` を [EmulatorErrorCode] へ変換する。
@@ -56,6 +57,7 @@ EmulatorEvent emulatorEventFromNative({
   required int code,
   required int commandId,
   required int arg0,
+  required int arg1,
 }) => switch (kind) {
   BfmEventKind.lifecycleChanged => LifecycleChanged(
     sessionStateFromNative(arg0),
@@ -65,6 +67,8 @@ EmulatorEvent emulatorEventFromNative({
     error: code == BfmResult.ok ? null : errorCodeFromNative(code),
   ),
   BfmEventKind.error => EmulatorErrorOccurred(errorCodeFromNative(code)),
+  BfmEventKind.screenModeChanged => ScreenModeChanged(arg0, arg1),
+  BfmEventKind.ledChanged => LedStateChanged(LedState.fromBits(arg0)),
   _ => UnhandledEmulatorEvent(kind),
 };
 

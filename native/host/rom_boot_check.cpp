@@ -29,13 +29,13 @@
 
 #include "bubi_fm77av.h"
 
-extern "C" bfm_result bfm_test_capture_screen(bfm_session* session, uint32_t* out_pixels,
-                                              uint32_t max_pixels, int32_t* out_width,
-                                              int32_t* out_height);
-
 namespace {
 
 int failures = 0;
+
+// 直近の起動で観測したフレーム数。VID-07の判定に使う。
+uint64_t g_last_frames_run = 0;
+uint64_t g_last_published = 0;
 
 void check(bool condition, const char* what)
 {
@@ -111,22 +111,22 @@ bool boot_and_capture(const std::string& home, const std::string& rom_dir,
 	}
 	bool ok = bfm_start(session) == BFM_OK && wait_for_frames(session, frames, 60);
 	if (ok) {
-		int32_t width = 0;
-		int32_t height = 0;
-		std::vector<uint32_t> pixels(640 * 400 * 2);
-		const bfm_result code = bfm_test_capture_screen(
-			session, pixels.data(), static_cast<uint32_t>(pixels.size()), &width, &height);
-		ok = code == BFM_OK && width > 0 && height > 0;
+		bfm_video_frame frame{};
+		ok = bfm_acquire_video_frame(session, &frame) == BFM_OK && frame.width > 0 &&
+		     frame.height > 0;
 		if (ok) {
-			pixels.resize(static_cast<size_t>(width) * height);
-			out->width = width;
-			out->height = height;
-			out->pixels.swap(pixels);
+			out->width = static_cast<int32_t>(frame.width);
+			out->height = static_cast<int32_t>(frame.height);
+			out->pixels.assign(frame.pixels,
+			                   frame.pixels + static_cast<size_t>(frame.width) * frame.height);
+			bfm_release_video_frame(session, frame.generation);
 		}
 	}
 	bfm_stats stats{};
 	if (bfm_get_stats(session, &stats) == BFM_OK) {
 		*out_violations += stats.vm_access_violations;
+		g_last_frames_run = stats.frames_run;
+		g_last_published = stats.frames_published;
 	}
 	bfm_stop(session);
 	bfm_destroy(session);
@@ -240,6 +240,16 @@ int main(int argc, char** argv)
 	if (dos_ok) {
 		write_ppm(out_dir + "/boot_dos.ppm", dos);
 	}
+
+	group("VID-07 転送の抑止");
+	// ROMなしでは画面がまったく変わらないため、抑止できていることを
+	// 実ROMでしか確かめられない。1枚も出ないのも、毎フレーム出すのも誤り。
+	check(g_last_published > 1, "画面が変わったフレームは転送している");
+	check(g_last_published < g_last_frames_run,
+	      "画面が変わらないフレームは転送していない");
+	std::printf("   コア %llu フレーム中 %llu 枚を転送\n",
+	            static_cast<unsigned long long>(g_last_frames_run),
+	            static_cast<unsigned long long>(g_last_published));
 
 	group("VM操作の見張り");
 	check(violations == 0, "Core thread以外からVMへ触っていない");

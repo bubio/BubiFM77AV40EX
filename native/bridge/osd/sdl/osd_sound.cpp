@@ -6,30 +6,21 @@
 
 	[ sdl dependent ]
 
-	BubiFM77AV40EX: sound ring buffer (M1 WP4 でSoLoud供給へ作り直す).
+	BubiFM77AV40EX: 音声リングバッファ。
 
-	Unlike win32's OSD, which paces vm->create_sound() calls off a
-	DirectSound playback cursor (only synthesizing once the host has
-	consumed roughly half its buffer), this OSD gates on the ring buffer's
-	own occupancy: skip create_sound() while it is already comfortably
-	full. This matters because vm->create_sound() advances the VM
-	internally by however many frames it takes to fill one sound_samples
-	chunk (~6 VM frames at 62500Hz/100ms latency and 61.94fps) and reports
-	that count via extra_frames, which EMU::run() (emu.cpp) uses to skip
-	its own vm->run() call for this tick. Calling create_sound() on every
-	single update_sound() tick - as an earlier version of this file did -
-	means every bx1_run_frame() call from the host advances the VM by a
-	whole chunk instead of one frame, so a host loop paced at 61.94Hz runs
-	the machine several times too fast while still looking correct in a
-	framebuffer/audio-presence smoke test (see docs/dev/DevelopmentPlan.md
-	phase 4/5 notes). Gating below reproduces win32's "only synthesize
-	when the buffer actually needs it" behavior without touching any host
-	audio API.
+	この実装は「OSDが自分のタイマーでvm->create_sound()を呼ぶ」という
+	upstream本来の設計を前提にしており、Core threadの駆動には使っていない
+	（bridge/src/bubi_fm77av.cppは`vm->run()`を壁時計ペースで直接呼ぶ）。
+	`docs/dev/design.md`16.1「音声はVMの駆動源にしない」の決定に従い、WP4で
+	Core threadから直接`vm->create_sound()`を呼ぶ形へ作り直す。
 
-	Playback pacing (calling bx1_run_frame while
-	bx1_get_buffered_audio_frames() stays under the desired latency) is
-	the Nim layer's job - see the phase 1 architecture note "frame sync is
-	audio-clock driven" in docs/dev/DevelopmentPlan.md.
+	`vm->run()`は`event->drive()`そのもので（vm/fm7/fm7.cpp）、
+	`vm->create_sound()`は要求した`sound_samples`が溜まるまで内部で
+	追加の`drive()`を呼ぶ（vm/event.cpp）。壁時計ペースの`vm->run()`と
+	無関係にcreate_sound()を呼ぶと二重にVMを進めてしまうため、
+	`sound_samples`を1フレーム分のサンプル数に合わせ、`vm->run()`の直後に
+	`create_sound()`を呼んで「そのフレーム分を取り出すだけ」にする方針を
+	`native/spike/sound/sound_pacing_spike.cpp`で検証した。
 */
 
 #include "osd.h"

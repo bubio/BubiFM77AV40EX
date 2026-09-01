@@ -19,10 +19,12 @@ dev_dependencies:
 
 flutter:
   plugin:
-    # FFIプラグイン。Dart側から直接ネイティブを呼ぶため、
-    # プラットフォームチャネルのクラスは持たない。
+    # エミュレーターの操作はDartから直接ネイティブを呼ぶ（ffiPlugin）。
+    # 映像だけは別で、Flutterの Texture へ渡すために Swift 側の
+    # 登録が要るため pluginClass も持つ（design.md 16.1）。
     # macOS以外はM4〜M6で各マイルストーンの担当時に追加する。
     # 動かせないOSの定義を先に置かない。
     platforms:
       macos:
         ffiPlugin: true
+        pluginClass: BubiFm77Av40ExCorePlugin

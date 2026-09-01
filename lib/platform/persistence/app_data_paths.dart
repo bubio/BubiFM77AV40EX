@@ -4,6 +4,13 @@
 /// プラットフォームアダプターがOS APIから取得する。feature層は
 /// ここで得た識別子だけを扱い、パス文字列を組み立てない。
 abstract interface class AppDataPaths {
+  /// コアがアプリケーションデータを置く位置（アプリケーションデータ領域の
+  /// ルート）のOSパス。
+  ///
+  /// コアの`cpp_homedir`に渡す。既定に任せると`~/CommonSourceCodeProject/`を
+  /// 作ってしまい、design.md 11.3 と食い違う。
+  Future<String> coreHomeDirectoryPath();
+
   /// 利用者がROMを置くフォルダー（`roms/`）のOSパス。
   ///
   /// アプリは選ばせず、この位置に固定する（specification.md 6）。

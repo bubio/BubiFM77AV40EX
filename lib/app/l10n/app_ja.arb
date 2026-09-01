@@ -26,5 +26,18 @@
   "romScanFailed": "ROMフォルダーを読み取れませんでした。フォルダーとアクセス権を確認してください。",
   "romDirectoryPreparing": "準備中",
   "romDirectoryGuidance": "このフォルダーにROMファイルを置いてから、再検証してください。",
-  "romOpenFolder": "フォルダーを開く"
+  "romOpenFolder": "フォルダーを開く",
+  "emulatorStart": "起動",
+  "emulatorStop": "停止",
+  "emulatorReset": "リセット",
+  "emulatorStarting": "起動中",
+  "emulatorFailed": "起動できませんでした。",
+  "emulatorBackToRomSettings": "ROM設定へ戻る",
+  "displayFit": "表示",
+  "displayFitAspect": "縦横比を保つ",
+  "displayFitInteger": "整数倍",
+  "displayFitFill": "領域に合わせる",
+  "ledInsert": "INS",
+  "ledKana": "KANA",
+  "ledCaps": "CAPS"
 }

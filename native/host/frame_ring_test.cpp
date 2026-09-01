@@ -1,8 +1,8 @@
 /*
- * 【破棄可能なspike】M0 5.3 Textureゲートの検証用。
+ * 面リング（native/bridge/src/frame_ring.h）の検査。
  *
- * 合格条件「破断や書込み競合なしに最新フレームを表示できる」を、
- * コアより厳しい条件で確かめる。
+ * M0第5.3節のTextureゲートの合格条件「破断や書込み競合なしに最新フレームを
+ * 表示できる」を、コアより厳しい条件で確かめる。ROMを必要とせず、CIで走る。
  *
  *   - 320x200 / 640x200 / 640x400 を毎フレーム切り替える
  *   - 書き手は59.94fpsより遥かに速く回す
@@ -18,8 +18,8 @@
 #include <thread>
 #include <vector>
 
-using bubi_spike::FrameRing;
-using bubi_spike::FrameView;
+using bubi::FrameRing;
+using bubi::FrameView;
 
 namespace {
 
@@ -64,21 +64,17 @@ int main()
 	group("書き手を止めず、読み手が遅れても破断しない");
 
 	std::thread producer([&] {
-		std::vector<uint32_t> scratch;
 		uint64_t frame = 0;
 		while (!stop.load()) {
 			const Size size = kSizes[frame % 3];
-			const size_t count = static_cast<size_t>(size.width) * size.height;
-			scratch.resize(count);
 			// publish が採番する世代と一致させるため、こちらでも同じ順に数える。
 			const uint64_t generation = frame + 1;
-			for (uint32_t y = 0; y < size.height; ++y) {
-				for (uint32_t x = 0; x < size.width; ++x) {
-					scratch[static_cast<size_t>(y) * size.width + x] =
-						pixel_of(generation, x, y);
-				}
-			}
-			ring.publish(scratch.data(), size.width, size.height);
+			ring.publish(size.width, size.height,
+			             [generation, size](uint32_t* dst, uint32_t y) {
+				             for (uint32_t x = 0; x < size.width; ++x) {
+					             dst[x] = pixel_of(generation, x, y);
+				             }
+			             });
 			produced.fetch_add(1);
 			++frame;
 		}
@@ -145,15 +141,17 @@ int main()
 	group("借りているあいだは書き潰されない");
 	{
 		FrameRing held;
-		std::vector<uint32_t> a(320 * 200, 0x11111111u);
-		held.publish(a.data(), 320, 200);
+		held.publish(320, 200, [](uint32_t* dst, uint32_t) {
+			for (int x = 0; x < 320; ++x) dst[x] = 0x11111111u;
+		});
 		FrameView borrowed;
 		check(held.acquire(&borrowed), "1枚目を借りられる");
 		const uint32_t first = borrowed.pixels[0];
 		// 借りたまま別の大きさで何枚も上書きする。
-		std::vector<uint32_t> b(640 * 400, 0x22222222u);
 		for (int i = 0; i < 10; ++i) {
-			held.publish(b.data(), 640, 400);
+			held.publish(640, 400, [](uint32_t* dst, uint32_t) {
+				for (int x = 0; x < 640; ++x) dst[x] = 0x22222222u;
+			});
 		}
 		check(borrowed.pixels[0] == first, "借りている面の中身が変わらない");
 		check(borrowed.width == 320 && borrowed.height == 200,

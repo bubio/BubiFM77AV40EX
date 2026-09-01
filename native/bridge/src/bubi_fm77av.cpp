@@ -11,6 +11,8 @@
  */
 #include "bubi_fm77av.h"
 
+#include "frame_ring.h"
+
 #include <dirent.h>
 #include <strings.h>
 #include <sys/stat.h>
@@ -246,6 +248,14 @@ struct bfm_session {
 	std::atomic<uint64_t> commands_rejected{0};
 	std::atomic<uint64_t> events_dropped{0};
 	std::atomic<uint64_t> vm_access_violations{0};
+	std::atomic<uint64_t> frames_published{0};
+
+	/*
+	 * 次のフレームを無条件に公開する。起動直後とリセット直後に立てる。
+	 * コアが画面へ触るまで is_screen_changed() はfalseを返し続けるため、
+	 * これがないと画面が真っ黒のままになる。
+	 */
+	std::atomic<bool> force_publish{true};
 
 	std::thread core_thread;
 	std::string home_dir;
@@ -257,20 +267,19 @@ struct bfm_session {
 	std::atomic<bool> core_thread_id_valid{false};
 	std::thread::id core_thread_id;
 
+	// 映像。Core threadが書き、描画側が借りる。
+	bubi::FrameRing frames;
+
+	// 直近に公開した解像度。Core threadだけが書く。
+	int screen_width = 0;
+	int screen_height = 0;
+
+	// 直近に通知したLED。初期値は「まだ読んでいない」を表す。
+	uint32_t led_status = 0xffffffffu;
+
 	// --- Core threadだけが触る ---
 	EMU* emu = nullptr;
 
-#ifdef BUBI_ENABLE_TEST_HOOKS
-	// 画面の取り出しはテストバイナリにだけ含める（配布物には入らない）。
-	// 実ROMでの起動確認に使う（development_plan.md 6 WP2）。
-	std::atomic<bool> capture_requested{false};
-	std::mutex capture_mutex;
-	std::condition_variable capture_done;
-	bool capture_ready = false;
-	int32_t capture_width = 0;
-	int32_t capture_height = 0;
-	std::vector<uint32_t> capture_pixels;
-#endif
 
 	/*
 	 * VMへ触る直前に必ず呼ぶ。Core thread以外だった場合は数えるだけで
@@ -332,10 +341,39 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 	switch (queued.kind) {
 	case BFM_CMD_RESET:
 		vm->reset();
+		// リセット直後はコアが画面へ触るまで is_screen_changed() が
+		// falseを返し続ける。1枚出さないと古い画面が残る。
+		session->force_publish.store(true);
 		break;
 	case BFM_CMD_SPECIAL_RESET:
 		vm->special_reset();
+		session->force_publish.store(true);
 		break;
+	case BFM_CMD_KEY_DOWN:
+	case BFM_CMD_KEY_UP: {
+		// コードは win32 の仮想キーコード。コアの vk_matrix_106
+		// （vm/fm7/keyboard_tables.h）がこれを走査コードへ変換する。
+		// 変換表そのものがコアの都合なので、対応表はホスト側に置く。
+		if (queued.arg0 < 0 || queued.arg0 > 0xff) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		const int key_code = static_cast<int>(queued.arg0);
+		// EMU::key_down は宣言だけで実体が win32 側にある。
+		// ここではコアが持つOSDを直接呼ぶ。
+		OSD* osd = session->emu->get_osd();
+		if (osd == nullptr) {
+			code = BFM_ERR_INTERNAL;
+			break;
+		}
+		if (queued.kind == BFM_CMD_KEY_DOWN) {
+			// リピートはホスト側で落とす。コアへ二重に送らない（INP-01）。
+			osd->key_down(key_code, false, false);
+		} else {
+			osd->key_up(key_code, false);
+		}
+		break;
+	}
 	case BFM_CMD_SET_BOOT_MODE:
 		// コアはリセット時に config.boot_mode を読む。ここでは値を
 		// 置くだけで、反映は次のリセットまたは再起動になる（SYS-04）。
@@ -375,6 +413,86 @@ void drain_pending_commands(bfm_session* session, bfm_result code)
 		}
 		session->complete_command(queued.id, code);
 	}
+}
+
+/*
+ * 画面が変わっていれば1枚公開する。
+ *
+ * VM::is_screen_changed() は読むと状態を落とす（display->screen_update() の
+ * 直後に reset_screen_update() を呼ぶ）。1フレームにつき1回だけ呼び、
+ * 戻り値を必ず使うこと。2回目はfalseを返し、捨てた更新は戻らない。
+ */
+void publish_frame_if_changed(bfm_session* session, VM_TEMPLATE* vm)
+{
+	session->note_vm_access();
+	const bool changed = vm->is_screen_changed();
+	// is_screen_changed() は必ず1回だけ呼び、戻り値を必ず使う。
+	// 読むと状態が落ちるため、捨てた更新は戻らない。
+	const bool forced = session->force_publish.exchange(false);
+	if (!changed && !forced) {
+		return; // VID-07 フレーム更新のない期間は転送しない
+	}
+
+	session->note_vm_access();
+	session->emu->draw_screen();
+	OSD* osd = session->emu->get_osd();
+	const int width = osd->get_vm_screen_width();
+	const int height = osd->get_vm_screen_height();
+	if (width <= 0 || height <= 0) {
+		return;
+	}
+
+	// 解像度が変わったらUIへ知らせる（design.md 4.3 screenModeChanged）。
+	// 表示側は縦横比と拡大率をこれで決める（VID-02）。
+	if (session->screen_width != width || session->screen_height != height) {
+		session->screen_width = width;
+		session->screen_height = height;
+		bfm_event event{};
+		event.kind = BFM_EVENT_SCREEN_MODE_CHANGED;
+		event.arg0 = width;
+		event.arg1 = height;
+		session->push_event(event);
+	}
+
+	const uint64_t before = session->frames.dropped();
+	session->frames.publish(
+		static_cast<uint32_t>(width), static_cast<uint32_t>(height),
+		[session, width](uint32_t* dst, uint32_t y) {
+			const scrntype_t* row = session->emu->get_screen_buffer(static_cast<int>(y));
+			if (row == nullptr) {
+				for (int x = 0; x < width; ++x) {
+					dst[x] = 0xff000000u;
+				}
+				return;
+			}
+			// コアの RGB_COLOR はアルファを書かない。0のままだと
+			// 画面全体が背景と混ざる（design.md 16.1）。
+			for (int x = 0; x < width; ++x) {
+				dst[x] = static_cast<uint32_t>(row[x]) | 0xff000000u;
+			}
+		});
+	if (session->frames.dropped() == before) {
+		session->frames_published.fetch_add(1);
+	}
+}
+
+/*
+ * INS / KANA / CAPS のLEDが変わったらUIへ知らせる（INP-02）。
+ * ビットは vm/fm7/keyboard.cpp の SIG_FM7KEY_LED_STATUS が決めており、
+ * 0x1=INS、0x2=KANA、0x4=CAPS である。
+ */
+void publish_led_if_changed(bfm_session* session, VM_TEMPLATE* vm)
+{
+	session->note_vm_access();
+	const uint32_t status = vm->get_led_status();
+	if (status == session->led_status) {
+		return;
+	}
+	session->led_status = status;
+	bfm_event event{};
+	event.kind = BFM_EVENT_LED_CHANGED;
+	event.arg0 = static_cast<int64_t>(status);
+	session->push_event(event);
 }
 
 void core_thread_main(bfm_session* session)
@@ -433,33 +551,9 @@ void core_thread_main(bfm_session* session)
 			vm->run();
 			session->frames_run.fetch_add(1);
 
-#ifdef BUBI_ENABLE_TEST_HOOKS
-			// 画面の取り出しもCore threadで行う。VMへ触るのは
-			// このスレッドだけという約束を破らない。
-			if (session->capture_requested.exchange(false)) {
-				session->note_vm_access();
-				session->emu->draw_screen();
-				const int32_t width = session->emu->get_osd()->get_vm_screen_width();
-				const int32_t height = session->emu->get_osd()->get_vm_screen_height();
-				std::vector<uint32_t> pixels;
-				pixels.reserve(static_cast<size_t>(width) * height);
-				for (int32_t y = 0; y < height; ++y) {
-					const scrntype_t* row = session->emu->get_screen_buffer(y);
-					for (int32_t x = 0; x < width; ++x) {
-						pixels.push_back(row == nullptr ? 0u
-						                               : static_cast<uint32_t>(row[x]));
-					}
-				}
-				{
-					std::lock_guard<std::mutex> lock(session->capture_mutex);
-					session->capture_width = width;
-					session->capture_height = height;
-					session->capture_pixels.swap(pixels);
-					session->capture_ready = true;
-				}
-				session->capture_done.notify_all();
-			}
-#endif
+			publish_frame_if_changed(session, vm);
+			publish_led_if_changed(session, vm);
+
 
 			// 単調増加時計で次回期限を決める。遅れたら取り戻さず基準へ戻す。
 			const auto now = clock::now();
@@ -725,10 +819,41 @@ bfm_result bfm_get_stats(bfm_session* session, bfm_stats* out)
 		out->commands_rejected = session->commands_rejected.load();
 		out->events_dropped = session->events_dropped.load();
 		out->vm_access_violations = session->vm_access_violations.load();
+		out->frames_published = session->frames_published.load();
+		out->frames_dropped = session->frames.dropped();
 		return BFM_OK;
 	} catch (...) {
 		return BFM_ERR_INTERNAL;
 	}
+}
+
+BFM_API bfm_result bfm_acquire_video_frame(bfm_session* session, bfm_video_frame* out)
+{
+	if (session == nullptr || out == nullptr) {
+		return BFM_ERR_INVALID_ARGUMENT;
+	}
+	bubi::FrameView view;
+	if (!session->frames.acquire(&view)) {
+		return BFM_ERR_NO_EVENT;
+	}
+	out->pixels = view.pixels;
+	out->width = view.width;
+	out->height = view.height;
+	out->reserved = 0;
+	out->generation = view.generation;
+	return BFM_OK;
+}
+
+BFM_API void bfm_release_video_frame(bfm_session* session, uint64_t generation)
+{
+	if (session != nullptr) {
+		session->frames.release(generation);
+	}
+}
+
+BFM_API uint64_t bfm_video_generation(bfm_session* session)
+{
+	return (session == nullptr) ? 0 : session->frames.published_generation();
 }
 
 #ifdef BUBI_ENABLE_TEST_HOOKS
@@ -742,42 +867,6 @@ BFM_API void bfm_test_touch_vm_guard_from_caller_thread(bfm_session* session)
 	if (session != nullptr) {
 		session->note_vm_access();
 	}
-}
-
-/*
- * テスト専用。Core threadに1フレーム描かせ、その結果を取り出す。
- * 実ROMを置いた環境で起動を目視・比較するために使う。
- * 描画そのものはCore threadで行うので、VM操作の約束は破らない。
- */
-BFM_API bfm_result bfm_test_capture_screen(bfm_session* session, uint32_t* out_pixels,
-                                           uint32_t max_pixels, int32_t* out_width,
-                                           int32_t* out_height)
-{
-	if (session == nullptr || out_width == nullptr || out_height == nullptr) {
-		return BFM_ERR_INVALID_ARGUMENT;
-	}
-	if (session->state.load() != BFM_STATE_RUNNING) {
-		return BFM_ERR_INVALID_STATE;
-	}
-	std::unique_lock<std::mutex> lock(session->capture_mutex);
-	session->capture_ready = false;
-	session->capture_requested.store(true);
-	// 期限を切る。Core threadが止まっていても呼び手を待たせ続けない。
-	if (!session->capture_done.wait_for(lock, std::chrono::seconds(5),
-	                                    [session] { return session->capture_ready; })) {
-		return BFM_ERR_CORE_FAILED;
-	}
-	*out_width = session->capture_width;
-	*out_height = session->capture_height;
-	if (out_pixels != nullptr) {
-		if (session->capture_pixels.size() > max_pixels) {
-			return BFM_ERR_INVALID_ARGUMENT;
-		}
-		for (size_t i = 0; i < session->capture_pixels.size(); ++i) {
-			out_pixels[i] = session->capture_pixels[i];
-		}
-	}
-	return BFM_OK;
 }
 #endif
 

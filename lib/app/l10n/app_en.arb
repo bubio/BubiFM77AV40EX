@@ -107,5 +107,18 @@
   "romOpenFolder": "Open folder",
   "@romOpenFolder": {
     "description": "Button that reveals the ROM folder in the OS file manager."
-  }
+  },
+  "emulatorStart": "Start",
+  "emulatorStop": "Stop",
+  "emulatorReset": "Reset",
+  "emulatorStarting": "Starting",
+  "emulatorFailed": "The emulator could not start.",
+  "emulatorBackToRomSettings": "Back to ROM settings",
+  "displayFit": "Display",
+  "displayFitAspect": "Keep aspect ratio",
+  "displayFitInteger": "Integer scale",
+  "displayFitFill": "Fill the area",
+  "ledInsert": "INS",
+  "ledKana": "KANA",
+  "ledCaps": "CAPS"
 }

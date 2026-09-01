@@ -102,6 +102,7 @@ set(BRIDGE_SOURCES
   bridge/osd/sdl/osd_screen.cpp
   bridge/osd/sdl/osd_sound.cpp
   bridge/src/bubi_fm77av.cpp
+  bridge/src/frame_ring.cpp
   bridge/compat/core_feature_shim.cpp
   bridge/compat/core_host_symbols.cpp
   bridge/compat/debugger_stubs.cpp
@@ -178,6 +179,7 @@ if(BUBI_BUILD_HOST_TOOLS)
   add_executable(session_test
     "${CMAKE_CURRENT_SOURCE_DIR}/host/session_test.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/bubi_fm77av.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/frame_ring.cpp"
   )
   target_compile_definitions(session_test PRIVATE BUBI_ENABLE_TEST_HOOKS)
   target_link_libraries(session_test PRIVATE bubi_fm77av40ex_core)
@@ -188,35 +190,47 @@ if(BUBI_BUILD_HOST_TOOLS)
   add_executable(rom_boot_check
     "${CMAKE_CURRENT_SOURCE_DIR}/host/rom_boot_check.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/bubi_fm77av.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/frame_ring.cpp"
   )
   target_compile_definitions(rom_boot_check PRIVATE BUBI_ENABLE_TEST_HOOKS)
   target_link_libraries(rom_boot_check PRIVATE bubi_fm77av40ex_core)
 
-  # 【破棄可能なspike】M0 5.3 Textureゲート。WP3で製品コードへ作り直し、
-  # native/spike/texture/ ごと消す。コアには依存しない。
-  add_executable(texture_ring_spike
-    "${CMAKE_CURRENT_SOURCE_DIR}/spike/texture/ring_stress.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/spike/texture/frame_ring.cpp"
+  # 面リングの検査（development_plan.md 6 WP3）。コアには依存しない。
+  add_executable(frame_ring_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/host/frame_ring_test.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/frame_ring.cpp"
   )
-  target_include_directories(texture_ring_spike
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/spike/texture")
+  target_include_directories(frame_ring_test
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src")
 
   # 同じC ABIをDart FFIから呼べることを確かめるための共有ライブラリ。
   # アプリへの組み込みは packages/bubi_fm77av40ex_core/ の静的リンクで行う
   # （design.md 16.1）。ここはシンボル解決と呼び出しの検証専用である。
   add_library(bubi_fm77av40ex_shared SHARED
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/bubi_fm77av.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/frame_ring.cpp"
   )
   set_target_properties(bubi_fm77av40ex_shared PROPERTIES OUTPUT_NAME bubi_fm77av40ex)
   target_link_libraries(bubi_fm77av40ex_shared PRIVATE bubi_fm77av40ex_core)
+
+  # 音声ゲートの検証（development_plan.md 5.3、WP4前）。破棄可能なspikeで、
+  # 結論をdesign.md 16.1へ記録したうえでWP4着手時にディレクトリごと削除する。
+  add_executable(sound_pacing_spike
+    "${CMAKE_CURRENT_SOURCE_DIR}/spike/sound/sound_pacing_spike.cpp"
+  )
+  target_include_directories(sound_pacing_spike
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/spike/sound")
+  target_link_libraries(sound_pacing_spike PRIVATE bubi_fm77av40ex_core)
 
   enable_testing()
   # 書込み先をビルドディレクトリ配下へ閉じ込め、ホームディレクトリを汚さない。
   add_test(NAME core_smoke COMMAND core_smoke "${CMAKE_CURRENT_BINARY_DIR}/smoke-home")
   add_test(NAME session_test COMMAND session_test "${CMAKE_CURRENT_BINARY_DIR}/session-home")
-  add_test(NAME texture_ring_spike COMMAND texture_ring_spike)
+  add_test(NAME frame_ring_test COMMAND frame_ring_test)
   # home_dir はプロセス全体で1つに固定されるため、書込み不能な home_dir の
   # 検査だけは別プロセスで走らせる。
   add_test(NAME session_test_unwritable_home
     COMMAND session_test "${CMAKE_CURRENT_BINARY_DIR}/session-home" --unwritable-home)
+  add_test(NAME sound_pacing_spike
+    COMMAND sound_pacing_spike "${CMAKE_CURRENT_BINARY_DIR}/sound-pacing-home")
 endif()

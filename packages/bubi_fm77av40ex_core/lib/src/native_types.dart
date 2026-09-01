@@ -159,4 +159,28 @@ final class BfmStats extends Struct {
   /// Core thread 以外から VM 操作境界へ入った回数。常に 0 でなければならない。
   @Uint64()
   external int vmAccessViolations;
+
+  /// 公開したフレーム数。画面が変わらないフレームは数えない（VID-07）。
+  @Uint64()
+  external int framesPublished;
+
+  /// 書ける面が尽きて捨てたフレーム数。
+  @Uint64()
+  external int framesDropped;
+}
+
+/// `bfm_video_frame`。借りているあいだ内容も大きさも変わらない。
+///
+/// [pixels] は BGRA8888、上から下へ、幅×高さの連続領域。
+/// アルファはブリッジが 0xff で埋めてある。
+final class BfmVideoFrame extends Struct {
+  external Pointer<Uint32> pixels;
+  @Uint32()
+  external int width;
+  @Uint32()
+  external int height;
+  @Uint32()
+  external int reserved;
+  @Uint64()
+  external int generation;
 }

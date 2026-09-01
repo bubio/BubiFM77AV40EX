@@ -7,3 +7,4 @@ library;
 
 export 'src/bindings.dart';
 export 'src/native_types.dart';
+export 'src/video_texture.dart';

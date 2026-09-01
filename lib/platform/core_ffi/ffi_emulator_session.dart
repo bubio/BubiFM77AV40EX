@@ -16,7 +16,12 @@ import 'native_conversions.dart';
 /// FFI 呼び出しはコマンド投入とスナップショット読出しに限る（design.md 5.1）。
 /// VM を触るのは Core thread だけで、この実体は一度も VM に触れない。
 class FfiEmulatorSession implements EmulatorSession {
-  FfiEmulatorSession._(this._bindings, this._handle, this._pollInterval);
+  FfiEmulatorSession._(
+    this._bindings,
+    this._handle,
+    this._pollInterval,
+    this._textures,
+  );
 
   /// セッションを生成する。
   ///
@@ -36,6 +41,7 @@ class FfiEmulatorSession implements EmulatorSession {
     int commandQueueCapacity = 0,
     int eventQueueCapacity = 0,
     Duration pollInterval = const Duration(milliseconds: 16),
+    BubiVideoTextures textures = const BubiVideoTextures(),
   }) {
     if (homeDir.isEmpty) {
       throw const EmulatorException(
@@ -65,7 +71,7 @@ class FfiEmulatorSession implements EmulatorSession {
         final code = errorCodeFromNative(result);
         throw EmulatorException(code, describeErrorCode(code));
       }
-      return FfiEmulatorSession._(resolved, out.value, pollInterval);
+      return FfiEmulatorSession._(resolved, out.value, pollInterval, textures);
     } finally {
       // C境界を跨いだメモリは確保側が解放する。パスはネイティブ側が
       // 複製するため、この時点で手放してよい。
@@ -79,6 +85,8 @@ class FfiEmulatorSession implements EmulatorSession {
   }
 
   final BubiCoreBindings _bindings;
+  final BubiVideoTextures _textures;
+  int? _textureId;
   final Duration _pollInterval;
 
   Pointer<BfmSession> _handle;
@@ -171,6 +179,32 @@ class FfiEmulatorSession implements EmulatorSession {
     }
   }
 
+  @override
+  Future<void> keyDown(int vkCode) =>
+      _sendKeyCommand(BfmCommandKind.keyDown, vkCode);
+
+  @override
+  Future<void> keyUp(int vkCode) =>
+      _sendKeyCommand(BfmCommandKind.keyUp, vkCode);
+
+  Future<void> _sendKeyCommand(int kind, int vkCode) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = kind;
+      command.ref.arg0 = vkCode;
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
   /// コアが実際にROMを読み `USERDIC.DAT` を書くディレクトリ。
   ///
   /// 連結規則はupstreamが決めるため、Dart側で組み立てずここから得る。
@@ -211,10 +245,34 @@ class FfiEmulatorSession implements EmulatorSession {
         commandsRejected: out.ref.commandsRejected,
         eventsDropped: out.ref.eventsDropped,
         vmAccessViolations: out.ref.vmAccessViolations,
+        framesPublished: out.ref.framesPublished,
+        framesDropped: out.ref.framesDropped,
       );
     } finally {
       calloc.free(out);
     }
+  }
+
+  @override
+  Future<int> attachVideoTexture() async {
+    _ensureUsable();
+    final existing = _textureId;
+    if (existing != null) {
+      return existing;
+    }
+    final id = await _textures.attach(_handle.address);
+    _textureId = id;
+    return id;
+  }
+
+  @override
+  Future<void> detachVideoTexture() async {
+    final id = _textureId;
+    if (id == null) {
+      return; // 解除は冪等
+    }
+    _textureId = null;
+    await _textures.detach(id);
   }
 
   @override
@@ -225,7 +283,10 @@ class FfiEmulatorSession implements EmulatorSession {
     _disposed = true;
     _pollTimer?.cancel();
     _pollTimer = null;
-    // 終了順序: コマンド受付停止 → コア停止 → セッション破棄（design.md 5.1）。
+    // 終了順序: 入力停止 → コマンド受付停止 → コア停止 → Texture解放 →
+    // セッション破棄（design.md 5.1）。Texture を先に外さないと、
+    // 描画スレッドが解放済みのセッションを読む。
+    await detachVideoTexture();
     _bindings.destroy(_handle);
     _handle = nullptr;
     await _events.close();
@@ -247,6 +308,7 @@ class FfiEmulatorSession implements EmulatorSession {
           code: buffer.ref.code,
           commandId: buffer.ref.commandId,
           arg0: buffer.ref.arg0,
+          arg1: buffer.ref.arg1,
         );
         if (event is LifecycleChanged) {
           _lastKnownState = event.state;

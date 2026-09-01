@@ -4,10 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bubi_fm77av40ex_platform/bubi_fm77av40ex_platform.dart';
 
 import '../emulator/rom/rom_manifest.dart';
+import '../emulator/session_state.dart';
+import '../features/session/emulator_controller.dart';
 import '../features/session/rom_settings_controller.dart';
 import '../features/session/session_providers.dart';
 import '../platform/persistence/file_system_rom_scanner.dart';
 import '../platform/persistence/os_app_data_paths.dart';
+import '../platform/core_ffi/ffi_emulator_session.dart';
 import '../platform/persistence/os_preferences_store.dart';
 import 'app.dart';
 
@@ -26,6 +29,21 @@ Future<Widget> buildApp({RomManifest? romManifest}) async {
 
   return ProviderScope(
     overrides: [
+      emulatorControllerProvider.overrideWith(
+        () => EmulatorController(
+          appDataPaths: appDataPaths,
+          createSession:
+              ({
+                required String homeDir,
+                String? romDir,
+                BootMode bootMode = BootMode.basic,
+              }) => FfiEmulatorSession.create(
+                homeDir: homeDir,
+                romDir: romDir,
+                bootMode: bootMode,
+              ),
+        ),
+      ),
       romSettingsControllerProvider.overrideWith(
         () => RomSettingsController(
           appDataPaths: appDataPaths,

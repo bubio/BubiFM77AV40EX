@@ -60,6 +60,9 @@ class OsAppDataPaths implements AppDataPaths {
   Future<String> romsDirectoryPath() async => (await romsDirectory()).path;
 
   @override
+  Future<String> coreHomeDirectoryPath() async => (await root()).path;
+
+  @override
   Future<AppDataLocation> stateSlot(int slotIndex) =>
       _location('states/slot-$slotIndex');
 

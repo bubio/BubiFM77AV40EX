@@ -78,6 +78,23 @@ final class BubiCoreBindings {
               Int32 Function(Pointer<BfmSession>, Pointer<Char>, Uint32)
             >
           >('bfm_get_core_directory')
+          .asFunction(),
+      acquireVideoFrame = library
+          .lookup<
+            NativeFunction<
+              Int32 Function(Pointer<BfmSession>, Pointer<BfmVideoFrame>)
+            >
+          >('bfm_acquire_video_frame')
+          .asFunction(),
+      releaseVideoFrame = library
+          .lookup<
+            NativeFunction<Void Function(Pointer<BfmSession>, Uint64)>
+          >('bfm_release_video_frame')
+          .asFunction(),
+      videoGeneration = library
+          .lookup<NativeFunction<Uint64 Function(Pointer<BfmSession>)>>(
+            'bfm_video_generation',
+          )
           .asFunction();
 
   /// 既定のライブラリを開いて束縛する。
@@ -95,6 +112,10 @@ final class BubiCoreBindings {
   final int Function(Pointer<BfmSession>) getState;
   final int Function(Pointer<BfmSession>, Pointer<BfmStats>) getStats;
   final int Function(Pointer<BfmSession>, Pointer<Char>, int) getCoreDirectory;
+  final int Function(Pointer<BfmSession>, Pointer<BfmVideoFrame>)
+  acquireVideoFrame;
+  final void Function(Pointer<BfmSession>, int) releaseVideoFrame;
+  final int Function(Pointer<BfmSession>) videoGeneration;
 }
 
 /// ネイティブライブラリを開く。

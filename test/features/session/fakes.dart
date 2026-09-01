@@ -53,14 +53,21 @@ class FakePreferencesStore implements PreferencesStore {
 ///
 /// 物理パスは実装が決めるため、featureの試験では固定値でよい。
 class FakeAppDataPaths implements AppDataPaths {
-  FakeAppDataPaths({this.romsPath = '/data/BubiFM77AV40EX/roms'});
+  FakeAppDataPaths({
+    this.romsPath = '/data/BubiFM77AV40EX/roms',
+    this.homePath = '/data/BubiFM77AV40EX',
+  });
 
   String romsPath;
+  String homePath;
 
   /// 位置の解決そのものが失敗する場合に投げる例外。
   Object? throwOnRomsPath;
 
   int romsPathCallCount = 0;
+
+  @override
+  Future<String> coreHomeDirectoryPath() async => homePath;
 
   @override
   Future<String> romsDirectoryPath() async {

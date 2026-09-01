@@ -35,8 +35,28 @@ abstract class EmulatorSession {
   /// [reset] または再起動からになる（SYS-04）。
   Future<int> setBootMode(BootMode mode);
 
+  /// キーを押す。[vkCode] は win32 の仮想キーコード（INP-01）。
+  ///
+  /// リピートの抑止と重複押下の除去は呼び出し側（Controller）の責務で、
+  /// ここは受け取った1回をそのままコアへ渡す。
+  Future<void> keyDown(int vkCode);
+
+  /// キーを離す。[vkCode] は win32 の仮想キーコード（INP-01）。
+  Future<void> keyUp(int vkCode);
+
   /// 観測値を読み出す。
   EmulatorStats readStats();
+
+  /// 画面を受け取る Texture を用意し、そのIDを返す。
+  ///
+  /// 呼ぶたびに新しいIDを作るのではなく、すでにあればそれを返す。
+  /// 解除は [detachVideoTexture] で行い、[dispose] は先に解除する。
+  /// 順序を守らないと描画スレッドが解放済みのセッションを読む
+  /// （design.md 5.1 の終了順序）。
+  Future<int> attachVideoTexture();
+
+  /// Texture を解除する。冪等。
+  Future<void> detachVideoTexture();
 
   /// セッションを破棄する。以後この実体は使えない。冪等。
   Future<void> dispose();

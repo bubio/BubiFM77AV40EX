@@ -1,5 +1,6 @@
 import 'package:bubi_fm77av40ex/emulator/emulator_error.dart';
 import 'package:bubi_fm77av40ex/emulator/emulator_event.dart';
+import 'package:bubi_fm77av40ex/emulator/led_state.dart';
 import 'package:bubi_fm77av40ex/emulator/session_state.dart';
 import 'package:bubi_fm77av40ex/platform/core_ffi/native_conversions.dart';
 import 'package:bubi_fm77av40ex_core/bubi_fm77av40ex_core.dart';
@@ -84,6 +85,7 @@ void main() {
         code: 0,
         commandId: 0,
         arg0: BfmState.running,
+        arg1: 0,
       );
       expect(event, isA<LifecycleChanged>());
       expect((event as LifecycleChanged).state, SessionState.running);
@@ -95,6 +97,7 @@ void main() {
         code: BfmResult.ok,
         commandId: 7,
         arg0: 0,
+        arg1: 0,
       );
       expect(event, isA<CommandCompleted>());
       final completed = event as CommandCompleted;
@@ -109,6 +112,7 @@ void main() {
         code: BfmResult.unsupported,
         commandId: 12,
         arg0: 0,
+        arg1: 0,
       ) as CommandCompleted;
       expect(event.error, EmulatorErrorCode.unsupported);
       expect(event.succeeded, isFalse);
@@ -120,11 +124,27 @@ void main() {
         code: BfmResult.coreFailed,
         commandId: 0,
         arg0: 0,
+        arg1: 0,
       );
       expect(event, isA<EmulatorErrorOccurred>());
       expect(
         (event as EmulatorErrorOccurred).code,
         EmulatorErrorCode.coreFailed,
+      );
+    });
+
+    test('ledChanged は arg0 をビットとして読む（INP-02）', () {
+      final event = emulatorEventFromNative(
+        kind: BfmEventKind.ledChanged,
+        code: 0,
+        commandId: 0,
+        arg0: 0x5, // INS + CAPS
+        arg1: 0,
+      );
+      expect(event, isA<LedStateChanged>());
+      expect(
+        (event as LedStateChanged).state,
+        const LedState(insert: true, kana: false, caps: true),
       );
     });
 
@@ -134,6 +154,7 @@ void main() {
         code: 0,
         commandId: 0,
         arg0: 0,
+        arg1: 0,
       );
       expect(event, isA<UnhandledEmulatorEvent>());
       expect(

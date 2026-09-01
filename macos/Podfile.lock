@@ -19,7 +19,7 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral
 
 SPEC CHECKSUMS:
-  bubi_fm77av40ex_core: df512e73534a088ead6a4978596fba50d7d4d1ac
+  bubi_fm77av40ex_core: 840e935fd03b136e7bbcee6e061290fa4db64799
   bubi_fm77av40ex_platform: 2d7a16b06ff3625689d782373ebb2c0f0a9079c5
   FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
 
