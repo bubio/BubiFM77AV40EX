@@ -10,6 +10,7 @@ import '../features/session/rom_settings_controller.dart';
 import '../features/session/session_providers.dart';
 import '../platform/persistence/file_system_rom_scanner.dart';
 import '../platform/persistence/os_app_data_paths.dart';
+import '../platform/core_ffi/bubi_audio_sink.dart';
 import '../platform/core_ffi/bubi_video_texture_attacher.dart';
 import '../platform/core_ffi/ffi_emulator_session.dart';
 import '../platform/persistence/os_preferences_store.dart';
@@ -43,6 +44,7 @@ Future<Widget> buildApp({RomManifest? romManifest}) async {
                 romDir: romDir,
                 bootMode: bootMode,
                 textures: const BubiVideoTextureAttacher(),
+                audio: BubiAudioSink(),
               ),
         ),
       ),

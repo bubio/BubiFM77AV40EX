@@ -6,21 +6,24 @@
 
 	[ sdl dependent ]
 
-	BubiFM77AV40EX: 音声リングバッファ。
+	BubiFM77AV40EX: 音声リングバッファ（未使用のスタブ）。
 
 	この実装は「OSDが自分のタイマーでvm->create_sound()を呼ぶ」という
 	upstream本来の設計を前提にしており、Core threadの駆動には使っていない
 	（bridge/src/bubi_fm77av.cppは`vm->run()`を壁時計ペースで直接呼ぶ）。
 	`docs/dev/design.md`16.1「音声はVMの駆動源にしない」の決定に従い、WP4で
-	Core threadから直接`vm->create_sound()`を呼ぶ形へ作り直す。
+	Core threadから直接`vm->create_sound()`を呼ぶ形（`bridge/src/bubi_fm77av.cpp`
+	の`publish_audio_if_ready`、`bridge/src/pcm_ring.h`）へ作り直した。
+	下の関数群はコアが要求するOSDインターフェースを満たすためだけに残る
+	未使用スタブであり、以後の変更対象ではない。
 
 	`vm->run()`は`event->drive()`そのもので（vm/fm7/fm7.cpp）、
 	`vm->create_sound()`は要求した`sound_samples`が溜まるまで内部で
 	追加の`drive()`を呼ぶ（vm/event.cpp）。壁時計ペースの`vm->run()`と
-	無関係にcreate_sound()を呼ぶと二重にVMを進めてしまうため、
-	`sound_samples`を1フレーム分のサンプル数に合わせ、`vm->run()`の直後に
-	`create_sound()`を呼んで「そのフレーム分を取り出すだけ」にする方針を
-	`native/spike/sound/sound_pacing_spike.cpp`で検証した。
+	無関係にcreate_sound()を呼ぶと二重にVMを進めてしまう。WP4では
+	`vm->get_sound_buffer_ptr()`（内部バッファの蓄積量）が`sound_samples`に
+	達するまで`create_sound()`を呼ばずに待つ方針を採った。理由は
+	`docs/dev/design.md`16.1参照。
 */
 
 #include "osd.h"

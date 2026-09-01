@@ -857,6 +857,70 @@ void test_input()
 	bfm_destroy(session);
 }
 
+// --- 14. 音声 ---
+void test_audio()
+{
+	group("音声");
+
+	bfm_session* session = make_session();
+	if (session == nullptr) {
+		check(false, "生成できる");
+		return;
+	}
+
+	uint32_t sample_rate = 0;
+	uint32_t channels = 0;
+	check(bfm_get_audio_format(session, &sample_rate, &channels) == BFM_OK,
+	      "フォーマットを取得できる");
+	check(sample_rate == 48000, "サンプルレートは48kHz固定（design.md 7）");
+	check(channels == 2, "ステレオ固定");
+	check(bfm_get_audio_format(nullptr, &sample_rate, &channels) == BFM_ERR_INVALID_ARGUMENT,
+	      "sessionがnullなら invalidArgument");
+	check(bfm_get_audio_format(session, nullptr, &channels) == BFM_ERR_INVALID_ARGUMENT,
+	      "out_sample_rateがnullなら invalidArgument");
+
+	check(bfm_read_audio(nullptr, nullptr, 0) == BFM_ERR_INVALID_ARGUMENT,
+	      "sessionがnullなら invalidArgument");
+
+	std::vector<int16_t> silent(200 * 2, 0x1234);
+	check(bfm_read_audio(session, silent.data(), 100) == BFM_OK,
+	      "起動前でも読める（無音で埋まる）");
+	bool all_silent = true;
+	for (size_t i = 0; i < 100 * 2; ++i) {
+		if (silent[i] != 0) {
+			all_silent = false;
+		}
+	}
+	check(all_silent, "起動前の読み出しは無音");
+
+	bfm_start(session);
+	check(wait_for_state(session, BFM_STATE_RUNNING, 5000), "running へ遷移する");
+
+	// 生産と消費をだいたい同じ速さで回し、有界リングが尽きて
+	// 極端なオーバーランにならないようにする（design.md 7）。
+	std::vector<int16_t> buffer(4800 * 2, 0);
+	for (int i = 0; i < 20; ++i) {
+		bfm_read_audio(session, buffer.data(), 800);
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	}
+
+	bfm_stats stats{};
+	check(bfm_get_stats(session, &stats) == BFM_OK, "統計を取得できる");
+	check(stats.audio_frames_produced > 0, "コアがPCMを生成している");
+	check(stats.vm_access_violations == 0, "VM操作はCore threadに閉じている");
+	std::printf("   生成 %llu フレーム / アンダーラン %llu / オーバーラン %llu\n",
+	            static_cast<unsigned long long>(stats.audio_frames_produced),
+	            static_cast<unsigned long long>(stats.audio_underrun_frames),
+	            static_cast<unsigned long long>(stats.audio_overrun_frames));
+
+	bfm_stop(session);
+
+	// 停止後も安全に読める（無音で埋まる。emu/osdの寿命に依存しない）。
+	check(bfm_read_audio(session, buffer.data(), 4800) == BFM_OK, "停止後も読める");
+
+	bfm_destroy(session);
+}
+
 int main(int argc, char** argv)
 {
 	if (argc < 2) {
@@ -886,6 +950,7 @@ int main(int argc, char** argv)
 	test_boot_mode();
 	test_video();
 	test_input();
+	test_audio();
 	test_home_dir_is_process_wide();
 
 	std::printf("\n%s\n", failures == 0 ? "すべて合格" : "失敗あり");

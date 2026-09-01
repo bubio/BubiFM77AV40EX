@@ -12,6 +12,7 @@
 #include "bubi_fm77av.h"
 
 #include "frame_ring.h"
+#include "pcm_ring.h"
 
 #include <dirent.h>
 #include <strings.h>
@@ -270,6 +271,11 @@ struct bfm_session {
 	// 映像。Core threadが書き、描画側が借りる。
 	bubi::FrameRing frames;
 
+	// 音声。Core threadが書き、bfm_read_audioの呼び手が読む。
+	// EMU/OSDの寿命とは独立に生きる（pcm_ring.h）。
+	bubi::PcmRing audio;
+	std::atomic<uint64_t> audio_frames_produced{0};
+
 	// 直近に公開した解像度。Core threadだけが書く。
 	int screen_width = 0;
 	int screen_height = 0;
@@ -495,6 +501,36 @@ void publish_led_if_changed(bfm_session* session, VM_TEMPLATE* vm)
 	session->push_event(event);
 }
 
+/*
+ * design.md 16.1「音声はVMの駆動源にしない」。
+ *
+ * vm->create_sound()は要求した分（kAudioSamplesPerCall）が
+ * event->buffer_ptr に溜まるまで内部でdrive()を呼び足す（vm/event.cpp）。
+ * buffer_ptrは毎tickのvm->run()が進める通常のクロックでも増え続けるため、
+ * 溜まるのを待ってから呼べば内部driveは0で済み、壁時計のvm->run()だけが
+ * VMを進める唯一の駆動源であり続ける。
+ *
+ * vm->get_sound_buffer_ptr()未満のあいだは呼ばない。EMU::EMU()が
+ * config.sound_frequency/sound_latencyからsound_samplesを決めて
+ * vm->initialize_sound()を1度だけ呼ぶため（emu.cpp）、ここで
+ * vm->initialize_sound()を呼び直すと同じ周期のEVENT_MIXが二重登録され
+ * ミキシングが二重になる。よってbridge側はconfigを見て同じ式
+ * （kAudioSamplesPerCall、pcm_ring.h）で追認するだけにとどめる。
+ */
+void publish_audio_if_ready(bfm_session* session, VM_TEMPLATE* vm)
+{
+	session->note_vm_access();
+	if (vm->get_sound_buffer_ptr() < bubi::kAudioSamplesPerCall) {
+		return;
+	}
+	int extra_frames = 0;
+	uint16_t* buffer = vm->create_sound(&extra_frames);
+	session->audio.push(reinterpret_cast<const int16_t*>(buffer),
+	                    static_cast<std::size_t>(bubi::kAudioSamplesPerCall));
+	session->audio_frames_produced.fetch_add(
+	    static_cast<uint64_t>(bubi::kAudioSamplesPerCall));
+}
+
 void core_thread_main(bfm_session* session)
 {
 	using clock = std::chrono::steady_clock;
@@ -519,6 +555,15 @@ void core_thread_main(bfm_session* session)
 		// VMの生成から破棄までをCore threadに閉じる。
 		bubi_core_set_home_dir(session->home_dir.c_str());
 		config.boot_mode = session->boot_mode;
+		/*
+		 * design.md 7。configは既定で0初期化のままだと
+		 * sound_frequency_table[0]=2000Hzになる（emu.cpp）。48kHz固定
+		 * （pcm_ring.h kAudioSampleRate）を明示し、latencyは
+		 * kAudioSamplesPerCallと同じ式になるsound_latency_table[1]
+		 * （0.1秒）を選ぶ。
+		 */
+		config.sound_frequency = 6; // 48kHz
+		config.sound_latency = 1;   // 0.1秒
 		session->note_vm_access();
 		session->emu = new EMU();
 		VM_TEMPLATE* vm = session->emu->get_vm();
@@ -553,6 +598,7 @@ void core_thread_main(bfm_session* session)
 
 			publish_frame_if_changed(session, vm);
 			publish_led_if_changed(session, vm);
+			publish_audio_if_ready(session, vm);
 
 
 			// 単調増加時計で次回期限を決める。遅れたら取り戻さず基準へ戻す。
@@ -821,10 +867,33 @@ bfm_result bfm_get_stats(bfm_session* session, bfm_stats* out)
 		out->vm_access_violations = session->vm_access_violations.load();
 		out->frames_published = session->frames_published.load();
 		out->frames_dropped = session->frames.dropped();
+		out->audio_frames_produced = session->audio_frames_produced.load();
+		out->audio_underrun_frames = session->audio.total_underrun_frames();
+		out->audio_overrun_frames = session->audio.total_overrun_frames();
 		return BFM_OK;
 	} catch (...) {
 		return BFM_ERR_INTERNAL;
 	}
+}
+
+BFM_API bfm_result bfm_read_audio(bfm_session* session, int16_t* out, uint32_t frame_capacity)
+{
+	if (session == nullptr || out == nullptr) {
+		return BFM_ERR_INVALID_ARGUMENT;
+	}
+	session->audio.pop(out, frame_capacity);
+	return BFM_OK;
+}
+
+BFM_API bfm_result bfm_get_audio_format(bfm_session* session, uint32_t* out_sample_rate,
+                                        uint32_t* out_channels)
+{
+	if (session == nullptr || out_sample_rate == nullptr || out_channels == nullptr) {
+		return BFM_ERR_INVALID_ARGUMENT;
+	}
+	*out_sample_rate = static_cast<uint32_t>(bubi::kAudioSampleRate);
+	*out_channels = static_cast<uint32_t>(bubi::kAudioChannels);
+	return BFM_OK;
 }
 
 BFM_API bfm_result bfm_acquire_video_frame(bfm_session* session, bfm_video_frame* out)

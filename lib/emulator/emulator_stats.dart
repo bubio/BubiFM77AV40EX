@@ -8,6 +8,9 @@ class EmulatorStats {
     required this.vmAccessViolations,
     required this.framesPublished,
     required this.framesDropped,
+    required this.audioFramesProduced,
+    required this.audioUnderrunFrames,
+    required this.audioOverrunFrames,
   });
 
   final int framesRun;
@@ -27,4 +30,13 @@ class EmulatorStats {
 
   /// 書ける面が尽きて捨てたフレーム数。
   final int framesDropped;
+
+  /// Core threadが取り出したPCMフレーム数の累計（design.md 7）。
+  final int audioFramesProduced;
+
+  /// 音声読出しが無音で埋めたフレーム数の累計。
+  final int audioUnderrunFrames;
+
+  /// 音声の読み手が追いつかず最古から捨てたフレーム数の累計。
+  final int audioOverrunFrames;
 }

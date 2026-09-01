@@ -203,6 +203,15 @@ if(BUBI_BUILD_HOST_TOOLS)
   target_include_directories(frame_ring_test
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src")
 
+  # 音声リングの検査（development_plan.md 6 WP4）。コアには依存しない。
+  # M0 5.3の破棄可能spike（native/spike/sound/）が検証した方針の
+  # 製品版であり、spikeはWP4着手にあたって削除した。
+  add_executable(pcm_ring_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/host/pcm_ring_test.cpp"
+  )
+  target_include_directories(pcm_ring_test
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src")
+
   # 同じC ABIをDart FFIから呼べることを確かめるための共有ライブラリ。
   # アプリへの組み込みは packages/bubi_fm77av40ex_core/ の静的リンクで行う
   # （design.md 16.1）。ここはシンボル解決と呼び出しの検証専用である。
@@ -213,24 +222,14 @@ if(BUBI_BUILD_HOST_TOOLS)
   set_target_properties(bubi_fm77av40ex_shared PROPERTIES OUTPUT_NAME bubi_fm77av40ex)
   target_link_libraries(bubi_fm77av40ex_shared PRIVATE bubi_fm77av40ex_core)
 
-  # 音声ゲートの検証（development_plan.md 5.3、WP4前）。破棄可能なspikeで、
-  # 結論をdesign.md 16.1へ記録したうえでWP4着手時にディレクトリごと削除する。
-  add_executable(sound_pacing_spike
-    "${CMAKE_CURRENT_SOURCE_DIR}/spike/sound/sound_pacing_spike.cpp"
-  )
-  target_include_directories(sound_pacing_spike
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/spike/sound")
-  target_link_libraries(sound_pacing_spike PRIVATE bubi_fm77av40ex_core)
-
   enable_testing()
   # 書込み先をビルドディレクトリ配下へ閉じ込め、ホームディレクトリを汚さない。
   add_test(NAME core_smoke COMMAND core_smoke "${CMAKE_CURRENT_BINARY_DIR}/smoke-home")
   add_test(NAME session_test COMMAND session_test "${CMAKE_CURRENT_BINARY_DIR}/session-home")
   add_test(NAME frame_ring_test COMMAND frame_ring_test)
+  add_test(NAME pcm_ring_test COMMAND pcm_ring_test)
   # home_dir はプロセス全体で1つに固定されるため、書込み不能な home_dir の
   # 検査だけは別プロセスで走らせる。
   add_test(NAME session_test_unwritable_home
     COMMAND session_test "${CMAKE_CURRENT_BINARY_DIR}/session-home" --unwritable-home)
-  add_test(NAME sound_pacing_spike
-    COMMAND sound_pacing_spike "${CMAKE_CURRENT_BINARY_DIR}/sound-pacing-home")
 endif()

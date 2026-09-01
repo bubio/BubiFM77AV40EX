@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ffi';
+import 'dart:typed_data';
 
 import 'package:bubi_fm77av40ex_core/bubi_fm77av40ex_core.dart';
 import 'package:ffi/ffi.dart';
@@ -9,6 +10,7 @@ import '../../emulator/emulator_event.dart';
 import '../../emulator/emulator_session.dart';
 import '../../emulator/emulator_stats.dart';
 import '../../emulator/session_state.dart';
+import 'audio_sink.dart';
 import 'native_conversions.dart';
 import 'video_texture_attacher.dart';
 
@@ -22,6 +24,7 @@ class FfiEmulatorSession implements EmulatorSession {
     this._handle,
     this._pollInterval,
     this._textures,
+    this._audio,
   );
 
   /// セッションを生成する。
@@ -37,8 +40,10 @@ class FfiEmulatorSession implements EmulatorSession {
   ///
   /// [textures] は [attachVideoTexture] の実装先。渡さなければ
   /// [attachVideoTexture] は呼べない（`EmulatorErrorCode.invalidState`）。
-  /// `package:flutter`に依存しないここでは既定値を持てないため、
-  /// アプリ側の組み立て（`lib/app/bootstrap.dart`）が渡す。
+  /// [audio] は音声出力の実装先。渡さなければ音声は再生されない
+  /// （design.md 7 は必須要件だが、`package:flutter`に依存しないここでは
+  /// 既定値を持てないため、アプリ側の組み立て（`lib/app/bootstrap.dart`）が
+  /// 渡す）。
   factory FfiEmulatorSession.create({
     required String homeDir,
     String? romDir,
@@ -48,6 +53,7 @@ class FfiEmulatorSession implements EmulatorSession {
     int eventQueueCapacity = 0,
     Duration pollInterval = const Duration(milliseconds: 16),
     VideoTextureAttacher? textures,
+    AudioSink? audio,
   }) {
     if (homeDir.isEmpty) {
       throw const EmulatorException(
@@ -77,7 +83,13 @@ class FfiEmulatorSession implements EmulatorSession {
         final code = errorCodeFromNative(result);
         throw EmulatorException(code, describeErrorCode(code));
       }
-      return FfiEmulatorSession._(resolved, out.value, pollInterval, textures);
+      return FfiEmulatorSession._(
+        resolved,
+        out.value,
+        pollInterval,
+        textures,
+        audio,
+      );
     } finally {
       // C境界を跨いだメモリは確保側が解放する。パスはネイティブ側が
       // 複製するため、この時点で手放してよい。
@@ -94,10 +106,19 @@ class FfiEmulatorSession implements EmulatorSession {
   final VideoTextureAttacher? _textures;
   int? _textureId;
   final Duration _pollInterval;
+  final AudioSink? _audio;
 
   Pointer<BfmSession> _handle;
   Timer? _pollTimer;
   bool _disposed = false;
+
+  // 音声。design.md 7「音声設計」。pull間隔はUIの描画周期に結合させない
+  // （[_pollInterval] と同じ理由）。
+  static const Duration _audioPullInterval = Duration(milliseconds: 20);
+  Timer? _audioTimer;
+  Pointer<Int16>? _audioScratch;
+  int _audioScratchFrames = 0;
+  int _audioChannels = 2;
 
   final StreamController<EmulatorEvent> _events =
       StreamController<EmulatorEvent>.broadcast();
@@ -131,6 +152,7 @@ class FfiEmulatorSession implements EmulatorSession {
     }
     _lastKnownState = SessionState.starting;
     _pollTimer ??= Timer.periodic(_pollInterval, (_) => _drainEvents());
+    await _startAudio();
   }
 
   @override
@@ -147,6 +169,67 @@ class FfiEmulatorSession implements EmulatorSession {
     _drainEvents();
     _pollTimer?.cancel();
     _pollTimer = null;
+    await _stopAudio();
+  }
+
+  /// [_audio] があれば`bfm_get_audio_format`で得たフォーマットで再生を始め、
+  /// [_audioPullInterval] ごとに`bfm_read_audio`で引き出して供給する。
+  /// 音声側からVMを進めることはない（design.md 16.1「音声はVMの駆動源に
+  /// しない」）。この引き出しはメインisolateの`Timer`が行うだけで、
+  /// 実時間制約のある音声ミキシングのコールバックそのものではない
+  /// （そちらはSoLoudエンジン内部にあり、ここからは触れない）。
+  Future<void> _startAudio() async {
+    final audio = _audio;
+    if (audio == null) {
+      return;
+    }
+    final sampleRate = calloc<Uint32>();
+    final channels = calloc<Uint32>();
+    try {
+      final result = _bindings.getAudioFormat(_handle, sampleRate, channels);
+      if (result != BfmResult.ok) {
+        return;
+      }
+      _audioChannels = channels.value;
+      _audioScratchFrames =
+          (sampleRate.value * _audioPullInterval.inMilliseconds / 1000).round();
+      _audioScratch = calloc<Int16>(_audioScratchFrames * _audioChannels);
+      await audio.start(sampleRate: sampleRate.value, channels: _audioChannels);
+      _audioTimer ??= Timer.periodic(_audioPullInterval, (_) => _pullAudio());
+    } finally {
+      calloc.free(sampleRate);
+      calloc.free(channels);
+    }
+  }
+
+  void _pullAudio() {
+    final scratch = _audioScratch;
+    final audio = _audio;
+    if (_disposed || scratch == null || audio == null) {
+      return;
+    }
+    final result = _bindings.readAudio(_handle, scratch, _audioScratchFrames);
+    if (result != BfmResult.ok) {
+      return;
+    }
+    final byteLength = _audioScratchFrames * _audioChannels * 2;
+    // ネイティブ領域そのままではなく複製を渡す。scratchは次のtickで
+    // 上書きするため、非同期に処理されても壊れない値を渡す必要がある。
+    final bytes = Uint8List.fromList(
+      scratch.cast<Uint8>().asTypedList(byteLength),
+    );
+    audio.pushPcm16(bytes);
+  }
+
+  Future<void> _stopAudio() async {
+    _audioTimer?.cancel();
+    _audioTimer = null;
+    final scratch = _audioScratch;
+    _audioScratch = null;
+    if (scratch != null) {
+      calloc.free(scratch);
+    }
+    await _audio?.stop();
   }
 
   @override
@@ -253,6 +336,9 @@ class FfiEmulatorSession implements EmulatorSession {
         vmAccessViolations: out.ref.vmAccessViolations,
         framesPublished: out.ref.framesPublished,
         framesDropped: out.ref.framesDropped,
+        audioFramesProduced: out.ref.audioFramesProduced,
+        audioUnderrunFrames: out.ref.audioUnderrunFrames,
+        audioOverrunFrames: out.ref.audioOverrunFrames,
       );
     } finally {
       calloc.free(out);
@@ -296,10 +382,12 @@ class FfiEmulatorSession implements EmulatorSession {
     _disposed = true;
     _pollTimer?.cancel();
     _pollTimer = null;
-    // 終了順序: 入力停止 → コマンド受付停止 → コア停止 → Texture解放 →
+    // 終了順序: 入力停止 → コマンド受付停止 → コア停止 → Texture/音声解放 →
     // セッション破棄（design.md 5.1）。Texture を先に外さないと、
-    // 描画スレッドが解放済みのセッションを読む。
+    // 描画スレッドが解放済みのセッションを読む。音声も同様に、
+    // セッション破棄後は`bfm_read_audio`を呼べない。
     await detachVideoTexture();
+    await _stopAudio();
     _bindings.destroy(_handle);
     _handle = nullptr;
     await _events.close();

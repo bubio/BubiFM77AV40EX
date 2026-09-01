@@ -13,13 +13,40 @@
 // 実行は scripts/run_native_checks.sh から行う。
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:bubi_fm77av40ex/emulator/emulator_error.dart';
 import 'package:bubi_fm77av40ex/emulator/emulator_event.dart';
 import 'package:bubi_fm77av40ex/emulator/session_state.dart';
+import 'package:bubi_fm77av40ex/platform/core_ffi/audio_sink.dart';
 import 'package:bubi_fm77av40ex/platform/core_ffi/ffi_emulator_session.dart';
 import 'package:bubi_fm77av40ex_core/bubi_fm77av40ex_core.dart';
 import 'package:ffi/ffi.dart';
+
+/// `AudioSink`は`package:flutter`に依存しないため、この検証でも
+/// 実装を差し込める（`lib/platform/core_ffi/audio_sink.dart`）。
+class _RecordingAudioSink implements AudioSink {
+  int? startedSampleRate;
+  int? startedChannels;
+  int pushCount = 0;
+  bool stopped = false;
+
+  @override
+  Future<void> start({required int sampleRate, required int channels}) async {
+    startedSampleRate = sampleRate;
+    startedChannels = channels;
+  }
+
+  @override
+  void pushPcm16(Uint8List interleavedLittleEndianPcmBytes) {
+    pushCount++;
+  }
+
+  @override
+  Future<void> stop() async {
+    stopped = true;
+  }
+}
 
 int failures = 0;
 
@@ -148,10 +175,12 @@ Future<void> _checkEmulatorSession(
   File('${romDir.path}/INITIATE.ROM')
       .writeAsBytesSync(List<int>.filled(8192, 0));
 
+  final audioSink = _RecordingAudioSink();
   final session = FfiEmulatorSession.create(
     homeDir: homeDir,
     romDir: romDir.path,
     bindings: bindings,
+    audio: audioSink,
   );
   final received = <EmulatorEvent>[];
   final subscription = session.events.listen(received.add);
@@ -209,12 +238,25 @@ Future<void> _checkEmulatorSession(
   check(completion != null, '同じIDの完了通知が Dart まで届く');
   check(completion?.succeeded ?? false, 'リセットは成功で完了する');
 
+  // 音声はメインisolateのTimerで周期的に引き出すため、届くまで少し待つ
+  // （lib/platform/core_ffi/ffi_emulator_session.dart の _audioPullInterval）。
+  for (var waited = 0; waited < 100 && audioSink.pushCount == 0; waited++) {
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  }
+  check(
+    audioSink.startedSampleRate == 48000,
+    '音声フォーマットは48kHzで開始する（design.md 7）',
+  );
+  check(audioSink.startedChannels == 2, '音声フォーマットはステレオで開始する');
+  check(audioSink.pushCount > 0, 'AudioSinkへPCMが供給される');
+
   final stats = session.readStats();
   check(stats.framesRun > 0, 'Core thread がフレームを進めている');
   check(stats.vmAccessViolations == 0, 'VM操作はCore threadに閉じている');
 
   await session.stop();
   check(session.state == SessionState.stopped, '停止後は stopped');
+  check(audioSink.stopped, '停止時にAudioSinkも止める');
 
   await subscription.cancel();
   await session.dispose();

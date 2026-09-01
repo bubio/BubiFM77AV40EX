@@ -270,9 +270,39 @@ typedef struct {
 	/* 公開したフレーム数と、書ける面が尽きて捨てたフレーム数。 */
 	uint64_t frames_published;
 	uint64_t frames_dropped;
+	/*
+	 * 音声（design.md 7、16.1）。audio_frames_producedはCore threadが
+	 * vm->create_sound()で取り出したフレーム数の累計。
+	 * audio_underrun_framesはbfm_read_audioが無音で埋めたフレーム数、
+	 * audio_overrun_framesは読み手が追いつかず最古から捨てたフレーム数の
+	 * 累計。どちらも常時0とは限らないが、再生が追いついていれば
+	 * 増加が緩やかに収まる。
+	 */
+	uint64_t audio_frames_produced;
+	uint64_t audio_underrun_frames;
+	uint64_t audio_overrun_frames;
 } bfm_stats;
 
 BFM_API bfm_result bfm_get_stats(bfm_session* session, bfm_stats* out);
+
+/*
+ * 音声（design.md 7、16.1「音声はVMの駆動源にしない」）。
+ *
+ * コアのPCMをブリッジが所有する有界リングへ蓄え、ここから複製で渡す。
+ * frame_capacity分を必ず埋めて返す。足りない分は無音で埋め、
+ * bfm_stats.audio_underrun_framesを増やす。どのスレッドから呼んでもよい。
+ * VMには触れない。
+ */
+BFM_API bfm_result bfm_read_audio(bfm_session* session, int16_t* out,
+                                  uint32_t frame_capacity);
+
+/*
+ * 出力フォーマット（サンプルレート、チャネル数）。プロセス内で固定であり、
+ * セッションの状態に関わらず得られる。
+ */
+BFM_API bfm_result bfm_get_audio_format(bfm_session* session,
+                                        uint32_t* out_sample_rate,
+                                        uint32_t* out_channels);
 
 #ifdef __cplusplus
 } /* extern "C" */

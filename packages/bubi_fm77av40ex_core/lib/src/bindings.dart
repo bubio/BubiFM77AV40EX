@@ -95,6 +95,24 @@ final class BubiCoreBindings {
           .lookup<NativeFunction<Uint64 Function(Pointer<BfmSession>)>>(
             'bfm_video_generation',
           )
+          .asFunction(),
+      readAudio = library
+          .lookup<
+            NativeFunction<
+              Int32 Function(Pointer<BfmSession>, Pointer<Int16>, Uint32)
+            >
+          >('bfm_read_audio')
+          .asFunction(),
+      getAudioFormat = library
+          .lookup<
+            NativeFunction<
+              Int32 Function(
+                Pointer<BfmSession>,
+                Pointer<Uint32>,
+                Pointer<Uint32>,
+              )
+            >
+          >('bfm_get_audio_format')
           .asFunction();
 
   /// 既定のライブラリを開いて束縛する。
@@ -116,6 +134,9 @@ final class BubiCoreBindings {
   acquireVideoFrame;
   final void Function(Pointer<BfmSession>, int) releaseVideoFrame;
   final int Function(Pointer<BfmSession>) videoGeneration;
+  final int Function(Pointer<BfmSession>, Pointer<Int16>, int) readAudio;
+  final int Function(Pointer<BfmSession>, Pointer<Uint32>, Pointer<Uint32>)
+  getAudioFormat;
 }
 
 /// ネイティブライブラリを開く。

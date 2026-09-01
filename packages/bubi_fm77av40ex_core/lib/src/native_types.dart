@@ -167,6 +167,18 @@ final class BfmStats extends Struct {
   /// 書ける面が尽きて捨てたフレーム数。
   @Uint64()
   external int framesDropped;
+
+  /// Core threadが`vm->create_sound()`で取り出したPCMフレーム数の累計。
+  @Uint64()
+  external int audioFramesProduced;
+
+  /// `bfm_read_audio`が無音で埋めたフレーム数の累計。
+  @Uint64()
+  external int audioUnderrunFrames;
+
+  /// 読み手が追いつかず最古から捨てたフレーム数の累計。
+  @Uint64()
+  external int audioOverrunFrames;
 }
 
 /// `bfm_video_frame`。借りているあいだ内容も大きさも変わらない。
