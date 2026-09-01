@@ -32,6 +32,12 @@ abstract final class BfmResetKind {
   static const int special = 1;
 }
 
+/// `bfm_boot_mode`。値は upstream の `config.boot_mode` と同じ。
+abstract final class BfmBootMode {
+  static const int basic = 0;
+  static const int dos = 1;
+}
+
 /// `bfm_command_kind`。上位バイトが design.md 4.2 の分類に対応する。
 ///
 /// WP1 で実装済みなのは [reset] と [specialReset] だけで、
@@ -94,7 +100,15 @@ final class BfmSession extends Opaque {}
 
 /// `bfm_create_options`
 final class BfmCreateOptions extends Struct {
+  /// コアがアプリケーションデータを置く位置。プロセス全体で1つに限る。
   external Pointer<Char> homeDir;
+
+  /// 利用者が選んだROMディレクトリ。null なら結線しない。
+  external Pointer<Char> romDir;
+
+  @Int32()
+  external int bootMode;
+
   @Uint32()
   external int commandQueueCapacity;
   @Uint32()

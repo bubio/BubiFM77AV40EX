@@ -141,8 +141,16 @@ Future<void> _checkEmulatorSession(
 ) async {
   stdout.writeln('== FfiEmulatorSession');
 
+  // ダミーROMを1つ置き、結線がDart側の引数からも効くことを見る。
+  // 本物のROMは要らない。
+  final romDir = Directory('$homeDir/dart-check-roms')
+    ..createSync(recursive: true);
+  File('${romDir.path}/INITIATE.ROM')
+      .writeAsBytesSync(List<int>.filled(8192, 0));
+
   final session = FfiEmulatorSession.create(
     homeDir: homeDir,
+    romDir: romDir.path,
     bindings: bindings,
   );
   final received = <EmulatorEvent>[];
@@ -174,6 +182,16 @@ Future<void> _checkEmulatorSession(
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
   check(sawLifecycleEvent, 'イベントを引き取って LifecycleChanged を配る');
+
+  final coreDirectory = session.readCoreDirectory();
+  check(coreDirectory.isNotEmpty, 'コアの読込みディレクトリを取得できる');
+  check(
+    Link('${coreDirectory}INITIATE.ROM').existsSync(),
+    'romDir のROMへリンクが張られる',
+  );
+
+  final bootCommandId = await session.setBootMode(BootMode.dos);
+  check(bootCommandId > 0, 'ブートモードの変更を投入できる');
 
   final commandId = await session.reset(ResetKind.special);
   check(commandId > 0, '特殊リセットの連番IDが返る');

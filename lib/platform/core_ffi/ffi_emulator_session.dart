@@ -25,8 +25,13 @@ class FfiEmulatorSession implements EmulatorSession {
   /// `~/CommonSourceCodeProject/` を作ってしまい design.md 11.3 と食い違う。
   ///
   /// [pollInterval] はイベントを引き取る間隔。画面描画周期には結合させない。
+  /// [romDir] は利用者が選んだROMディレクトリのOSパス。
+  /// null なら結線せず、コアは読めるROMがないまま起動を試みる。
+  /// ROMの検証は `RomInventory` の責務で、ここでは行わない。
   factory FfiEmulatorSession.create({
     required String homeDir,
+    String? romDir,
+    BootMode bootMode = BootMode.basic,
     BubiCoreBindings? bindings,
     int commandQueueCapacity = 0,
     int eventQueueCapacity = 0,
@@ -43,8 +48,15 @@ class FfiEmulatorSession implements EmulatorSession {
     final options = calloc<BfmCreateOptions>();
     final out = calloc<Pointer<BfmSession>>();
     final homeDirUtf8 = homeDir.toNativeUtf8();
+    final romDirUtf8 = romDir == null || romDir.isEmpty
+        ? null
+        : romDir.toNativeUtf8();
     try {
       options.ref.homeDir = homeDirUtf8.cast<Char>();
+      options.ref.romDir = romDirUtf8 == null
+          ? nullptr
+          : romDirUtf8.cast<Char>();
+      options.ref.bootMode = bootModeToNative(bootMode);
       options.ref.commandQueueCapacity = commandQueueCapacity;
       options.ref.eventQueueCapacity = eventQueueCapacity;
 
@@ -55,9 +67,12 @@ class FfiEmulatorSession implements EmulatorSession {
       }
       return FfiEmulatorSession._(resolved, out.value, pollInterval);
     } finally {
-      // C境界を跨いだメモリは確保側が解放する。home_dir はネイティブ側が
+      // C境界を跨いだメモリは確保側が解放する。パスはネイティブ側が
       // 複製するため、この時点で手放してよい。
       calloc.free(homeDirUtf8);
+      if (romDirUtf8 != null) {
+        calloc.free(romDirUtf8);
+      }
       calloc.free(out);
       calloc.free(options);
     }
@@ -133,6 +148,50 @@ class FfiEmulatorSession implements EmulatorSession {
       return out.value;
     } finally {
       calloc.free(out);
+    }
+  }
+
+  @override
+  Future<int> setBootMode(BootMode mode) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = BfmCommandKind.setBootMode;
+      command.ref.arg0 = bootModeToNative(mode);
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  /// コアが実際にROMを読み `USERDIC.DAT` を書くディレクトリ。
+  ///
+  /// 連結規則はupstreamが決めるため、Dart側で組み立てずここから得る。
+  /// 診断表示に使う場合はフルパスをそのまま通常ログへ残さない（NFR-07）。
+  String readCoreDirectory() {
+    _ensureUsable();
+    const capacity = 4096;
+    final buffer = calloc<Uint8>(capacity);
+    try {
+      final result = _bindings.getCoreDirectory(
+        _handle,
+        buffer.cast<Char>(),
+        capacity,
+      );
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return buffer.cast<Utf8>().toDartString();
+    } finally {
+      calloc.free(buffer);
     }
   }
 

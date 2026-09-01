@@ -14,6 +14,18 @@ void main() {
     _LayerRule(
       layer: 'features',
       forbidden: {'platform', 'app'},
+      // design.md 11.2 が名指しするplatform境界の抽象だけは例外にする。
+      // 「feature層は物理パスを組み立てず、次のplatform境界を利用する」
+      // ため、抽象への依存は設計どおりで、禁じるのは実装への依存である。
+      allowed: {
+        'platform/persistence/preferences_store.dart',
+        'platform/persistence/app_data_paths.dart',
+        'platform/persistence/cache_workspace.dart',
+        'platform/persistence/external_file_access.dart',
+        // design.md 3.1 はローカライズを`app`に置く。生成物は他へ依存せず
+        // 循環を作らないため、文言の参照だけを許す。
+        'app/l10n/generated/app_localizations.dart',
+      },
       reason: 'featuresはplatform実装とappへ依存しない',
     ),
     _LayerRule(
@@ -97,8 +109,12 @@ void main() {
     test('NFR-架構 ${rule.layer} keeps its dependency direction', () {
       final violations = <String>[];
       for (final file in _dartFilesUnder('lib/${rule.layer}')) {
-        for (final target in _importedLayers(file)) {
-          if (rule.forbidden.contains(target)) {
+        for (final target in _importedLibPaths(file)) {
+          if (rule.allowed.contains(target)) {
+            continue;
+          }
+          final layer = target.split('/').first;
+          if (rule.forbidden.contains(layer)) {
             violations.add('${file.path} -> lib/$target');
           }
         }
@@ -117,10 +133,15 @@ class _LayerRule {
     required this.layer,
     required this.forbidden,
     required this.reason,
+    this.allowed = const {},
   });
 
   final String layer;
   final Set<String> forbidden;
+
+  /// 禁止層のうち、依存してよい個別ファイル（`lib/`起点の相対パス）。
+  final Set<String> allowed;
+
   final String reason;
 }
 
@@ -149,20 +170,17 @@ Set<String> _importedUris(File file) {
       .toSet();
 }
 
-/// ファイルが参照する`lib/`直下の層名を返す。
-Set<String> _importedLayers(File file) {
-  final layers = <String>{};
+/// ファイルが参照する`lib/`起点の相対パスを返す。
+Set<String> _importedLibPaths(File file) {
+  final paths = <String>{};
   for (final uri in _importedUris(file)) {
     final normalized = _normalizeToLibRelative(uri, file);
-    if (normalized == null) {
+    if (normalized == null || !normalized.contains('/')) {
       continue;
     }
-    final segments = normalized.split('/');
-    if (segments.length > 1) {
-      layers.add(segments.first);
-    }
+    paths.add(normalized);
   }
-  return layers;
+  return paths;
 }
 
 /// package: と相対importを`lib/`起点の相対パスへ正規化する。
@@ -174,7 +192,10 @@ String? _normalizeToLibRelative(String uri, File file) {
   if (uri.startsWith('dart:') || uri.startsWith('package:')) {
     return null;
   }
-  final resolved = Uri.file(file.path).resolve(uri).toFilePath();
+  // 相対importは、必ず絶対パスへ直してから解決する。
+  // file.path が相対のままだと解決結果も相対になり、libRoot との
+  // 突き合わせがすべて外れて検査が素通りする。
+  final resolved = Uri.file(file.absolute.path).resolve(uri).toFilePath();
   final libRoot = Directory('lib').absolute.path;
   if (!resolved.startsWith('$libRoot${Platform.pathSeparator}')) {
     return null;

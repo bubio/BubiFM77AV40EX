@@ -11,10 +11,14 @@
  */
 #include "bubi_fm77av.h"
 
+#include <dirent.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
@@ -24,7 +28,9 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
+#include "common.h"
 #include "emu.h"
 
 #include "core_host_symbols.h"
@@ -41,6 +47,35 @@ constexpr uint32_t kDefaultEventCapacity = 256;
  * upstream を変更せずに分離する方法を改めて技術検証する。
  */
 std::atomic<int> g_live_sessions{0};
+
+/*
+ * upstreamの get_application_path() は初回呼出しで値を固定する。
+ * したがって home_dir はプロセス全体で1つに限る。最初の bfm_create で
+ * 決め、以後は同じ値だけを受け付ける。
+ */
+std::mutex g_process_dirs_mutex;
+std::string g_home_dir;
+std::string g_core_dir;
+
+/*
+ * コアがそのディレクトリへ書き出すファイル。ROMディレクトリに同名の
+ * ファイルがあってもリンクを張らない。張ると、コアの書込みが
+ * シンボリックリンクを通って利用者のROMディレクトリを書き換える。
+ */
+const char* const kCoreWrittenFiles[] = {
+	"USERDIC.DAT",   // 辞書学習データ
+	"JCOMMCARD.bin", // 日本語通信カードのバックアップRAM
+};
+
+bool is_core_written_file(const char* name)
+{
+	for (const char* written : kCoreWrittenFiles) {
+		if (strcasecmp(name, written) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
 
 struct QueuedCommand {
 	uint32_t kind;
@@ -97,6 +132,100 @@ bool home_dir_is_writable(const std::string& home_dir)
 	return wrote;
 }
 
+std::string to_upper(const std::string& value)
+{
+	std::string upper = value;
+	for (char& c : upper) {
+		c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
+	}
+	return upper;
+}
+
+/*
+ * core_dir/name から from へのシンボリックリンクを1つ張る。
+ * 既に何かがある場合は触らない。実体ファイルを上書きしないため。
+ */
+bool link_one(const std::string& core_dir, const std::string& from,
+              const std::string& name)
+{
+	const std::string to = core_dir + name;
+	struct stat st;
+	if (lstat(to.c_str(), &st) == 0) {
+		return true; // 実体ファイルか既存リンクがある。上書きしない。
+	}
+	return symlink(from.c_str(), to.c_str()) == 0;
+}
+
+/*
+ * コアがROMを読むディレクトリを、rom_dir の内容へ結線する。
+ *
+ * 原本は複製せずシンボリックリンクを張る（design.md 16.1）。
+ * 張り直しでは既存のシンボリックリンクだけを消す。同じディレクトリに
+ * USERDIC.DAT が実体で存在するため、通常ファイルを消すと利用者の
+ * 辞書学習データを壊す。
+ */
+bool wire_rom_directory(const std::string& core_dir, const std::string& rom_dir)
+{
+	DIR* core = opendir(core_dir.c_str());
+	if (core == nullptr) {
+		return false;
+	}
+	// 先に古いリンクだけを外す。実体ファイルには触れない。
+	for (struct dirent* entry = readdir(core); entry != nullptr; entry = readdir(core)) {
+		const std::string name = entry->d_name;
+		if (name == "." || name == "..") {
+			continue;
+		}
+		const std::string path = core_dir + name;
+		struct stat st;
+		if (lstat(path.c_str(), &st) == 0 && S_ISLNK(st.st_mode)) {
+			unlink(path.c_str());
+		}
+	}
+	closedir(core);
+
+	if (rom_dir.empty()) {
+		return true; // ROM未設定。リンクなしで起動を試す。
+	}
+
+	DIR* source = opendir(rom_dir.c_str());
+	if (source == nullptr) {
+		return false;
+	}
+	bool ok = true;
+	for (struct dirent* entry = readdir(source); entry != nullptr;
+	     entry = readdir(source)) {
+		const std::string name = entry->d_name;
+		if (name == "." || name == "..") {
+			continue;
+		}
+		if (is_core_written_file(name.c_str())) {
+			continue;
+		}
+		const std::string from = rom_dir + "/" + name;
+		struct stat st;
+		if (stat(from.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) {
+			continue; // ディレクトリと壊れたリンクは無視する
+		}
+		// コアは大文字の名前で開く（fm7_common.h の ROM_* 定義）。
+		// 利用者のファイルが小文字でも読めるよう、元の名前と
+		// 大文字化した名前の両方でリンクを張る。macOSは大小文字を
+		// 区別しない設定が既定なので片方で足りるが、Linuxでは
+		// 大文字側がないとコアがROMを1つも読めない。
+		if (!link_one(core_dir, from, name)) {
+			ok = false;
+			break;
+		}
+		const std::string upper = to_upper(name);
+		if (upper != name && !link_one(core_dir, from, upper)) {
+			ok = false;
+			break;
+		}
+	}
+	closedir(source);
+	return ok;
+}
+
 } // namespace
 
 struct bfm_session {
@@ -120,6 +249,9 @@ struct bfm_session {
 
 	std::thread core_thread;
 	std::string home_dir;
+	std::string core_dir; // コアがROMを読み USERDIC.DAT を書く位置
+	std::string rom_dir;  // 利用者が選んだROMディレクトリ（空なら未設定）
+	int32_t boot_mode = BFM_BOOT_BASIC;
 
 	// VM操作を許されたスレッド。Core threadの起動直後に確定する。
 	std::atomic<bool> core_thread_id_valid{false};
@@ -127,6 +259,18 @@ struct bfm_session {
 
 	// --- Core threadだけが触る ---
 	EMU* emu = nullptr;
+
+#ifdef BUBI_ENABLE_TEST_HOOKS
+	// 画面の取り出しはテストバイナリにだけ含める（配布物には入らない）。
+	// 実ROMでの起動確認に使う（development_plan.md 6 WP2）。
+	std::atomic<bool> capture_requested{false};
+	std::mutex capture_mutex;
+	std::condition_variable capture_done;
+	bool capture_ready = false;
+	int32_t capture_width = 0;
+	int32_t capture_height = 0;
+	std::vector<uint32_t> capture_pixels;
+#endif
 
 	/*
 	 * VMへ触る直前に必ず呼ぶ。Core thread以外だった場合は数えるだけで
@@ -192,6 +336,15 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 	case BFM_CMD_SPECIAL_RESET:
 		vm->special_reset();
 		break;
+	case BFM_CMD_SET_BOOT_MODE:
+		// コアはリセット時に config.boot_mode を読む。ここでは値を
+		// 置くだけで、反映は次のリセットまたは再起動になる（SYS-04）。
+		if (queued.arg0 != BFM_BOOT_BASIC && queued.arg0 != BFM_BOOT_DOS) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+		} else {
+			config.boot_mode = static_cast<int>(queued.arg0);
+		}
+		break;
 	default:
 		// 型として定義済みだが未実装。担当WPは bubi_fm77av.h を参照。
 		code = BFM_ERR_UNSUPPORTED;
@@ -236,8 +389,18 @@ void core_thread_main(bfm_session* session)
 			throw std::runtime_error("home_dir is not writable");
 		}
 
+		// ROMを1つのディレクトリへ結線してから EMU を作る。
+		// コアは生成時にROMを読むため、順序を入れ替えられない。
+		if (!home_dir_is_writable(session->core_dir)) {
+			throw std::runtime_error("core directory is not writable");
+		}
+		if (!wire_rom_directory(session->core_dir, session->rom_dir)) {
+			throw std::runtime_error("failed to wire the ROM directory");
+		}
+
 		// VMの生成から破棄までをCore threadに閉じる。
 		bubi_core_set_home_dir(session->home_dir.c_str());
+		config.boot_mode = session->boot_mode;
 		session->note_vm_access();
 		session->emu = new EMU();
 		VM_TEMPLATE* vm = session->emu->get_vm();
@@ -269,6 +432,34 @@ void core_thread_main(bfm_session* session)
 			session->note_vm_access();
 			vm->run();
 			session->frames_run.fetch_add(1);
+
+#ifdef BUBI_ENABLE_TEST_HOOKS
+			// 画面の取り出しもCore threadで行う。VMへ触るのは
+			// このスレッドだけという約束を破らない。
+			if (session->capture_requested.exchange(false)) {
+				session->note_vm_access();
+				session->emu->draw_screen();
+				const int32_t width = session->emu->get_osd()->get_vm_screen_width();
+				const int32_t height = session->emu->get_osd()->get_vm_screen_height();
+				std::vector<uint32_t> pixels;
+				pixels.reserve(static_cast<size_t>(width) * height);
+				for (int32_t y = 0; y < height; ++y) {
+					const scrntype_t* row = session->emu->get_screen_buffer(y);
+					for (int32_t x = 0; x < width; ++x) {
+						pixels.push_back(row == nullptr ? 0u
+						                               : static_cast<uint32_t>(row[x]));
+					}
+				}
+				{
+					std::lock_guard<std::mutex> lock(session->capture_mutex);
+					session->capture_width = width;
+					session->capture_height = height;
+					session->capture_pixels.swap(pixels);
+					session->capture_ready = true;
+				}
+				session->capture_done.notify_all();
+			}
+#endif
 
 			// 単調増加時計で次回期限を決める。遅れたら取り戻さず基準へ戻す。
 			const auto now = clock::now();
@@ -348,10 +539,32 @@ bfm_result bfm_create(const bfm_create_options* options, bfm_session** out)
 			return BFM_ERR_INVALID_ARGUMENT;
 		}
 
+		if (options->boot_mode != BFM_BOOT_BASIC && options->boot_mode != BFM_BOOT_DOS) {
+			return BFM_ERR_INVALID_ARGUMENT;
+		}
+
 		// 生存セッションは1つに限る（理由は g_live_sessions のコメント）。
 		int expected = 0;
 		if (!g_live_sessions.compare_exchange_strong(expected, 1)) {
 			return BFM_ERR_INVALID_STATE;
+		}
+
+		std::string core_dir;
+		{
+			std::lock_guard<std::mutex> lock(g_process_dirs_mutex);
+			if (g_home_dir.empty()) {
+				// 初回だけ upstream に解決させる。以後は同じ値が返るため、
+				// ここで写しを持って再呼出しを避ける。
+				g_home_dir = options->home_dir;
+				bubi_core_set_home_dir(g_home_dir.c_str());
+				g_core_dir = get_application_path();
+			} else if (g_home_dir != options->home_dir) {
+				// upstream が初回の値を固定しているため、変えても効かない。
+				// 黙って別の場所を読ませるより、明示的に拒否する。
+				g_live_sessions.store(0);
+				return BFM_ERR_INVALID_STATE;
+			}
+			core_dir = g_core_dir;
 		}
 
 		bfm_session* session = nullptr;
@@ -362,6 +575,11 @@ bfm_result bfm_create(const bfm_create_options* options, bfm_session** out)
 			throw;
 		}
 		session->home_dir = options->home_dir;
+		session->core_dir = core_dir;
+		session->boot_mode = options->boot_mode;
+		if (options->rom_dir != nullptr) {
+			session->rom_dir = options->rom_dir;
+		}
 		if (options->command_queue_capacity != 0) {
 			session->command_capacity = options->command_queue_capacity;
 		}
@@ -480,6 +698,22 @@ int32_t bfm_get_state(bfm_session* session)
 	return (session == nullptr) ? BFM_STATE_STOPPED : session->state.load();
 }
 
+bfm_result bfm_get_core_directory(bfm_session* session, char* out, uint32_t out_size)
+{
+	if (session == nullptr || out == nullptr || out_size == 0) {
+		return BFM_ERR_INVALID_ARGUMENT;
+	}
+	try {
+		if (session->core_dir.size() + 1 > out_size) {
+			return BFM_ERR_INVALID_ARGUMENT;
+		}
+		std::memcpy(out, session->core_dir.c_str(), session->core_dir.size() + 1);
+		return BFM_OK;
+	} catch (...) {
+		return BFM_ERR_INTERNAL;
+	}
+}
+
 bfm_result bfm_get_stats(bfm_session* session, bfm_stats* out)
 {
 	if (session == nullptr || out == nullptr) {
@@ -508,6 +742,42 @@ BFM_API void bfm_test_touch_vm_guard_from_caller_thread(bfm_session* session)
 	if (session != nullptr) {
 		session->note_vm_access();
 	}
+}
+
+/*
+ * テスト専用。Core threadに1フレーム描かせ、その結果を取り出す。
+ * 実ROMを置いた環境で起動を目視・比較するために使う。
+ * 描画そのものはCore threadで行うので、VM操作の約束は破らない。
+ */
+BFM_API bfm_result bfm_test_capture_screen(bfm_session* session, uint32_t* out_pixels,
+                                           uint32_t max_pixels, int32_t* out_width,
+                                           int32_t* out_height)
+{
+	if (session == nullptr || out_width == nullptr || out_height == nullptr) {
+		return BFM_ERR_INVALID_ARGUMENT;
+	}
+	if (session->state.load() != BFM_STATE_RUNNING) {
+		return BFM_ERR_INVALID_STATE;
+	}
+	std::unique_lock<std::mutex> lock(session->capture_mutex);
+	session->capture_ready = false;
+	session->capture_requested.store(true);
+	// 期限を切る。Core threadが止まっていても呼び手を待たせ続けない。
+	if (!session->capture_done.wait_for(lock, std::chrono::seconds(5),
+	                                    [session] { return session->capture_ready; })) {
+		return BFM_ERR_CORE_FAILED;
+	}
+	*out_width = session->capture_width;
+	*out_height = session->capture_height;
+	if (out_pixels != nullptr) {
+		if (session->capture_pixels.size() > max_pixels) {
+			return BFM_ERR_INVALID_ARGUMENT;
+		}
+		for (size_t i = 0; i < session->capture_pixels.size(); ++i) {
+			out_pixels[i] = session->capture_pixels[i];
+		}
+	}
+	return BFM_OK;
 }
 #endif
 

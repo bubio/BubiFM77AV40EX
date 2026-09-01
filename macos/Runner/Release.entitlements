@@ -2,7 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<!-- App Sandboxは有効にしない（design.md 11.3、16.1）。
+	     有効にすると保存先が ~/Library/Containers/ の下へ移り、
+	     利用者が自分でROMを置く roms/ へたどり着けなくなる。
+	     Mac App Storeでの配布は対象外とする。 -->
 </dict>
 </plist>

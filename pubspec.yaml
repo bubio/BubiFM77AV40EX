@@ -26,6 +26,20 @@ dependencies:
   # エミュレーター音声出力（BluePrint 技術スタック）
   flutter_soloud: 4.1.7
   intl: 0.20.3
+  # 承認済みmanifestとのSHA-256照合（specification.md 6）。
+  # Dart SDKにハッシュ実装がないため使う。
+  crypto: 3.0.7
+  # OS標準の保存領域（design.md 11.3）。~/Library/Application Support と
+  # ~/Library/Caches をOS APIから得る。
+  path_provider: 2.1.6
+  # PreferencesStore の実体。macOSでは NSUserDefaults を使う（design.md 11.2）。
+  shared_preferences: 2.5.5
+  # ROMディレクトリと媒体の選択ダイアログ。Flutter公式パッケージ。
+  file_selector: 1.1.0
+  # 利用者が選んだ位置への永続アクセス権（security-scoped bookmark）。
+  # macOSのブックマークAPIを扱う自前のプラグイン。
+  bubi_fm77av40ex_platform:
+    path: packages/bubi_fm77av40ex_platform
 
 dev_dependencies:
   flutter_test:

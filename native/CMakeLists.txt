@@ -182,6 +182,16 @@ if(BUBI_BUILD_HOST_TOOLS)
   target_compile_definitions(session_test PRIVATE BUBI_ENABLE_TEST_HOOKS)
   target_link_libraries(session_test PRIVATE bubi_fm77av40ex_core)
 
+  # 実ROMでの起動確認（development_plan.md 6 WP2）。
+  # 利用者のROMを引数で受け取る。ROMがないと動かないため ctest には登録せず、
+  # scripts/rom_boot_check.sh から手で走らせる。
+  add_executable(rom_boot_check
+    "${CMAKE_CURRENT_SOURCE_DIR}/host/rom_boot_check.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/bubi_fm77av.cpp"
+  )
+  target_compile_definitions(rom_boot_check PRIVATE BUBI_ENABLE_TEST_HOOKS)
+  target_link_libraries(rom_boot_check PRIVATE bubi_fm77av40ex_core)
+
   # 同じC ABIをDart FFIから呼べることを確かめるための共有ライブラリ。
   # アプリへの組み込みは packages/bubi_fm77av40ex_core/ の静的リンクで行う
   # （design.md 16.1）。ここはシンボル解決と呼び出しの検証専用である。
@@ -195,4 +205,8 @@ if(BUBI_BUILD_HOST_TOOLS)
   # 書込み先をビルドディレクトリ配下へ閉じ込め、ホームディレクトリを汚さない。
   add_test(NAME core_smoke COMMAND core_smoke "${CMAKE_CURRENT_BINARY_DIR}/smoke-home")
   add_test(NAME session_test COMMAND session_test "${CMAKE_CURRENT_BINARY_DIR}/session-home")
+  # home_dir はプロセス全体で1つに固定されるため、書込み不能な home_dir の
+  # 検査だけは別プロセスで走らせる。
+  add_test(NAME session_test_unwritable_home
+    COMMAND session_test "${CMAKE_CURRENT_BINARY_DIR}/session-home" --unwritable-home)
 endif()

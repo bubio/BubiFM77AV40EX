@@ -4,6 +4,12 @@
 /// プラットフォームアダプターがOS APIから取得する。feature層は
 /// ここで得た識別子だけを扱い、パス文字列を組み立てない。
 abstract interface class AppDataPaths {
+  /// 利用者がROMを置くフォルダー（`roms/`）のOSパス。
+  ///
+  /// アプリは選ばせず、この位置に固定する（specification.md 6）。
+  /// 利用者へ案内するため、UIに表示してよい唯一のパスである。
+  Future<String> romsDirectoryPath();
+
   /// 状態スロット（`states/slot-N/`）を表すハンドル。
   Future<AppDataLocation> stateSlot(int slotIndex);
 

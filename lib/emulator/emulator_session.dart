@@ -29,6 +29,12 @@ abstract class EmulatorSession {
   /// 完了は同じIDの [CommandCompleted] で通知する。
   Future<int> reset(ResetKind kind);
 
+  /// ブートモードを設定し、コマンドの連番を返す。
+  ///
+  /// コアはリセット時にこの値を読むため、反映されるのは次の
+  /// [reset] または再起動からになる（SYS-04）。
+  Future<int> setBootMode(BootMode mode);
+
   /// 観測値を読み出す。
   EmulatorStats readStats();
 

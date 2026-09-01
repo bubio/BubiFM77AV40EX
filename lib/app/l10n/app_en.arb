@@ -8,8 +8,104 @@
   "@sessionStateStopped": {
     "description": "Status bar label for a session that is not running."
   },
-  "romDirectoryNotSelected": "ROM directory is not selected.",
-  "@romDirectoryNotSelected": {
-    "description": "Message shown when no ROM directory has been chosen yet."
+  "romSettingsTitle": "ROM setup",
+  "@romSettingsTitle": {
+    "description": "Title of the ROM setup screen shown before the machine can start."
+  },
+  "romDirectoryLabel": "ROM folder",
+  "@romDirectoryLabel": {
+    "description": "Label for the currently selected ROM folder."
+  },
+  "romRescan": "Re-check",
+  "@romRescan": {
+    "description": "Button that scans the ROM folder again."
+  },
+  "romScanning": "Checking",
+  "@romScanning": {
+    "description": "Shown while the ROM folder is being scanned."
+  },
+  "romReadyBasic": "Ready to start in both BASIC and DOS.",
+  "@romReadyBasic": {
+    "description": "Shown when every required ROM including F-BASIC is usable."
+  },
+  "romReadyDosOnly": "Ready to start in DOS. BASIC needs the F-BASIC ROM.",
+  "@romReadyDosOnly": {
+    "description": "Shown when the six boot ROMs are usable but F-BASIC is not."
+  },
+  "romNotReady": "Cannot start. Check the required boot ROMs.",
+  "@romNotReady": {
+    "description": "Shown when one of the six boot ROMs is unusable."
+  },
+  "romUnverified": "No approved SHA-256 list, so only names and sizes are checked.",
+  "@romUnverified": {
+    "description": "Shown when no ROM manifest is available."
+  },
+  "romBootMode": "Boot mode",
+  "@romBootMode": {
+    "description": "Label for the BASIC/DOS boot mode selector."
+  },
+  "romBootModeBasic": "BASIC",
+  "@romBootModeBasic": {
+    "description": "Boot into F-BASIC V3.0."
+  },
+  "romBootModeDos": "DOS",
+  "@romBootModeDos": {
+    "description": "Boot into DOS."
+  },
+  "romBootModeAppliesOnReset": "The change applies from the next reset.",
+  "@romBootModeAppliesOnReset": {
+    "description": "Explains that boot mode is read by the core at reset time."
+  },
+  "romStatusMissing": "Missing",
+  "@romStatusMissing": {
+    "description": "ROM file was not found."
+  },
+  "romStatusUnreadable": "Unreadable",
+  "@romStatusUnreadable": {
+    "description": "ROM file exists but cannot be read."
+  },
+  "romStatusWrongSize": "Wrong size",
+  "@romStatusWrongSize": {
+    "description": "ROM file size does not match the specification."
+  },
+  "romStatusHashMismatch": "Content mismatch",
+  "@romStatusHashMismatch": {
+    "description": "SHA-256 does not match the approved manifest."
+  },
+  "romStatusVerified": "Verified",
+  "@romStatusVerified": {
+    "description": "Name, size and SHA-256 all match."
+  },
+  "romStatusSizeOnly": "Name and size only",
+  "@romStatusSizeOnly": {
+    "description": "Name and size match but there is no manifest to compare against."
+  },
+  "romRoleBootRequired": "Required to start",
+  "@romRoleBootRequired": {
+    "description": "Category label for the six mandatory boot ROMs."
+  },
+  "romRoleBasicRequired": "Required for BASIC",
+  "@romRoleBasicRequired": {
+    "description": "Category label for the F-BASIC ROM."
+  },
+  "romRoleOptional": "Optional",
+  "@romRoleOptional": {
+    "description": "Category label for kanji and dictionary ROMs."
+  },
+  "romScanFailed": "Could not read the ROM folder. Check the folder and its permissions.",
+  "@romScanFailed": {
+    "description": "Shown when scanning the ROM folder threw an I/O or permission error."
+  },
+  "romDirectoryPreparing": "Preparing",
+  "@romDirectoryPreparing": {
+    "description": "Placeholder shown until the ROM folder path has been resolved."
+  },
+  "romDirectoryGuidance": "Put the ROM files in this folder, then re-check.",
+  "@romDirectoryGuidance": {
+    "description": "Tells the user that they place ROM files into the fixed folder themselves."
+  },
+  "romOpenFolder": "Open folder",
+  "@romOpenFolder": {
+    "description": "Button that reveals the ROM folder in the OS file manager."
   }
 }

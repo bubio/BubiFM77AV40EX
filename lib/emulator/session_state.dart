@@ -26,3 +26,14 @@ enum ResetKind {
   /// BREAK付き特殊リセット。
   special,
 }
+
+/// ブートモード（specification.md SYS-04）。
+///
+/// 変更はコアが次のリセットで読むため、選択しただけでは切り替わらない。
+enum BootMode {
+  /// F-BASIC V3.0 で起動する。F-BASIC ROM が必要。
+  basic,
+
+  /// DOSで起動する。F-BASIC ROM がなくても起動できる。
+  dos,
+}

@@ -54,3 +54,23 @@ if [ -n "${missing}" ]; then
   exit 1
 fi
 echo "==> FFIシンボル検査: $(printf '%s\n' ${EXPECTED} | wc -l | tr -d ' ') 個すべて存在"
+
+# --- App Sandboxが成果物へ紛れ込んでいないかを確かめる ---
+#
+# サンドボックスが有効だと保存先が ~/Library/Containers/ の下へ移り、
+# 利用者が自分でROMを置く roms/ へたどり着けなくなる。
+# Flutterのテンプレートは既定で有効にするため、再生成やマージで
+# 戻りやすい。ビルドも起動も成功したままROMだけが見つからなくなる
+# 静かな壊れ方なので、成果物そのものを検査する（design.md 16.1）。
+FORBIDDEN_ENTITLEMENT="com.apple.security.app-sandbox"
+
+ENTITLEMENTS="$(codesign -d --entitlements - --xml "${APP}" 2>/dev/null || true)"
+if [ -z "${ENTITLEMENTS}" ]; then
+  echo "==> entitlements検査: App Sandboxの指定なし"
+elif printf '%s' "${ENTITLEMENTS}" | grep -q "${FORBIDDEN_ENTITLEMENT}"; then
+  echo "error: App Sandboxが有効です: ${FORBIDDEN_ENTITLEMENT}" >&2
+  echo "       macos/Runner/*.entitlements から外すこと。" >&2
+  exit 1
+else
+  echo "==> entitlements検査: App Sandboxは無効"
+fi

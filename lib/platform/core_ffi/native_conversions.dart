@@ -44,6 +44,12 @@ int resetKindToNative(ResetKind kind) => switch (kind) {
   ResetKind.special => BfmResetKind.special,
 };
 
+/// [BootMode] を `bfm_boot_mode` へ変換する。
+int bootModeToNative(BootMode mode) => switch (mode) {
+  BootMode.basic => BfmBootMode.basic,
+  BootMode.dos => BfmBootMode.dos,
+};
+
 /// `bfm_event` の各フィールドから [EmulatorEvent] を組み立てる。
 EmulatorEvent emulatorEventFromNative({
   required int kind,

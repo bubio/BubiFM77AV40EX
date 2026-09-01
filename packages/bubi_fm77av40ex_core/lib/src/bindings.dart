@@ -71,6 +71,13 @@ final class BubiCoreBindings {
               Int32 Function(Pointer<BfmSession>, Pointer<BfmStats>)
             >
           >('bfm_get_stats')
+          .asFunction(),
+      getCoreDirectory = library
+          .lookup<
+            NativeFunction<
+              Int32 Function(Pointer<BfmSession>, Pointer<Char>, Uint32)
+            >
+          >('bfm_get_core_directory')
           .asFunction();
 
   /// 既定のライブラリを開いて束縛する。
@@ -87,6 +94,7 @@ final class BubiCoreBindings {
   final int Function(Pointer<BfmSession>, Pointer<BfmEvent>) pollEvent;
   final int Function(Pointer<BfmSession>) getState;
   final int Function(Pointer<BfmSession>, Pointer<BfmStats>) getStats;
+  final int Function(Pointer<BfmSession>, Pointer<Char>, int) getCoreDirectory;
 }
 
 /// ネイティブライブラリを開く。

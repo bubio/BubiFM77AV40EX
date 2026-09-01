@@ -1,0 +1,26 @@
+name: bubi_fm77av40ex_platform
+description: "OS platform services that Flutter packages do not cover (security-scoped bookmarks)."
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.13.2
+  flutter: '>=3.47.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+
+flutter:
+  plugin:
+    # macOS以外はM4〜M6で各マイルストーンの担当時に追加する。
+    # Linux/Windowsは正規化パス、AndroidはSAFの永続URI権限になる
+    # （design.md 9）。
+    platforms:
+      macos:
+        pluginClass: BubiFm77Av40ExPlatformPlugin

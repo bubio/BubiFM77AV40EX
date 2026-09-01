@@ -1,9 +1,9 @@
 import 'package:flutter/widgets.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'app/app.dart';
+import 'app/bootstrap.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ProviderScope(child: BubiFm77Av40ExApp()));
+  // platform実装の組み立てはappの責務（design.md 3.1）。
+  runApp(await buildApp());
 }

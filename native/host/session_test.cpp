@@ -10,9 +10,15 @@
  * ROMを必要とせず、CIで実行できる。リーク検査は本体では行わず、
  * scripts/run_native_checks.sh が macOS の leaks(1) で外側から判定する。
  */
+#include <dirent.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <set>
 #include <string>
 #include <thread>
@@ -44,10 +50,11 @@ void group(const char* name)
 std::string g_home;
 
 bfm_session* make_session(const char* home = nullptr, uint32_t command_capacity = 0,
-                          uint32_t event_capacity = 0)
+                          uint32_t event_capacity = 0, const char* rom_dir = nullptr)
 {
 	bfm_create_options options{};
 	options.home_dir = (home != nullptr) ? home : g_home.c_str();
+	options.rom_dir = rom_dir;
 	options.command_queue_capacity = command_capacity;
 	options.event_queue_capacity = event_capacity;
 
@@ -56,6 +63,69 @@ bfm_session* make_session(const char* home = nullptr, uint32_t command_capacity 
 		return nullptr;
 	}
 	return session;
+}
+
+// --- ROM結線の検査で使うファイル操作 ---
+
+bool write_file(const std::string& path, const std::string& content)
+{
+	FILE* fp = fopen(path.c_str(), "wb");
+	if (fp == nullptr) {
+		return false;
+	}
+	const bool ok = content.empty()
+	    || fwrite(content.data(), 1, content.size(), fp) == content.size();
+	fclose(fp);
+	return ok;
+}
+
+std::string read_file(const std::string& path)
+{
+	FILE* fp = fopen(path.c_str(), "rb");
+	if (fp == nullptr) {
+		return std::string();
+	}
+	std::string out;
+	char buffer[256];
+	for (;;) {
+		const size_t read = fread(buffer, 1, sizeof(buffer), fp);
+		out.append(buffer, read);
+		if (read < sizeof(buffer)) {
+			break;
+		}
+	}
+	fclose(fp);
+	return out;
+}
+
+bool is_symlink_to(const std::string& path, const std::string& target)
+{
+	struct stat st;
+	if (lstat(path.c_str(), &st) != 0 || !S_ISLNK(st.st_mode)) {
+		return false;
+	}
+	char resolved[4096];
+	const ssize_t length = readlink(path.c_str(), resolved, sizeof(resolved) - 1);
+	if (length < 0) {
+		return false;
+	}
+	resolved[length] = '\0';
+	return target == resolved;
+}
+
+bool is_regular_file(const std::string& path)
+{
+	struct stat st;
+	return lstat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+}
+
+std::string core_directory_of(bfm_session* session)
+{
+	char buffer[4096];
+	if (bfm_get_core_directory(session, buffer, sizeof(buffer)) != BFM_OK) {
+		return std::string();
+	}
+	return std::string(buffer);
 }
 
 bool wait_for_state(bfm_session* session, bfm_state expected, int timeout_ms)
@@ -304,13 +374,15 @@ void test_core_thread_ownership()
 }
 
 // --- 6. 初期化失敗 ---
+//
+// home_dir はプロセス全体で1つに固定されるため、書込み不能な home_dir の
+// 検査は別プロセス（--unwritable-home）で行う。ここでは同じ home_dir のまま
+// 失敗させられる経路として、存在しないROMディレクトリを使う。
 void test_initialization_failure()
 {
 	group("初期化失敗");
 
-	// 通常ファイルの配下はディレクトリにできないため、必ず書込みに失敗する。
-	// root権限でも結果が変わらず、CIで再現できる。
-	bfm_session* session = make_session("/dev/null/bubi-unwritable");
+	bfm_session* session = make_session(nullptr, 0, 0, "/dev/null/no-such-rom-dir");
 	check(session != nullptr, "生成自体は成功する（失敗はCore threadで判明する）");
 	if (session == nullptr) {
 		return;
@@ -464,6 +536,199 @@ void test_single_live_session()
 	bfm_destroy(third);
 }
 
+/* 名前を大小文字を区別して探す。macOSの既定は区別しないため、
+ * パスで開く検査では大文字の別名の有無を判定できない。 */
+bool directory_has_exact_name(const std::string& directory, const std::string& name)
+{
+	DIR* dir = opendir(directory.c_str());
+	if (dir == nullptr) {
+		return false;
+	}
+	bool found = false;
+	for (struct dirent* entry = readdir(dir); entry != nullptr; entry = readdir(dir)) {
+		if (name == entry->d_name) {
+			found = true;
+			break;
+		}
+	}
+	closedir(dir);
+	return found;
+}
+
+// --- 10. ROMディレクトリの結線 ---
+void test_rom_wiring()
+{
+	group("ROMディレクトリの結線");
+
+	const std::string rom_a = g_home + "/rom-a";
+	const std::string rom_b = g_home + "/rom-b";
+	mkdir(rom_a.c_str(), 0700);
+	mkdir(rom_b.c_str(), 0700);
+	mkdir((rom_a + "/subdir").c_str(), 0700);
+
+	// 本物のROMは要らない。名前と存在だけを見る結線の検査である。
+	check(write_file(rom_a + "/INITIATE.ROM", std::string(8192, '\0')),
+	      "ダミーROMを用意できる");
+	check(write_file(rom_a + "/SUBSYS_A.ROM", std::string(8192, '\0')),
+	      "2つ目のダミーROMを用意できる");
+	// 利用者のROMディレクトリにコアの書込み対象と同名のファイルがある場合。
+	check(write_file(rom_a + "/USERDIC.DAT", "利用者のROMディレクトリ側"),
+	      "同名の書込み対象ファイルを用意できる");
+	// 利用者のファイル名が小文字のことがある。コアは大文字で開くので、
+	// 大文字化した別名も張られなければ、大小文字を区別するファイルシステム
+	// （Linux）でROMを1つも読めなくなる。
+	check(write_file(rom_a + "/SUBSYS_B.rom", std::string(8192, '\0')),
+	      "小文字のダミーROMを用意できる");
+	check(write_file(rom_b + "/EXTSUB.ROM", std::string(49152, '\0')),
+	      "別ディレクトリのダミーROMを用意できる");
+
+	bfm_session* session = make_session(nullptr, 0, 0, rom_a.c_str());
+	if (session == nullptr) {
+		check(false, "生成できる");
+		return;
+	}
+
+	const std::string core_dir = core_directory_of(session);
+	check(!core_dir.empty(), "コアの読込みディレクトリを取得できる");
+
+	// コアが書く USERDIC.DAT と、コアが触らない実体ファイルを置く。
+	// どちらも張り直しで消えてはならない。
+	const std::string learn_data = core_dir + "USERDIC.DAT";
+	const std::string keep_me = core_dir + "keep-me.dat";
+	const std::string keep_content = "張り直しで消えてはならない実体ファイル";
+	check(write_file(learn_data, "既存の辞書学習データ"), "既存の USERDIC.DAT を用意できる");
+	check(write_file(keep_me, keep_content), "コアが触らない実体ファイルを用意できる");
+
+	bfm_start(session);
+	check(wait_for_state(session, BFM_STATE_RUNNING, 5000), "running へ遷移する");
+
+	check(is_symlink_to(core_dir + "INITIATE.ROM", rom_a + "/INITIATE.ROM"),
+	      "ROMへシンボリックリンクを張る");
+	check(is_symlink_to(core_dir + "SUBSYS_A.ROM", rom_a + "/SUBSYS_A.ROM"),
+	      "複数のROMを張る");
+	check(!is_symlink_to(core_dir + "subdir", rom_a + "/subdir"),
+	      "ディレクトリは張らない");
+	// 名前は大小文字を区別して確かめる。macOSの既定は区別しないため、
+	// パスで開く検査では大文字の別名がなくても通ってしまう。
+	check(directory_has_exact_name(core_dir, "SUBSYS_B.rom"),
+	      "小文字のROMを元の名前で張る");
+	// コアは大文字の名前で開く。macOSでは小文字のリンク1本で解決でき、
+	// Linuxでは大文字の別名が要る。ここでは結果だけを見る。
+	check(is_symlink_to(core_dir + "SUBSYS_B.ROM", rom_a + "/SUBSYS_B.rom"),
+	      "小文字のROMを大文字の名前で開ける");
+	// コアは USERDIC.DAT を自分で書き直す。守るべきなのは中身ではなく、
+	// 「リンクにしないこと」と「利用者のROMディレクトリへ書かせないこと」。
+	check(is_regular_file(learn_data), "USERDIC.DAT をリンクに置き換えない");
+	check(read_file(rom_a + "/USERDIC.DAT") == "利用者のROMディレクトリ側",
+	      "利用者のROMディレクトリへ書き込ませない");
+
+	bfm_stop(session);
+	bfm_destroy(session);
+
+	// 別のROMディレクトリへ張り直す。
+	bfm_session* second = make_session(nullptr, 0, 0, rom_b.c_str());
+	if (second == nullptr) {
+		check(false, "2回目の生成ができる");
+		return;
+	}
+	bfm_start(second);
+	check(wait_for_state(second, BFM_STATE_RUNNING, 5000), "張り直し後も running になる");
+
+	check(!is_symlink_to(core_dir + "INITIATE.ROM", rom_a + "/INITIATE.ROM"),
+	      "古いリンクを外す");
+	check(is_symlink_to(core_dir + "EXTSUB.ROM", rom_b + "/EXTSUB.ROM"),
+	      "新しいリンクを張る");
+	check(is_regular_file(learn_data), "張り直しでも USERDIC.DAT を消さない");
+	check(is_regular_file(keep_me) && read_file(keep_me) == keep_content,
+	      "張り直しで通常ファイルを消さない");
+
+	bfm_stop(second);
+	bfm_destroy(second);
+}
+
+// --- 11. ブートモード ---
+void test_boot_mode()
+{
+	group("ブートモード");
+
+	bfm_create_options options{};
+	options.home_dir = g_home.c_str();
+	options.boot_mode = 99;
+	bfm_session* invalid = nullptr;
+	check(bfm_create(&options, &invalid) == BFM_ERR_INVALID_ARGUMENT,
+	      "未定義のブートモードは invalidArgument");
+
+	bfm_session* session = make_session();
+	if (session == nullptr) {
+		check(false, "生成できる");
+		return;
+	}
+	bfm_start(session);
+	check(wait_for_state(session, BFM_STATE_RUNNING, 5000), "running へ遷移する");
+
+	bfm_command command{};
+	command.kind = BFM_CMD_SET_BOOT_MODE;
+	command.arg0 = BFM_BOOT_DOS;
+	uint64_t id = 0;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "DOSブートを投入できる");
+	int32_t code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_OK, "ブートモードの変更が成功で完了する");
+
+	command.arg0 = 42;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "不正値も受理はする");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "不正値の完了通知が届く");
+	check(code == BFM_ERR_INVALID_ARGUMENT, "不正なブートモードは invalidArgument で完了");
+
+	bfm_stop(session);
+	bfm_destroy(session);
+}
+
+// --- 別プロセスで行う検査 ---
+//
+// home_dir はプロセス全体で1つに固定されるため、書込み不能な home_dir を
+// 最初の bfm_create で渡す必要がある。
+void test_unwritable_home()
+{
+	group("書込み不能な home_dir");
+
+	// 通常ファイルの配下はディレクトリにできないため、必ず書込みに失敗する。
+	// root権限でも結果が変わらず、CIで再現できる。
+	bfm_session* session = make_session();
+	check(session != nullptr, "生成自体は成功する（失敗はCore threadで判明する）");
+	if (session == nullptr) {
+		return;
+	}
+
+	check(bfm_start(session) == BFM_OK, "起動要求は受理される");
+	check(wait_for_state(session, BFM_STATE_FAILED, 5000), "failed へ遷移する");
+
+	bool saw_error = false;
+	bfm_event event{};
+	while (bfm_poll_event(session, &event) == BFM_OK) {
+		if (event.kind == BFM_EVENT_ERROR && event.code == BFM_ERR_CORE_FAILED) {
+			saw_error = true;
+		}
+	}
+	check(saw_error, "coreFailed のエラーイベントを通知する");
+
+	bfm_destroy(session);
+	check(true, "failed 状態から破棄できる");
+}
+
+void test_home_dir_is_process_wide()
+{
+	group("home_dir はプロセス全体で1つ");
+
+	bfm_session* first = make_session();
+	check(first != nullptr, "1つ目を生成できる");
+	bfm_destroy(first);
+
+	bfm_session* other = make_session((g_home + "/other").c_str());
+	check(other == nullptr, "違う home_dir は invalidState で拒否する");
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -474,6 +739,14 @@ int main(int argc, char** argv)
 	}
 	g_home = argv[1];
 
+	// home_dir を固定してしまう検査は別プロセスで行う。
+	if (argc >= 3 && std::strcmp(argv[2], "--unwritable-home") == 0) {
+		g_home = "/dev/null/bubi-unwritable";
+		test_unwritable_home();
+		std::printf("\n%s\n", failures == 0 ? "すべて合格" : "失敗あり");
+		return failures == 0 ? 0 : 1;
+	}
+
 	test_argument_validation();
 	test_lifecycle();
 	test_repeated_cycles();
@@ -483,6 +756,9 @@ int main(int argc, char** argv)
 	test_command_queue_saturation();
 	test_ui_stall();
 	test_single_live_session();
+	test_rom_wiring();
+	test_boot_mode();
+	test_home_dir_is_process_wide();
 
 	std::printf("\n%s\n", failures == 0 ? "すべて合格" : "失敗あり");
 	return failures == 0 ? 0 : 1;

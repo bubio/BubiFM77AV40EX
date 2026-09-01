@@ -61,6 +61,15 @@ typedef enum {
 } bfm_reset_kind;
 
 /*
+ * ブートモード（specification.md SYS-04）。値はupstreamの
+ * config.boot_mode と同じで、コアはリセット時にこれを読む。
+ */
+typedef enum {
+	BFM_BOOT_BASIC = 0,
+	BFM_BOOT_DOS = 1
+} bfm_boot_mode;
+
+/*
  * コマンド種別。design.md 4.2 の6分類を上位バイトで区切る。
  * WP1で実装するのは 0x01xx のリセットだけであり、他は予約である。
  * 予約値は enum として存在するが bfm_send_command は BFM_ERR_UNSUPPORTED を
@@ -74,7 +83,7 @@ typedef enum {
 	/* 実行 */
 	BFM_CMD_SET_SPEED_MULTIPLIER = 0x0200,   /* M3 SYS-05 */
 	BFM_CMD_SET_FULL_SPEED = 0x0201,         /* M3 SYS-06 */
-	BFM_CMD_SET_BOOT_MODE = 0x0202,          /* WP2 SYS-04 */
+	BFM_CMD_SET_BOOT_MODE = 0x0202,          /* WP2 SYS-04。arg0 は bfm_boot_mode */
 	BFM_CMD_SET_CPU_TYPE = 0x0203,           /* M3 SYS-03 */
 
 	/* 媒体 */
@@ -151,8 +160,26 @@ typedef struct {
 	 * コアがアプリケーションデータを置く位置。ホストが必ず決める。
 	 * 空文字やNULLは受け付けない。upstreamの既定に委ねると
 	 * ~/CommonSourceCodeProject/ を作ってしまい design.md 11.3 と食い違う。
+	 *
+	 * upstreamの get_application_path() は初回呼出しで値を固定するため、
+	 * この値はプロセス全体で1つに限る。2回目以降の bfm_create が違う値を
+	 * 渡した場合は BFM_ERR_INVALID_STATE を返す。変更にはプロセス再起動が要る。
 	 */
 	const char* home_dir;
+
+	/*
+	 * 利用者が選んだROMディレクトリ。NULLまたは空なら結線しない。
+	 *
+	 * コアはROMを1つのディレクトリからしか読まないため、ブリッジが
+	 * 作業ディレクトリを用意し、ここの各ファイルへシンボリックリンクを
+	 * 張る。原本は複製せず元の位置に残す（design.md 16.1）。
+	 * ROMの検証はホスト側の責務であり、ここでは行わない。
+	 */
+	const char* rom_dir;
+
+	/* 起動時のブートモード（bfm_boot_mode）。既定は BFM_BOOT_BASIC。 */
+	int32_t boot_mode;
+
 	/* キュー上限。0なら既定値（コマンド64、イベント256）。 */
 	uint32_t command_queue_capacity;
 	uint32_t event_queue_capacity;
@@ -177,6 +204,15 @@ BFM_API bfm_result bfm_send_command(bfm_session* session, const bfm_command* com
 BFM_API bfm_result bfm_poll_event(bfm_session* session, bfm_event* out);
 
 BFM_API int32_t bfm_get_state(bfm_session* session);
+
+/*
+ * コアが実際にROMを読み USERDIC.DAT を書くディレクトリを、終端NUL付きで
+ * out へ書く。連結規則はupstreamの get_application_path() が決めるため、
+ * ホスト側で組み立てず必ずここから得ること。
+ * out_size が足りない場合は BFM_ERR_INVALID_ARGUMENT を返す。
+ */
+BFM_API bfm_result bfm_get_core_directory(bfm_session* session, char* out,
+                                          uint32_t out_size);
 
 typedef struct {
 	uint64_t frames_run;
