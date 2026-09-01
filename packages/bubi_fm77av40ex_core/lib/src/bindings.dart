@@ -87,9 +87,9 @@ final class BubiCoreBindings {
           >('bfm_acquire_video_frame')
           .asFunction(),
       releaseVideoFrame = library
-          .lookup<
-            NativeFunction<Void Function(Pointer<BfmSession>, Uint64)>
-          >('bfm_release_video_frame')
+          .lookup<NativeFunction<Void Function(Pointer<BfmSession>, Uint64)>>(
+            'bfm_release_video_frame',
+          )
           .asFunction(),
       videoGeneration = library
           .lookup<NativeFunction<Uint64 Function(Pointer<BfmSession>)>>(

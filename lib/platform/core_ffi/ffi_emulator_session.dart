@@ -10,6 +10,7 @@ import '../../emulator/emulator_session.dart';
 import '../../emulator/emulator_stats.dart';
 import '../../emulator/session_state.dart';
 import 'native_conversions.dart';
+import 'video_texture_attacher.dart';
 
 /// C ABI（native/bridge/）で実装した [EmulatorSession]。
 ///
@@ -33,6 +34,11 @@ class FfiEmulatorSession implements EmulatorSession {
   /// [romDir] は利用者が選んだROMディレクトリのOSパス。
   /// null なら結線せず、コアは読めるROMがないまま起動を試みる。
   /// ROMの検証は `RomInventory` の責務で、ここでは行わない。
+  ///
+  /// [textures] は [attachVideoTexture] の実装先。渡さなければ
+  /// [attachVideoTexture] は呼べない（`EmulatorErrorCode.invalidState`）。
+  /// `package:flutter`に依存しないここでは既定値を持てないため、
+  /// アプリ側の組み立て（`lib/app/bootstrap.dart`）が渡す。
   factory FfiEmulatorSession.create({
     required String homeDir,
     String? romDir,
@@ -41,7 +47,7 @@ class FfiEmulatorSession implements EmulatorSession {
     int commandQueueCapacity = 0,
     int eventQueueCapacity = 0,
     Duration pollInterval = const Duration(milliseconds: 16),
-    BubiVideoTextures textures = const BubiVideoTextures(),
+    VideoTextureAttacher? textures,
   }) {
     if (homeDir.isEmpty) {
       throw const EmulatorException(
@@ -85,7 +91,7 @@ class FfiEmulatorSession implements EmulatorSession {
   }
 
   final BubiCoreBindings _bindings;
-  final BubiVideoTextures _textures;
+  final VideoTextureAttacher? _textures;
   int? _textureId;
   final Duration _pollInterval;
 
@@ -260,7 +266,14 @@ class FfiEmulatorSession implements EmulatorSession {
     if (existing != null) {
       return existing;
     }
-    final id = await _textures.attach(_handle.address);
+    final textures = _textures;
+    if (textures == null) {
+      throw const EmulatorException(
+        EmulatorErrorCode.invalidState,
+        'textures を渡さずに生成したセッションはTextureへ接続できません。',
+      );
+    }
+    final id = await textures.attach(_handle.address);
     _textureId = id;
     return id;
   }
@@ -272,7 +285,7 @@ class FfiEmulatorSession implements EmulatorSession {
       return; // 解除は冪等
     }
     _textureId = null;
-    await _textures.detach(id);
+    await _textures?.detach(id);
   }
 
   @override
