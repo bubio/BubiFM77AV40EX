@@ -120,5 +120,44 @@
   "displayFitFill": "Fill the area",
   "ledInsert": "INS",
   "ledKana": "KANA",
-  "ledCaps": "CAPS"
+  "ledCaps": "CAPS",
+  "fddDriveLabel": "FD{driveNumber}",
+  "@fddDriveLabel": {
+    "description": "Label for a floppy drive slot.",
+    "placeholders": {
+      "driveNumber": {
+        "type": "int"
+      }
+    }
+  },
+  "fddEmpty": "Empty",
+  "@fddEmpty": {
+    "description": "Shown for a drive with no media inserted."
+  },
+  "fddInsert": "Insert…",
+  "@fddInsert": {
+    "description": "Button that opens a file picker to insert media into a drive."
+  },
+  "fddEject": "Eject",
+  "@fddEject": {
+    "description": "Button that ejects the media from a drive."
+  },
+  "statusViewFps": "View {fps} fps",
+  "@statusViewFps": {
+    "description": "Status bar: frames actually published to the screen per second.",
+    "placeholders": {
+      "fps": {
+        "type": "int"
+      }
+    }
+  },
+  "statusCoreFps": "Core {fps} fps",
+  "@statusCoreFps": {
+    "description": "Status bar: frames the emulator core advanced per second, regardless of whether the screen changed.",
+    "placeholders": {
+      "fps": {
+        "type": "int"
+      }
+    }
+  }
 }

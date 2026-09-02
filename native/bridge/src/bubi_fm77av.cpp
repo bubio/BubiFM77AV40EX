@@ -44,6 +44,12 @@ constexpr uint32_t kDefaultCommandCapacity = 64;
 constexpr uint32_t kDefaultEventCapacity = 256;
 
 /*
+ * P0で受け付けるFDDドライブ数（FD1、FD2）。design.md 9.1・development_plan.md
+ * WP5はFD1/FD2に限り、upstreamのUSE_FLOPPY_DISK（4）のうち先頭2つだけを使う。
+ */
+constexpr int64_t kFddDriveCount = 2;
+
+/*
  * upstream の cpp_homedir はプロセス全域の変数であり、EMU の初回生成で
  * パスが確定する。同時に2つのセッションを持つと home_dir が競合するため、
  * 生存セッションを1つに制限する。複数セッションが必要になった時点で、
@@ -283,6 +289,17 @@ struct bfm_session {
 	// 直近に通知したLED。初期値は「まだ読んでいない」を表す。
 	uint32_t led_status = 0xffffffffu;
 
+	/*
+	 * FD1/FD2アクセス状態の累積ビット。Core threadが毎フレームORで
+	 * 足し込み、bfm_get_media_accessを呼んだ側がexchangeで読み取って
+	 * 0へ戻す（read-and-clear）。VM::is_floppy_disk_accessed()
+	 * （MB8877::read_signal）自体が呼ぶたびにフラグを消費する
+	 * read-and-clearであり、Core thread以外から直接読めないため、
+	 * 単一の読み手（Core thread）が積算し、複数の消費者（Dartの
+	 * ポーリング）はここを介して安全に読む。
+	 */
+	std::atomic<uint32_t> media_access_bits{0};
+
 	// --- Core threadだけが触る ---
 	EMU* emu = nullptr;
 
@@ -378,6 +395,56 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 		} else {
 			osd->key_up(key_code, false);
 		}
+		break;
+	}
+	case BFM_CMD_INSERT_FDD: {
+		// design.md 9.1: D88/D77/D8E/1DDだけを対象とする。呼び出し側が
+		// 書き戻し用の作業コピーを用意して text へ渡す（原本には触れない）。
+		if (queued.arg0 < 0 || queued.arg0 >= kFddDriveCount || queued.arg1 < 0 ||
+		    queued.text.empty()) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		const int drv = static_cast<int>(queued.arg0);
+		if (session->emu->is_floppy_disk_inserted(drv)) {
+			// 二重挿入は拒否する。upstreamのEMU::open_floppy_diskは
+			// 挿入済みなら自動排出してから0.5秒待つ実機の間合いを再現するが、
+			// 書き戻しの完了を呼び出し側が観測できなくなるため使わない。
+			code = BFM_ERR_INVALID_STATE;
+			break;
+		}
+		session->emu->open_floppy_disk(drv, queued.text.c_str(), static_cast<int>(queued.arg1));
+		if (!session->emu->is_floppy_disk_inserted(drv)) {
+			// コアが形式を受理しなかった（不正なD88など）。
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		bfm_event event{};
+		event.kind = BFM_EVENT_MEDIA_CHANGED;
+		event.arg0 = drv;
+		event.arg1 = 1;
+		session->push_event(event);
+		break;
+	}
+	case BFM_CMD_EJECT_FDD: {
+		if (queued.arg0 < 0 || queued.arg0 >= kFddDriveCount) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		const int drv = static_cast<int>(queued.arg0);
+		if (!session->emu->is_floppy_disk_inserted(drv)) {
+			// 未挿入のドライブへの排出は冪等にOKとする（bfm_stopと同じ方針）。
+			break;
+		}
+		// close_floppy_diskは同期的にDISK::close()を呼び、変更があれば
+		// ここで書き戻しを終える。戻った時点で呼び出し側は作業コピーの
+		// 内容を原本へ原子的に反映してよい。
+		session->emu->close_floppy_disk(drv);
+		bfm_event event{};
+		event.kind = BFM_EVENT_MEDIA_CHANGED;
+		event.arg0 = drv;
+		event.arg1 = 0;
+		session->push_event(event);
 		break;
 	}
 	case BFM_CMD_SET_BOOT_MODE:
@@ -502,6 +569,31 @@ void publish_led_if_changed(bfm_session* session, VM_TEMPLATE* vm)
 }
 
 /*
+ * FD1/FD2のアクセス状態（design.md WP5「アクセス状態」）。
+ *
+ * LEDとは違い、VM::is_floppy_disk_accessed()（MB8877::read_signal、
+ * ch以外の分岐）は読むたびに各ドライブのaccessフラグを消費して
+ * falseへ戻すread-and-clearである。publish_led_if_changedと同じ
+ * 「変わっていれば通知する」を単純に適用すると、実アクセス中は
+ * 1フレームおきに立って落ちる高頻度イベントになり、design.md 4.3が
+ * 禁じる高頻度データをイベントキューへ流してしまう
+ * （256件で古いものから捨てる設計のため events_dropped を押し上げる）。
+ *
+ * そのためイベントにはせず、毎フレームORで累積するだけにとどめ、
+ * 消費（read-and-clear）は bfm_get_media_access を呼んだ側（Dartの
+ * UIレート・ポーリング）に委ねる。
+ */
+void accumulate_media_access(bfm_session* session, VM_TEMPLATE* vm)
+{
+	(void)vm;
+	session->note_vm_access();
+	const uint32_t status = session->emu->is_floppy_disk_accessed();
+	if (status != 0) {
+		session->media_access_bits.fetch_or(status);
+	}
+}
+
+/*
  * design.md 16.1「音声はVMの駆動源にしない」。
  *
  * vm->create_sound()は要求した分（kAudioSamplesPerCall）が
@@ -598,6 +690,7 @@ void core_thread_main(bfm_session* session)
 
 			publish_frame_if_changed(session, vm);
 			publish_led_if_changed(session, vm);
+			accumulate_media_access(session, vm);
 			publish_audio_if_ready(session, vm);
 
 
@@ -882,6 +975,20 @@ BFM_API bfm_result bfm_read_audio(bfm_session* session, int16_t* out, uint32_t f
 		return BFM_ERR_INVALID_ARGUMENT;
 	}
 	session->audio.pop(out, frame_capacity);
+	return BFM_OK;
+}
+
+/*
+ * FD1/FD2アクセス状態のread-and-clearポーリング（design.md WP5、
+ * accumulate_media_accessの注記）。ビット0=FD1、ビット1=FD2。
+ * 呼ぶたびに累積を0へ戻すため、消費者は1つに保つこと。
+ */
+BFM_API bfm_result bfm_get_media_access(bfm_session* session, uint32_t* out_bits)
+{
+	if (session == nullptr || out_bits == nullptr) {
+		return BFM_ERR_INVALID_ARGUMENT;
+	}
+	*out_bits = session->media_access_bits.exchange(0);
 	return BFM_OK;
 }
 

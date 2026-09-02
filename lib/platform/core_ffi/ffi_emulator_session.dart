@@ -151,7 +151,10 @@ class FfiEmulatorSession implements EmulatorSession {
       throw EmulatorException(code, describeErrorCode(code));
     }
     _lastKnownState = SessionState.starting;
-    _pollTimer ??= Timer.periodic(_pollInterval, (_) => _drainEvents());
+    _pollTimer ??= Timer.periodic(_pollInterval, (_) {
+      _drainEvents();
+      _pollMediaAccess();
+    });
     await _startAudio();
   }
 
@@ -256,6 +259,50 @@ class FfiEmulatorSession implements EmulatorSession {
     try {
       command.ref.kind = BfmCommandKind.setBootMode;
       command.ref.arg0 = bootModeToNative(mode);
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
+  Future<int> insertFdd(int drive, String imagePath, {int bank = 0}) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    final pathUtf8 = imagePath.toNativeUtf8();
+    try {
+      command.ref.kind = BfmCommandKind.insertFdd;
+      command.ref.arg0 = drive;
+      command.ref.arg1 = bank;
+      command.ref.text = pathUtf8.cast<Char>();
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(pathUtf8);
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
+  Future<int> ejectFdd(int drive) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = BfmCommandKind.ejectFdd;
+      command.ref.arg0 = drive;
       final result = _bindings.sendCommand(_handle, command, out);
       if (result != BfmResult.ok) {
         final code = errorCodeFromNative(result);
@@ -420,6 +467,28 @@ class FfiEmulatorSession implements EmulatorSession {
       }
     } finally {
       calloc.free(buffer);
+    }
+  }
+
+  /// FD1/FD2アクセス状態をread-and-clearで引き取り、非0のときだけ
+  /// [MediaAccessChanged] を流す（design.md WP5、bfm_get_media_access）。
+  /// 消費者はこのセッション内でここ1箇所に保つこと。
+  void _pollMediaAccess() {
+    if (_disposed) {
+      return;
+    }
+    final out = calloc<Uint32>();
+    try {
+      if (_bindings.getMediaAccess(_handle, out) != BfmResult.ok) {
+        return;
+      }
+      final bits = out.value;
+      if (bits == 0 || _events.isClosed) {
+        return;
+      }
+      _events.add(MediaAccessChanged(driveSetFromBits(bits)));
+    } finally {
+      calloc.free(out);
     }
   }
 

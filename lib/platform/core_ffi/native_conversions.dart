@@ -69,7 +69,18 @@ EmulatorEvent emulatorEventFromNative({
   BfmEventKind.error => EmulatorErrorOccurred(errorCodeFromNative(code)),
   BfmEventKind.screenModeChanged => ScreenModeChanged(arg0, arg1),
   BfmEventKind.ledChanged => LedStateChanged(LedState.fromBits(arg0)),
+  BfmEventKind.mediaChanged => MediaChanged(arg0, inserted: arg1 != 0),
+  // BFM_EVENT_MEDIA_ACCESS_CHANGEDは未使用（bubi_fm77av.h参照）。
+  // アクセス状態はFfiEmulatorSessionがbfm_get_media_accessを
+  // ポーリングして合成する（native_conversions.dartのdriveSetFromBits）。
   _ => UnhandledEmulatorEvent(kind),
+};
+
+/// FD1/FD2アクセス状態のビット合成（0x1=FD1、0x2=FD2）をドライブ番号の
+/// 集合へ変換する。
+Set<int> driveSetFromBits(int bits) => {
+  for (var drive = 0; drive < 2; drive++)
+    if ((bits & (1 << drive)) != 0) drive,
 };
 
 /// エラーコードに対応する日本語以外の識別可能な説明。

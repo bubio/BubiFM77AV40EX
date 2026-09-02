@@ -44,6 +44,19 @@ abstract class EmulatorSession {
   /// キーを離す。[vkCode] は win32 の仮想キーコード（INP-01）。
   Future<void> keyUp(int vkCode);
 
+  /// FD1/FD2へ媒体を挿入し、コマンドの連番を返す（FDD-01）。
+  ///
+  /// [drive] は0=FD1、1=FD2。[imagePath] はコアがそのまま開くOSパスで、
+  /// D88/D77/D8E/1DDの書き戻し用作業コピーを用意するのは呼び出し側
+  /// （`FfiEmulatorSession`）の責務（design.md 9.1）。対象ドライブに
+  /// 挿入済みなら[EmulatorException]を`invalidState`で投げる。
+  Future<int> insertFdd(int drive, String imagePath, {int bank = 0});
+
+  /// FD1/FD2から媒体を排出し、コマンドの連番を返す（FDD-01）。
+  ///
+  /// 未挿入のドライブへの排出は冪等に成功する。
+  Future<int> ejectFdd(int drive);
+
   /// 観測値を読み出す。
   EmulatorStats readStats();
 

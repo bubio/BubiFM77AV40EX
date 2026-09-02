@@ -10,6 +10,8 @@ import '../features/session/rom_settings_controller.dart';
 import '../features/session/session_providers.dart';
 import '../platform/persistence/file_system_rom_scanner.dart';
 import '../platform/persistence/os_app_data_paths.dart';
+import '../platform/persistence/os_cache_workspace.dart';
+import '../platform/persistence/os_external_file_access.dart';
 import '../platform/core_ffi/bubi_audio_sink.dart';
 import '../platform/core_ffi/bubi_video_texture_attacher.dart';
 import '../platform/core_ffi/ffi_emulator_session.dart';
@@ -28,12 +30,17 @@ Future<Widget> buildApp({RomManifest? romManifest}) async {
   final appDataPaths = OsAppDataPaths();
   const scanner = FileSystemRomScanner();
   const reveal = FileManagerReveal();
+  final externalFileAccess = OsExternalFileAccess();
+  final cacheWorkspace = OsCacheWorkspace(appDataPaths: appDataPaths);
+  await cacheWorkspace.purgeAbandonedWorkspaces();
 
   return ProviderScope(
     overrides: [
       emulatorControllerProvider.overrideWith(
         () => EmulatorController(
           appDataPaths: appDataPaths,
+          externalFileAccess: externalFileAccess,
+          cacheWorkspace: cacheWorkspace,
           createSession:
               ({
                 required String homeDir,

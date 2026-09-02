@@ -62,6 +62,31 @@ class LedStateChanged extends EmulatorEvent {
   final LedState state;
 }
 
+/// FD1/FD2の挿入・排出が変わった（FDD-01）。
+///
+/// [drive] は0=FD1、1=FD2。ネイティブ側はこの通知を、挿入または
+/// 排出のコマンドが実際にコアへ反映された時にだけ出す（design.md 9.1）。
+class MediaChanged extends EmulatorEvent {
+  const MediaChanged(this.drive, {required this.inserted});
+
+  final int drive;
+  final bool inserted;
+}
+
+/// FD1/FD2が直近のポーリング間隔でアクセスされた（アクセスランプの点滅）。
+///
+/// ネイティブ側のアクセスフラグはread-and-clearで、読むたびに消費される
+/// （native/bridge/include/bubi_fm77av.hのbfm_get_media_access）。そのため
+/// これは継続的な「アクセス中」状態ではなく、「このドライブへの操作が
+/// あった」という一過性の通知である。持続的なランプ点灯にするかは
+/// 受け手（WP6のUI）が自分でタイムアウトを持って表現する。
+/// [accessedDrives] は空にならない（空ならこのイベント自体を出さない）。
+class MediaAccessChanged extends EmulatorEvent {
+  const MediaAccessChanged(this.accessedDrives);
+
+  final Set<int> accessedDrives;
+}
+
 /// まだ Dart 側で解釈していない種別のイベント。
 ///
 /// design.md 4.3 が挙げるイベントのうち、担当WPが未着手のものはここへ入る。

@@ -113,6 +113,11 @@ final class BubiCoreBindings {
               )
             >
           >('bfm_get_audio_format')
+          .asFunction(),
+      getMediaAccess = library
+          .lookup<
+            NativeFunction<Int32 Function(Pointer<BfmSession>, Pointer<Uint32>)>
+          >('bfm_get_media_access')
           .asFunction();
 
   /// 既定のライブラリを開いて束縛する。
@@ -137,6 +142,10 @@ final class BubiCoreBindings {
   final int Function(Pointer<BfmSession>, Pointer<Int16>, int) readAudio;
   final int Function(Pointer<BfmSession>, Pointer<Uint32>, Pointer<Uint32>)
   getAudioFormat;
+
+  /// FD1/FD2アクセス状態のread-and-clearポーリング（bfm_get_media_access）。
+  /// 消費者は1つに保つこと。
+  final int Function(Pointer<BfmSession>, Pointer<Uint32>) getMediaAccess;
 }
 
 /// ネイティブライブラリを開く。

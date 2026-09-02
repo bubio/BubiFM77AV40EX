@@ -119,6 +119,26 @@ bool is_regular_file(const std::string& path)
 	return lstat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
 }
 
+/*
+ * BIOS不要の最小D88（development_plan.md WP5「BIOS不要の公開可能な最小
+ * テストイメージ」）。トラックを1つも持たない空ディスクで、レイアウトは
+ * upstream の EMU::create_blank_floppy_disk（emu.cpp）と同じにする。
+ * 資産をコミットせず、テストコードでその場に作る。
+ */
+bool write_blank_d88(const std::string& path)
+{
+	std::string header;
+	header.append("BLANK", 5);
+	header.append(17 - 5, '\0'); // title[17]
+	header.append(9, '\0');      // rsrv[9]
+	header.push_back('\0');      // protect
+	header.push_back('\0');      // type = MEDIA_TYPE_2D
+	const uint32_t size = static_cast<uint32_t>(17 + 9 + 1 + 1 + 4 + 164 * 4);
+	header.append(reinterpret_cast<const char*>(&size), sizeof(size));
+	header.append(164 * 4, '\0'); // trkptr[164]、全トラック未使用
+	return write_file(path, header);
+}
+
 std::string core_directory_of(bfm_session* session)
 {
 	char buffer[4096];
@@ -320,14 +340,15 @@ void test_command_events()
 	          == BFM_ERR_INVALID_ARGUMENT,
 	      "未定義のリセット種別は invalidArgument");
 
-	// 型として定義済みだが未実装のコマンドは unsupported で完了する。
-	bfm_command media{};
-	media.kind = BFM_CMD_INSERT_FDD;
-	media.text = "/dev/null/not-a-real-image";
-	uint64_t media_id = 0;
-	check(bfm_send_command(session, &media, &media_id) == BFM_OK, "未実装コマンドも受け付ける");
+	// 型として定義済みだが未実装（M3以降）のコマンドは unsupported で完了する。
+	// BFM_CMD_INSERT_FDD/EJECT_FDDはWP5で実装済みのため test_media() で検査する。
+	bfm_command write_protect{};
+	write_protect.kind = BFM_CMD_SET_FDD_WRITE_PROTECT;
+	uint64_t unsupported_id = 0;
+	check(bfm_send_command(session, &write_protect, &unsupported_id) == BFM_OK,
+	      "未実装コマンドも受け付ける");
 	code = -1;
-	check(wait_for_completion(session, media_id, 5000, &code), "未実装コマンドの完了通知が届く");
+	check(wait_for_completion(session, unsupported_id, 5000, &code), "未実装コマンドの完了通知が届く");
 	check(code == BFM_ERR_UNSUPPORTED, "未実装コマンドは unsupported で完了する");
 
 	bfm_stop(session);
@@ -921,6 +942,153 @@ void test_audio()
 	bfm_destroy(session);
 }
 
+// --- 14. FDD媒体（WP5） ---
+//
+// C ABIの挿入・排出・アクセス状態の配線を検査する。書き戻しの原子性
+// （CacheWorkspace経由のrename）はDart側の責務であり、design.md 16.1に
+// 記録する。ここではコアが受理・排出したことと、イベント／エラーコードが
+// design.md 9.1のとおり届くことだけを確かめる。
+void test_media()
+{
+	group("FDD媒体");
+
+	const std::string media_dir = g_home + "/media-test";
+	mkdir(media_dir.c_str(), 0700);
+	const std::string fd1_image = media_dir + "/fd1.d88";
+	const std::string fd2_image = media_dir + "/fd2.d88";
+	check(write_blank_d88(fd1_image), "FD1用のテストイメージを作れる");
+	check(write_blank_d88(fd2_image), "FD2用のテストイメージを作れる");
+
+	bfm_session* session = make_session();
+	if (session == nullptr) {
+		check(false, "生成できる");
+		return;
+	}
+	bfm_start(session);
+	check(wait_for_state(session, BFM_STATE_RUNNING, 5000), "running へ遷移する");
+
+	// id 完了までのあいだに届いた全イベントを集め、呼び手が両方（挿入通知と
+	// 完了通知）を検査できるようにする。wait_for_completion() はcommand_id
+	// 一致以外のイベントを読み捨てるため、ここでは使わない。
+	auto send_and_collect = [&](const bfm_command& command, std::vector<bfm_event>* out) -> int32_t {
+		uint64_t id = 0;
+		if (bfm_send_command(session, &command, &id) != BFM_OK) {
+			return -1;
+		}
+		for (int i = 0; i < 5000; ++i) {
+			bfm_event event{};
+			while (bfm_poll_event(session, &event) == BFM_OK) {
+				out->push_back(event);
+				if (event.kind == BFM_EVENT_COMMAND_COMPLETED && event.command_id == id) {
+					return event.code;
+				}
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		return -1;
+	};
+
+	auto has_media_changed = [](const std::vector<bfm_event>& events, int64_t drv,
+	                            int64_t inserted) {
+		for (const auto& event : events) {
+			if (event.kind == BFM_EVENT_MEDIA_CHANGED && event.arg0 == drv &&
+			    event.arg1 == inserted) {
+				return true;
+			}
+		}
+		return false;
+	};
+
+	// FD1へ挿入する。
+	bfm_command insert_fd1{};
+	insert_fd1.kind = BFM_CMD_INSERT_FDD;
+	insert_fd1.arg0 = 0; // FD1
+	insert_fd1.arg1 = 0; // bank 0
+	insert_fd1.text = fd1_image.c_str();
+	std::vector<bfm_event> events;
+	check(send_and_collect(insert_fd1, &events) == BFM_OK, "FD1への挿入が成功で完了する");
+	check(has_media_changed(events, 0, 1), "FD1挿入のMEDIA_CHANGEDが届く");
+
+	// 挿入済みドライブへの再挿入は拒否する（先に排出させる）。
+	events.clear();
+	check(send_and_collect(insert_fd1, &events) == BFM_ERR_INVALID_STATE,
+	      "挿入済みドライブへの再挿入は invalidState");
+
+	// FD2は独立して挿入できる。
+	bfm_command insert_fd2{};
+	insert_fd2.kind = BFM_CMD_INSERT_FDD;
+	insert_fd2.arg0 = 1; // FD2
+	insert_fd2.arg1 = 0;
+	insert_fd2.text = fd2_image.c_str();
+	events.clear();
+	check(send_and_collect(insert_fd2, &events) == BFM_OK, "FD2への挿入が成功で完了する");
+	check(has_media_changed(events, 1, 1), "FD2挿入のMEDIA_CHANGEDが届く");
+
+	// 範囲外のドライブは invalidArgument。
+	bfm_command insert_out_of_range = insert_fd1;
+	insert_out_of_range.arg0 = 2;
+	events.clear();
+	check(send_and_collect(insert_out_of_range, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "範囲外のドライブは invalidArgument");
+
+	// 負のバンクは invalidArgument。
+	bfm_command insert_bad_bank = insert_fd1;
+	insert_bad_bank.arg0 = 0;
+	insert_bad_bank.arg1 = -1;
+	events.clear();
+	check(send_and_collect(insert_bad_bank, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "負のバンクは invalidArgument（挿入済みのため invalidState 以前に弾く必要はない）");
+
+	// 存在しないパスはコアが受理せず invalidArgument で完了する。
+	bfm_command eject_fd1{};
+	eject_fd1.kind = BFM_CMD_EJECT_FDD;
+	eject_fd1.arg0 = 0;
+	events.clear();
+	check(send_and_collect(eject_fd1, &events) == BFM_OK, "FD1の排出が成功で完了する");
+	check(has_media_changed(events, 0, 0), "FD1排出のMEDIA_CHANGEDが届く");
+
+	const std::string missing_image = media_dir + "/does-not-exist.d88";
+	bfm_command insert_missing{};
+	insert_missing.kind = BFM_CMD_INSERT_FDD;
+	insert_missing.arg0 = 0;
+	insert_missing.arg1 = 0;
+	insert_missing.text = missing_image.c_str();
+	events.clear();
+	check(send_and_collect(insert_missing, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "存在しないパスは invalidArgument（コアが受理しない）");
+	check(!has_media_changed(events, 0, 1), "受理されなければMEDIA_CHANGEDは届かない");
+
+	// 排出済みドライブへの再挿入は成功する（ドライブが解放されている）。
+	events.clear();
+	check(send_and_collect(insert_fd1, &events) == BFM_OK, "排出後の再挿入は成功する");
+	check(has_media_changed(events, 0, 1), "再挿入のMEDIA_CHANGEDが届く");
+
+	// 未挿入ドライブへの排出は冪等にOKとし、通知は出さない。
+	bfm_command eject_fd2{};
+	eject_fd2.kind = BFM_CMD_EJECT_FDD;
+	eject_fd2.arg0 = 1;
+	events.clear();
+	check(send_and_collect(eject_fd2, &events) == BFM_OK, "FD2の排出が成功で完了する");
+	events.clear();
+	check(send_and_collect(eject_fd2, &events) == BFM_OK, "未挿入ドライブへの排出も冪等にOK");
+	check(!has_media_changed(events, 1, 0), "未挿入からの排出はMEDIA_CHANGEDを出さない");
+
+	// 範囲外のドライブへの排出も invalidArgument。
+	bfm_command eject_out_of_range{};
+	eject_out_of_range.kind = BFM_CMD_EJECT_FDD;
+	eject_out_of_range.arg0 = 2;
+	events.clear();
+	check(send_and_collect(eject_out_of_range, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "範囲外のドライブへの排出は invalidArgument");
+
+	bfm_stats stats{};
+	check(bfm_get_stats(session, &stats) == BFM_OK, "統計を取得できる");
+	check(stats.vm_access_violations == 0, "VM操作はCore threadに閉じている");
+
+	bfm_stop(session);
+	bfm_destroy(session);
+}
+
 int main(int argc, char** argv)
 {
 	if (argc < 2) {
@@ -951,6 +1119,7 @@ int main(int argc, char** argv)
 	test_video();
 	test_input();
 	test_audio();
+	test_media();
 	test_home_dir_is_process_wide();
 
 	std::printf("\n%s\n", failures == 0 ? "すべて合格" : "失敗あり");

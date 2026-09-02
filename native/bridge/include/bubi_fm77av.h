@@ -86,7 +86,22 @@ typedef enum {
 	BFM_CMD_SET_BOOT_MODE = 0x0202,          /* WP2 SYS-04。arg0 は bfm_boot_mode */
 	BFM_CMD_SET_CPU_TYPE = 0x0203,           /* M3 SYS-03 */
 
-	/* 媒体 */
+	/*
+	 * 媒体。
+	 *
+	 * BFM_CMD_INSERT_FDD: arg0 はドライブ番号（0=FD1、1=FD2）、
+	 * arg1 はD88バンク番号（0始まり）、text は開くファイルの絶対パス。
+	 * design.md 9.1のとおりD88/D77/D8E/1DDだけを対象とし、呼び出し側
+	 * （platform層）が書き戻し用の作業コピーを用意してから渡す。
+	 * 対象ドライブに既に挿入済みなら BFM_ERR_INVALID_STATE を返す
+	 * （先に BFM_CMD_EJECT_FDD で排出させる）。コアが受理しなかった
+	 * 場合（不正な形式など）は BFM_ERR_INVALID_ARGUMENT を返す。
+	 *
+	 * BFM_CMD_EJECT_FDD: arg0 はドライブ番号。未挿入なら何もせず
+	 * BFM_OK を返す（冪等）。挿入中ならコアがそのドライブへ書き戻して
+	 * から排出する。呼び出し側は、この完了イベントを受けてから
+	 * 作業コピーを原本へ原子的に反映すること。
+	 */
 	BFM_CMD_INSERT_FDD = 0x0300,             /* WP5 FDD-01 */
 	BFM_CMD_EJECT_FDD = 0x0301,              /* WP5 FDD-01 */
 	BFM_CMD_SET_FDD_WRITE_PROTECT = 0x0302,  /* M3 FDD-03 */
@@ -137,7 +152,14 @@ typedef enum {
 	BFM_EVENT_COMMAND_COMPLETED = 1,   /* WP1 */
 	BFM_EVENT_ERROR = 2,               /* WP1 */
 	BFM_EVENT_MEDIA_CHANGED = 3,       /* WP5 */
-	BFM_EVENT_MEDIA_ACCESS_CHANGED = 4,/* WP5 */
+	/*
+	 * 予約のみで未使用。FD1/FD2アクセス状態はVM::is_floppy_disk_accessed()
+	 * （MB8877::read_signal）自体が読むたびにフラグを消費するread-and-clear
+	 * のため、イベント化すると実アクセス中は1フレームおきに立って落ちる
+	 * 高頻度イベントになり、design.md 4.3が禁じる高頻度データをここへ
+	 * 流してしまう。代わりに bfm_get_media_access のポーリングで読む。
+	 */
+	BFM_EVENT_MEDIA_ACCESS_CHANGED = 4,/* 未使用。bfm_get_media_access を使う */
 	BFM_EVENT_TAPE_POSITION_CHANGED = 5,/* M7 P2 */
 	BFM_EVENT_FDD_MECHANICAL = 6,      /* M3 AUD-04 */
 	BFM_EVENT_LED_CHANGED = 7,         /* WP3 INP-02 */
@@ -152,8 +174,9 @@ typedef struct {
 	int32_t code;        /* ERROR のとき bfm_result、COMMAND_COMPLETED のとき結果 */
 	uint64_t command_id; /* COMMAND_COMPLETED のとき、対応するコマンドの連番 */
 	int64_t arg0;        /* LIFECYCLE_CHANGED のとき bfm_state、
-	                      * LED_CHANGED のとき0x1=INS/0x2=KANA/0x4=CAPSのビット合成 */
-	int64_t arg1;
+	                      * LED_CHANGED のとき0x1=INS/0x2=KANA/0x4=CAPSのビット合成、
+	                      * MEDIA_CHANGED のときドライブ番号（0=FD1、1=FD2） */
+	int64_t arg1;        /* MEDIA_CHANGED のとき1=挿入、0=排出 */
 } bfm_event;
 
 typedef struct {
@@ -284,6 +307,18 @@ typedef struct {
 } bfm_stats;
 
 BFM_API bfm_result bfm_get_stats(bfm_session* session, bfm_stats* out);
+
+/*
+ * FD1/FD2アクセス状態（design.md WP5「アクセス状態」）。
+ * ビット0=FD1、ビット1=FD2、アクセス（モーターオン相当）中なら1。
+ *
+ * upstreamのMB8877::read_signal()自体が読むたびにフラグを消費する
+ * read-and-clearであり、Core threadが毎フレーム蓄積した値を、
+ * この関数を呼んだ側が読むたびに0へ戻す。BFM_EVENT_MEDIA_ACCESS_CHANGED
+ * イベントは使わない（bubi_fm77av.hの当該コメントを参照）。
+ * 消費者は1つに保つこと。複数箇所から呼ぶと取り合いになる。
+ */
+BFM_API bfm_result bfm_get_media_access(bfm_session* session, uint32_t* out_bits);
 
 /*
  * 音声（design.md 7、16.1「音声はVMの駆動源にしない」）。

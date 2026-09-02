@@ -39,5 +39,11 @@
   "displayFitFill": "領域に合わせる",
   "ledInsert": "INS",
   "ledKana": "KANA",
-  "ledCaps": "CAPS"
+  "ledCaps": "CAPS",
+  "fddDriveLabel": "FD{driveNumber}",
+  "fddEmpty": "未挿入",
+  "fddInsert": "挿入…",
+  "fddEject": "排出",
+  "statusViewFps": "View {fps} fps",
+  "statusCoreFps": "Core {fps} fps"
 }
