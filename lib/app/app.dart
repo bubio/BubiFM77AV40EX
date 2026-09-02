@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,19 +9,38 @@ import '../emulator/session_state.dart';
 import '../features/session/session_providers.dart';
 import '../features/session/widgets/emulator_view.dart';
 import '../features/session/widgets/rom_status_view.dart';
+import '../features/settings/settings_controller.dart';
+import '../features/settings/settings_state.dart';
 import 'l10n/generated/app_localizations.dart';
+import 'l10n/generated/app_localizations_en.dart';
+import 'l10n/generated/app_localizations_ja.dart';
+import 'menu/app_menu_bar.dart';
+import 'menu/menu_catalog.dart';
+import 'menu/platform_application_menu.dart';
+import 'menu/settings_dialog.dart';
 
 /// アプリケーションのルート。
 ///
-/// M1 WP3時点ではROM設定とエミュレーター画面を出す。
-/// ステータスバーとメニューはM2 WP6で追加する。
-class BubiFm77Av40ExApp extends StatelessWidget {
+/// macOS標準Applicationメニュー（About、Settings、Services、Hide系、
+/// Quit）は[PlatformApplicationMenu]がここで一度だけ組み立てる
+/// （design.md 12.1）。`Control / Disk / Device / Host`のアプリ内メニューは
+/// [_Home]が[buildMenuCatalog]から組み立てる。featureは`app`へ依存しない
+/// （design.md 3.1）ため、カタログの組み立ては`app`側に置く。
+class BubiFm77Av40ExApp extends ConsumerWidget {
   const BubiFm77Av40ExApp({super.key});
 
+  static final _navigatorKey = GlobalKey<NavigatorState>();
+
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsControllerProvider);
+    final settingsController = ref.read(settingsControllerProvider.notifier);
+    final l10n = _syncLocalizationsFor(settings.localeMode);
+
+    final materialApp = MaterialApp(
+      navigatorKey: _navigatorKey,
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+      locale: _localeOf(settings.localeMode),
       localizationsDelegates: const [
         AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
@@ -28,6 +50,54 @@ class BubiFm77Av40ExApp extends StatelessWidget {
       supportedLocales: AppLocalizations.supportedLocales,
       home: const _Home(),
     );
+
+    if (!Platform.isMacOS) {
+      return materialApp;
+    }
+    return PlatformApplicationMenu(
+      l10n: l10n,
+      onSettings: () {
+        final dialogContext = _navigatorKey.currentContext;
+        if (dialogContext == null) {
+          return;
+        }
+        showDialog<void>(
+          context: dialogContext,
+          builder: (context) => SettingsDialog(
+            l10n: AppLocalizations.of(context),
+            localeMode: settings.localeMode,
+            onLocaleModeChanged: settingsController.setLocaleMode,
+            masterVolume: settings.masterVolume,
+            onMasterVolumeChanged: settingsController.setMasterVolume,
+          ),
+        );
+      },
+      onQuit: () async {
+        await ref.read(emulatorControllerProvider.notifier).shutdown();
+        exit(0);
+      },
+      child: materialApp,
+    );
+  }
+
+  static Locale? _localeOf(AppLocaleMode mode) {
+    return switch (mode) {
+      AppLocaleMode.system => null,
+      AppLocaleMode.english => const Locale('en'),
+      AppLocaleMode.japanese => const Locale('ja'),
+    };
+  }
+
+  /// macOS標準Applicationメニューのラベル用。`MaterialApp`の外側に置くため
+  /// `Localizations`の非同期読み込みへ頼らず、生成済みの言語別実装を
+  /// 直接選ぶ（design.md 12.3「日英切替時は…実行中に反映する」）。
+  static AppLocalizations _syncLocalizationsFor(AppLocaleMode mode) {
+    final languageCode = switch (mode) {
+      AppLocaleMode.system => PlatformDispatcher.instance.locale.languageCode,
+      AppLocaleMode.english => 'en',
+      AppLocaleMode.japanese => 'ja',
+    };
+    return languageCode == 'ja' ? AppLocalizationsJa() : AppLocalizationsEn();
   }
 }
 
@@ -52,12 +122,35 @@ class _HomeState extends ConsumerState<_Home> {
 
   @override
   Widget build(BuildContext context) {
-    // 起動していればエミュレーター画面、そうでなければROM設定を出す。
-    // 本格的な画面遷移とメニューはWP6で入れる。
+    final l10n = AppLocalizations.of(context);
     final emulator = ref.watch(emulatorControllerProvider);
-    if (emulator.session != SessionState.stopped) {
-      return const EmulatorView();
-    }
-    return const RomStatusView();
+    final emulatorController = ref.read(emulatorControllerProvider.notifier);
+    final romSettings = ref.watch(romSettingsControllerProvider);
+    final romSettingsController = ref.read(
+      romSettingsControllerProvider.notifier,
+    );
+    final settings = ref.watch(settingsControllerProvider);
+    final settingsController = ref.read(settingsControllerProvider.notifier);
+
+    final menuGroups = buildMenuCatalog(
+      l10n: l10n,
+      isRunning: emulator.isRunning,
+      onReset: emulatorController.reset,
+      bootMode: romSettings.bootMode,
+      onBootModeChanged: romSettingsController.setBootMode,
+      fddMedia: emulator.fddMedia,
+      onFddInsert: emulatorController.insertFdd,
+      onFddEject: emulatorController.ejectFdd,
+      screenFit: emulator.fit,
+      onScreenFitChanged: emulatorController.setFit,
+      localeMode: settings.localeMode,
+      onLocaleModeChanged: settingsController.setLocaleMode,
+    );
+
+    // 起動していればエミュレーター画面、そうでなければROM設定を出す。
+    final body = emulator.session != SessionState.stopped
+        ? const EmulatorView()
+        : const RomStatusView();
+    return AppMenuBar(groups: menuGroups, child: body);
   }
 }

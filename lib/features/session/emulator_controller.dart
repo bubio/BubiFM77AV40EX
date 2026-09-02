@@ -45,6 +45,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   EmulatorSession? _session;
   StreamSubscription<EmulatorEvent>? _events;
 
+  /// 直近に指定されたマスター音量。次回[launch]時にも適用する
+  /// （design.md 12.4）。
+  double _masterVolume = 1.0;
+
   WorkspaceHandle? _workspace;
   final Map<int, _FddSlot> _fddSlots = {};
   final Map<int, Completer<EmulatorErrorCode?>> _pendingCommands = {};
@@ -93,6 +97,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       _events = session.events.listen(_onEvent);
       await session.start();
       final textureId = await session.attachVideoTexture();
+      session.setVolume(_masterVolume);
       state = state.copyWith(session: session.state, textureId: textureId);
       _lastStats = null;
       _statsTimer = Timer.periodic(_statsPollInterval, (_) => _pollStats());
@@ -126,6 +131,15 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   /// 表示領域への合わせ方を変える（VID-02）。
   void setFit(ScreenFit fit) {
     state = state.copyWith(fit: fit);
+  }
+
+  /// マスター音量を変える（0.0〜1.0、design.md 12.4）。
+  ///
+  /// 起動中なら即座に反映し、停止中でも次回[launch]時に使う値として
+  /// 覚えておく。
+  void setVolume(double volume) {
+    _masterVolume = volume;
+    _session?.setVolume(volume);
   }
 
   /// キーが押された（INP-01）。

@@ -42,6 +42,13 @@ class _RecordingAudioSink implements AudioSink {
     pushCount++;
   }
 
+  double? lastVolume;
+
+  @override
+  void setVolume(double volume) {
+    lastVolume = volume;
+  }
+
   @override
   Future<void> stop() async {
     stopped = true;

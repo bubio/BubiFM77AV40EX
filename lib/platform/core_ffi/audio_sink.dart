@@ -17,6 +17,13 @@ abstract class AudioSink {
   /// （実装側が複製せずそのまま使ってよい）。
   void pushPcm16(Uint8List interleavedLittleEndianPcmBytes);
 
+  /// マスター音量を変える（0.0〜1.0、design.md 12.4）。
+  ///
+  /// コアのミキサーには触れず、ホスト最終段のゲインだけを変える
+  /// （design.md 16.1「音声はVMの駆動源にしない」の境界を保つため、
+  /// `BFM_CMD_SET_VOLUME`はM3のコアミキサー音量調整に残す）。
+  void setVolume(double volume);
+
   /// 再生を止め、資源を解放する。
   Future<void> stop();
 }

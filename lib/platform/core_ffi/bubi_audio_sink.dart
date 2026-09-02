@@ -19,6 +19,7 @@ class BubiAudioSink implements AudioSink {
 
   final SoLoud _soloud;
   AudioSource? _source;
+  double _pendingVolume = 1.0;
 
   @override
   Future<void> start({required int sampleRate, required int channels}) async {
@@ -38,6 +39,15 @@ class BubiAudioSink implements AudioSink {
     );
     _source = source;
     _soloud.play(source);
+    _soloud.setGlobalVolume(_pendingVolume);
+  }
+
+  @override
+  void setVolume(double volume) {
+    _pendingVolume = volume;
+    if (_soloud.isInitialized) {
+      _soloud.setGlobalVolume(volume);
+    }
   }
 
   @override

@@ -45,5 +45,21 @@
   "fddInsert": "挿入…",
   "fddEject": "排出",
   "statusViewFps": "View {fps} fps",
-  "statusCoreFps": "Core {fps} fps"
+  "statusCoreFps": "Core {fps} fps",
+  "statusMasterVolume": "音量 {percent}%",
+  "menuControl": "Control",
+  "menuControlSpecialReset": "特殊リセット（BREAK）",
+  "menuDisk": "Disk",
+  "menuDevice": "Device",
+  "menuDeviceSound": "サウンド",
+  "menuHost": "Host",
+  "menuHostScreen": "画面",
+  "menuHostLanguage": "言語",
+  "menuLanguageSystem": "システムに従う",
+  "menuLanguageEnglish": "English",
+  "menuLanguageJapanese": "日本語",
+  "menuAppSettings": "設定…",
+  "menuAppQuit": "BubiFM77AV40EXを終了",
+  "settingsMasterVolume": "マスター音量",
+  "settingsClose": "閉じる"
 }

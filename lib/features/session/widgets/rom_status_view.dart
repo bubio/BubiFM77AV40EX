@@ -6,6 +6,7 @@ import '../../../emulator/rom/rom_inventory.dart';
 import '../../../emulator/rom/rom_requirement.dart';
 import '../../../emulator/rom/rom_status.dart';
 import '../../../emulator/session_state.dart';
+import '../../settings/settings_controller.dart';
 import '../rom_settings_controller.dart';
 import '../rom_settings_state.dart';
 import '../session_providers.dart';
@@ -36,9 +37,17 @@ class RomStatusView extends ConsumerWidget {
               key: const Key('emulatorStart'),
               // 起動必須ROMが揃っていなければ押させない。
               onPressed: (state.inventory?.canBoot ?? false)
-                  ? () => ref
-                        .read(emulatorControllerProvider.notifier)
-                        .launch(bootMode: state.bootMode)
+                  ? () {
+                      final emulator = ref.read(
+                        emulatorControllerProvider.notifier,
+                      );
+                      // 保存済みのマスター音量（design.md 12.4）を起動前に
+                      // 覚えさせておく。`launch()`が起動直後に適用する。
+                      emulator.setVolume(
+                        ref.read(settingsControllerProvider).masterVolume,
+                      );
+                      emulator.launch(bootMode: state.bootMode);
+                    }
                   : null,
               child: Text(l10n.emulatorStart),
             ),

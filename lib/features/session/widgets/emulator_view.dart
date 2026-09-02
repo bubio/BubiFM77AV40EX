@@ -4,16 +4,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/l10n/generated/app_localizations.dart';
 import '../../../emulator/session_state.dart';
-import '../../display/screen_fit.dart';
 import '../../display/widgets/emulator_screen.dart';
+import '../../settings/settings_controller.dart';
 import '../emulator_controller.dart';
 import '../emulator_state.dart';
 import '../session_providers.dart';
 import 'status_bar.dart';
 
-/// エミュレーター画面と、最小限の操作。
+/// エミュレーター画面。
 ///
-/// 本格的なメニューはWP6で追加する。
+/// `Control / Disk / Device / Host`のアプリ内メニュー（design.md 12.1）は
+/// `app`（`app.dart`の`_Home`）が[EmulatorView]を包んで組み立てる。
+/// featureはplatform実装とappへ依存しない（design.md 3.1）ため、
+/// カタログの組み立てはここへ置かない。
 class EmulatorView extends ConsumerWidget {
   const EmulatorView({super.key});
 
@@ -22,6 +25,7 @@ class EmulatorView extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final state = ref.watch(emulatorControllerProvider);
     final controller = ref.read(emulatorControllerProvider.notifier);
+    final settings = ref.watch(settingsControllerProvider);
     final textureId = state.textureId;
 
     return Focus(
@@ -70,7 +74,11 @@ class EmulatorView extends ConsumerWidget {
                       fit: state.fit,
                     ),
             ),
-            StatusBar(state: state, l10n: l10n),
+            StatusBar(
+              state: state,
+              l10n: l10n,
+              masterVolume: settings.masterVolume,
+            ),
             Material(
               child: Padding(
                 padding: const EdgeInsets.symmetric(
@@ -79,28 +87,6 @@ class EmulatorView extends ConsumerWidget {
                 ),
                 child: Row(
                   children: [
-                    Text(l10n.displayFit),
-                    const SizedBox(width: 8),
-                    SegmentedButton<ScreenFit>(
-                      segments: [
-                        ButtonSegment(
-                          value: ScreenFit.aspect,
-                          label: Text(l10n.displayFitAspect),
-                        ),
-                        ButtonSegment(
-                          value: ScreenFit.integer,
-                          label: Text(l10n.displayFitInteger),
-                        ),
-                        ButtonSegment(
-                          value: ScreenFit.fill,
-                          label: Text(l10n.displayFitFill),
-                        ),
-                      ],
-                      selected: {state.fit},
-                      onSelectionChanged: (selected) =>
-                          controller.setFit(selected.first),
-                    ),
-                    const SizedBox(width: 16),
                     Expanded(
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
@@ -112,14 +98,6 @@ class EmulatorView extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    TextButton(
-                      key: const Key('emulatorReset'),
-                      onPressed: state.isRunning
-                          ? () => controller.reset(ResetKind.normal)
-                          : null,
-                      child: Text(l10n.emulatorReset),
-                    ),
-                    const SizedBox(width: 8),
                     TextButton(
                       key: const Key('emulatorStop'),
                       onPressed: controller.shutdown,

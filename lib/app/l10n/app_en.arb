@@ -159,5 +159,68 @@
         "type": "int"
       }
     }
+  },
+  "statusMasterVolume": "Vol {percent}%",
+  "@statusMasterVolume": {
+    "description": "Status bar: master volume as a percentage.",
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "menuControl": "Control",
+  "@menuControl": {
+    "description": "In-app menu group: VM execution, reset, boot mode."
+  },
+  "menuControlSpecialReset": "Special Reset (BREAK)",
+  "@menuControlSpecialReset": {
+    "description": "Control menu item that resets with BREAK held."
+  },
+  "menuDisk": "Disk",
+  "@menuDisk": {
+    "description": "In-app menu group: floppy disk media."
+  },
+  "menuDevice": "Device",
+  "@menuDevice": {
+    "description": "In-app menu group: guest machine devices."
+  },
+  "menuDeviceSound": "Sound",
+  "@menuDeviceSound": {
+    "description": "Device submenu for the sound chip configuration."
+  },
+  "menuHost": "Host",
+  "@menuHost": {
+    "description": "In-app menu group: host-side screen, sound, and UI settings."
+  },
+  "menuHostScreen": "Screen",
+  "@menuHostScreen": {
+    "description": "Host submenu for display fit and window options."
+  },
+  "menuHostLanguage": "Language",
+  "@menuHostLanguage": {
+    "description": "Host submenu for the UI language."
+  },
+  "menuLanguageSystem": "System",
+  "@menuLanguageSystem": {
+    "description": "Follow the OS locale."
+  },
+  "menuLanguageEnglish": "English",
+  "menuLanguageJapanese": "日本語",
+  "menuAppSettings": "Settings…",
+  "@menuAppSettings": {
+    "description": "Application menu item that opens the settings dialog."
+  },
+  "menuAppQuit": "Quit BubiFM77AV40EX",
+  "@menuAppQuit": {
+    "description": "Application menu item that shuts down and exits."
+  },
+  "settingsMasterVolume": "Master volume",
+  "@settingsMasterVolume": {
+    "description": "Label for the master volume slider in the settings dialog."
+  },
+  "settingsClose": "Close",
+  "@settingsClose": {
+    "description": "Button that closes the settings dialog."
   }
 }

@@ -8,6 +8,7 @@ import '../emulator/session_state.dart';
 import '../features/session/emulator_controller.dart';
 import '../features/session/rom_settings_controller.dart';
 import '../features/session/session_providers.dart';
+import '../features/settings/settings_controller.dart';
 import '../platform/persistence/file_system_rom_scanner.dart';
 import '../platform/persistence/os_app_data_paths.dart';
 import '../platform/persistence/os_cache_workspace.dart';
@@ -63,6 +64,9 @@ Future<Widget> buildApp({RomManifest? romManifest}) async {
           manifest: romManifest,
           revealFolder: reveal.reveal,
         ),
+      ),
+      settingsControllerProvider.overrideWith(
+        () => SettingsController(preferences: preferences),
       ),
     ],
     child: const BubiFm77Av40ExApp(),

@@ -13,15 +13,20 @@ import 'os_app_data_paths.dart';
 /// rename により反映する。
 class OsCacheWorkspace implements CacheWorkspace {
   OsCacheWorkspace({OsAppDataPaths? appDataPaths})
-    : _appDataPaths = appDataPaths ?? OsAppDataPaths();
+    : _cacheRoot = (appDataPaths ?? OsAppDataPaths()).cacheRoot;
+
+  /// テストがOSのキャッシュ領域（`path_provider`のプラットフォーム
+  /// チャンネル）を経由せず、一時ディレクトリへ向けるための入口。
+  OsCacheWorkspace.withCacheRoot(Future<Directory> Function() cacheRoot)
+    : _cacheRoot = cacheRoot;
 
   static const _sessionsDirName = 'fdd-sessions';
 
-  final OsAppDataPaths _appDataPaths;
+  final Future<Directory> Function() _cacheRoot;
   final Random _random = Random.secure();
 
   Future<Directory> _sessionsRoot() async {
-    final cache = await _appDataPaths.cacheRoot();
+    final cache = await _cacheRoot();
     final directory = Directory('${cache.path}/$_sessionsDirName');
     await directory.create(recursive: true);
     return directory;

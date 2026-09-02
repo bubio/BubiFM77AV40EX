@@ -211,6 +211,13 @@ class FakeEmulatorSession implements EmulatorSession {
   @override
   EmulatorStats readStats() => stats;
 
+  double? lastVolume;
+
+  @override
+  void setVolume(double volume) {
+    lastVolume = volume;
+  }
+
   @override
   Future<int> attachVideoTexture() async => 0;
 

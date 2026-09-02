@@ -9,16 +9,23 @@ import '../emulator_state.dart';
 /// エミュレーターの一段ステータスバー（design.md 12.4）。
 ///
 /// `BubiC-8801MAのdraw_status_bar()`を構成基準とし、高さ24論理px、
-/// 暗色背景、一段表示にする。左からFD2、FD1のアクセスランプ、INS、
-/// KANA、CAPSを置き、右端へ`[BASIC|DOS]`とView/Core FPSを右寄せする。
-/// マスター音量とCPU速度（`2.0MHz|1.2MHz`）はホスト側にその機能自体が
-/// まだないため出さない（design.md 12.4のP0対象のうち、音量調整と
-/// CPU速度切替は別途実装が要る）。
+/// 暗色背景、一段表示にする。左からFD2、FD1のアクセスランプ、マスター
+/// 音量、INS、KANA、CAPSを置き、右端へ`[BASIC|DOS]`とView/Core FPSを
+/// 右寄せする。CPU速度（`2.0MHz|1.2MHz`）はコアから読める観測値がなく、
+/// bridgeコマンドも予約のみ（M3）のため出さない（design.md 16.1）。
 class StatusBar extends StatelessWidget {
-  const StatusBar({super.key, required this.state, required this.l10n});
+  const StatusBar({
+    super.key,
+    required this.state,
+    required this.l10n,
+    required this.masterVolume,
+  });
 
   final EmulatorViewState state;
   final AppLocalizations l10n;
+
+  /// 0.0〜1.0（design.md 12.4）。
+  final double masterVolume;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +45,11 @@ class StatusBar extends StatelessWidget {
           _FddLamp(
             label: l10n.fddDriveLabel(1),
             lastAccessed: state.fddLastAccessed[0],
+          ),
+          const SizedBox(width: 10),
+          Text(
+            l10n.statusMasterVolume((masterVolume * 100).round()),
+            style: textStyle,
           ),
           const SizedBox(width: 14),
           _LedChip(label: l10n.ledInsert, lit: state.ledState.insert),

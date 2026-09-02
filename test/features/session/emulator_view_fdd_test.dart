@@ -1,8 +1,10 @@
 import 'package:bubi_fm77av40ex/app/l10n/generated/app_localizations.dart';
 import 'package:bubi_fm77av40ex/emulator/session_state.dart';
 import 'package:bubi_fm77av40ex/features/session/emulator_controller.dart';
+import 'package:bubi_fm77av40ex/features/session/rom_settings_controller.dart';
 import 'package:bubi_fm77av40ex/features/session/session_providers.dart';
 import 'package:bubi_fm77av40ex/features/session/widgets/emulator_view.dart';
+import 'package:bubi_fm77av40ex/features/settings/settings_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,11 +38,13 @@ void main() {
   late FakeEmulatorSession session;
   late FakeExternalFileAccess externalFileAccess;
   late FakeCacheWorkspace cacheWorkspace;
+  late FakePreferencesStore preferences;
 
   setUp(() {
     session = FakeEmulatorSession();
     externalFileAccess = FakeExternalFileAccess();
     cacheWorkspace = FakeCacheWorkspace();
+    preferences = FakePreferencesStore();
   });
 
   // macOSのウィンドウはデフォルトの試験画面（800×600）より広いのが通常。
@@ -68,6 +72,16 @@ void main() {
               BootMode bootMode = BootMode.basic,
             }) => session,
           ),
+        ),
+        romSettingsControllerProvider.overrideWith(
+          () => RomSettingsController(
+            appDataPaths: FakeAppDataPaths(),
+            preferences: preferences,
+            scanner: FakeRomScanner(),
+          ),
+        ),
+        settingsControllerProvider.overrideWith(
+          () => SettingsController(preferences: preferences),
         ),
       ],
     );

@@ -60,6 +60,11 @@ abstract class EmulatorSession {
   /// 観測値を読み出す。
   EmulatorStats readStats();
 
+  /// マスター音量を変える（0.0〜1.0、design.md 12.4）。
+  ///
+  /// 音声を組み立てていないセッションでは何もしない。
+  void setVolume(double volume);
+
   /// 画面を受け取る Texture を用意し、そのIDを返す。
   ///
   /// 呼ぶたびに新しいIDを作るのではなく、すでにあればそれを返す。

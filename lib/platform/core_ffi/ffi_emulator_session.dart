@@ -393,6 +393,11 @@ class FfiEmulatorSession implements EmulatorSession {
   }
 
   @override
+  void setVolume(double volume) {
+    _audio?.setVolume(volume);
+  }
+
+  @override
   Future<int> attachVideoTexture() async {
     _ensureUsable();
     final existing = _textureId;
