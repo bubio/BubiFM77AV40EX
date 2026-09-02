@@ -203,10 +203,7 @@ void main() {
     await tester.tap(find.text('挿入…'));
     await tester.pumpAndSettle();
 
-    expect(
-      container.read(emulatorControllerProvider).fddMedia[0],
-      'OTHER.D88',
-    );
+    expect(container.read(emulatorControllerProvider).fddMedia[0], 'OTHER.D88');
     expect(session.insertCalls, hasLength(2));
     expect(session.ejectCalls, [0]);
     expect(cacheWorkspace.handle.exportCalls, [
