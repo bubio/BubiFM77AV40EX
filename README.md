@@ -3,17 +3,20 @@
 FUJITSU FM77AV40EX のエミュレーターです。
 [Common Source Code Project](https://takeda-toshiya.my.coocan.jp/common/index.html) の eFM77AV40EX エミュレーションコアを利用しています。
 
+
+
+> [!WARNING]
+>
+> 開発中です。macOSでは動作するかも。
+
+
+
 ## 対応環境
 
 | OS | 最低バージョン | CPU |
 |---|---|---|
 | macOS | 13.5 | Intel / Apple Silicon |
-| Ubuntu Linux | 24.04 | amd64 / arm64 |
-| Windows | 11 | x64 / arm64 |
-| Android | 13 (SDK 33) | 対応端末 |
-| iOS | 26.0 | 対応端末 |
 
-macOS 版から順に提供します。
 
 ## 入手方法
 
