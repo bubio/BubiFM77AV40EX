@@ -5,10 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../emulator/session_state.dart';
+import '../features/session/rom_boot_decision.dart';
+import '../features/session/rom_settings_state.dart';
 import '../features/session/session_providers.dart';
 import '../features/session/widgets/emulator_view.dart';
-import '../features/session/widgets/rom_status_view.dart';
+import '../features/session/widgets/rom_problem_dialog.dart';
 import '../features/settings/settings_controller.dart';
 import '../features/settings/settings_state.dart';
 import 'l10n/generated/app_localizations.dart';
@@ -110,11 +111,14 @@ class _Home extends ConsumerStatefulWidget {
 }
 
 class _HomeState extends ConsumerState<_Home> {
+  /// 二重に`showDialog`しないためのガード（design.md 301）。
+  bool _romDialogShowing = false;
+
   @override
   void initState() {
     super.initState();
     // 復元は失敗しても画面を出す。アクセス権の失効と走査の失敗は
-    // Controllerが状態として持ち、画面に出す。
+    // Controllerが状態として持ち、ダイアログへ出す。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(romSettingsControllerProvider.notifier).restore();
     });
@@ -132,10 +136,18 @@ class _HomeState extends ConsumerState<_Home> {
     final settings = ref.watch(settingsControllerProvider);
     final settingsController = ref.read(settingsControllerProvider.notifier);
 
+    // ROM走査が終わるたびに、自動起動するかROM問題ダイアログを出すかを
+    // 判定する（`rom_boot_decision.dart`）。初期画面はエミュレーター表示を
+    // 中心に置き、ROM設定用の別画面は持たない（design.md 301）。
+    ref.listen(romSettingsControllerProvider, (previous, next) {
+      _syncWithRomSettings(next);
+    });
+
     final menuGroups = buildMenuCatalog(
       l10n: l10n,
       isRunning: emulator.isRunning,
-      onReset: emulatorController.reset,
+      onReset: (kind) =>
+          emulatorController.reset(kind, bootMode: romSettings.bootMode),
       bootMode: romSettings.bootMode,
       onBootModeChanged: romSettingsController.setBootMode,
       fddMedia: emulator.fddMedia,
@@ -147,10 +159,34 @@ class _HomeState extends ConsumerState<_Home> {
       onLocaleModeChanged: settingsController.setLocaleMode,
     );
 
-    // 起動していればエミュレーター画面、そうでなければROM設定を出す。
-    final body = emulator.session != SessionState.stopped
-        ? const EmulatorView()
-        : const RomStatusView();
-    return AppMenuBar(groups: menuGroups, child: body);
+    return AppMenuBar(groups: menuGroups, child: const EmulatorView());
+  }
+
+  void _syncWithRomSettings(RomSettingsState next) {
+    final action = decideRomBootAction(
+      emulatorSession: ref.read(emulatorControllerProvider).session,
+      romSettings: next,
+    );
+    switch (action) {
+      case RomBootAction.launch:
+        ref
+            .read(emulatorControllerProvider.notifier)
+            .launch(bootMode: next.bootMode);
+      case RomBootAction.showProblem:
+        _showRomProblemDialog();
+      case RomBootAction.none:
+        break;
+    }
+  }
+
+  void _showRomProblemDialog() {
+    if (_romDialogShowing || !mounted) {
+      return;
+    }
+    _romDialogShowing = true;
+    showDialog<void>(
+      context: context,
+      builder: (context) => const RomProblemDialog(),
+    ).whenComplete(() => _romDialogShowing = false);
   }
 }

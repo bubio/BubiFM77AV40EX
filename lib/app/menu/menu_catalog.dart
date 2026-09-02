@@ -75,7 +75,7 @@ List<MenuGroup> buildMenuCatalog({
               MenuAction(
                 'disk.fd$drive.insert',
                 label: l10n.fddInsert,
-                enabled: isRunning && fddMedia[drive] == null,
+                enabled: isRunning,
                 onSelected: () => onFddInsert(drive),
               ),
               MenuAction(

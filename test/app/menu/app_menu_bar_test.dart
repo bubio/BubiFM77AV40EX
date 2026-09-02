@@ -113,7 +113,9 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp(home: AppMenuBar(groups: groups, child: const SizedBox())),
+      MaterialApp(
+        home: AppMenuBar(groups: groups, child: const SizedBox()),
+      ),
     );
     await tester.pumpAndSettle();
 

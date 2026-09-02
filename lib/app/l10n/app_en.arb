@@ -8,9 +8,9 @@
   "@sessionStateStopped": {
     "description": "Status bar label for a session that is not running."
   },
-  "romSettingsTitle": "ROM setup",
-  "@romSettingsTitle": {
-    "description": "Title of the ROM setup screen shown before the machine can start."
+  "romProblemTitle": "Check the ROM files",
+  "@romProblemTitle": {
+    "description": "Title of the dialog shown when a required boot ROM is missing or invalid, or the ROM folder could not be scanned."
   },
   "romDirectoryLabel": "ROM folder",
   "@romDirectoryLabel": {
@@ -51,10 +51,6 @@
   "romBootModeDos": "DOS",
   "@romBootModeDos": {
     "description": "Boot into DOS."
-  },
-  "romBootModeAppliesOnReset": "The change applies from the next reset.",
-  "@romBootModeAppliesOnReset": {
-    "description": "Explains that boot mode is read by the core at reset time."
   },
   "romStatusMissing": "Missing",
   "@romStatusMissing": {
@@ -108,12 +104,9 @@
   "@romOpenFolder": {
     "description": "Button that reveals the ROM folder in the OS file manager."
   },
-  "emulatorStart": "Start",
-  "emulatorStop": "Stop",
   "emulatorReset": "Reset",
   "emulatorStarting": "Starting",
   "emulatorFailed": "The emulator could not start.",
-  "emulatorBackToRomSettings": "Back to ROM settings",
   "displayFit": "Display",
   "displayFitAspect": "Keep aspect ratio",
   "displayFitInteger": "Integer scale",
@@ -129,10 +122,6 @@
         "type": "int"
       }
     }
-  },
-  "fddEmpty": "Empty",
-  "@fddEmpty": {
-    "description": "Shown for a drive with no media inserted."
   },
   "fddInsert": "Insert…",
   "@fddInsert": {

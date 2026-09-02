@@ -139,6 +139,8 @@ class FakeEmulatorSession implements EmulatorSession {
 
   final List<(int drive, String imagePath, int bank)> insertCalls = [];
   final List<int> ejectCalls = [];
+  final List<ResetKind> resetCalls = [];
+  final List<BootMode> setBootModeCalls = [];
 
   /// 次に受理する挿入・排出コマンドの完了結果。nullなら成功。
   ///
@@ -183,10 +185,16 @@ class FakeEmulatorSession implements EmulatorSession {
   Future<void> stop() async {}
 
   @override
-  Future<int> reset(ResetKind kind) async => _nextCommandId++;
+  Future<int> reset(ResetKind kind) async {
+    resetCalls.add(kind);
+    return _nextCommandId++;
+  }
 
   @override
-  Future<int> setBootMode(BootMode mode) async => _nextCommandId++;
+  Future<int> setBootMode(BootMode mode) async {
+    setBootModeCalls.add(mode);
+    return _nextCommandId++;
+  }
 
   @override
   Future<void> keyDown(int vkCode) async {}

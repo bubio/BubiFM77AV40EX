@@ -124,8 +124,23 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   }
 
   /// リセットを投入する。
-  Future<void> reset(ResetKind kind) async {
-    await _session?.reset(kind);
+  ///
+  /// [bootMode]を渡すと、コアがリセット時に読む`config.boot_mode`
+  /// （native/bridge/src/bubi_fm77av.cpp、SYS-04「再起動後に反映できる」）
+  /// をリセットの直前に書き換える。`Control > Boot mode`の選択はリセット
+  /// までセッションへ伝わらないため、ここで渡さない限り選択が無視される。
+  Future<void> reset(ResetKind kind, {BootMode? bootMode}) async {
+    final session = _session;
+    if (session == null) {
+      return;
+    }
+    if (bootMode != null) {
+      await session.setBootMode(bootMode);
+    }
+    await session.reset(kind);
+    if (bootMode != null) {
+      state = state.copyWith(bootMode: bootMode);
+    }
   }
 
   /// 表示領域への合わせ方を変える（VID-02）。
@@ -198,10 +213,12 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   ///
   /// 原本は`CacheWorkspace`のセッション作業領域へ複製し、コアには
   /// 複製先のパスだけを渡す（design.md 9.1、16.1）。対象ドライブへ
-  /// すでに挿入済みなら何もしない。
+  /// すでに挿入済みでも入れ替えとして扱う。ファイル選択が済んだ後
+  /// （＝利用者が入れ替えを確定した後）に、既存の媒体を先に排出
+  /// （原本への書き戻しを含む）してから新しい媒体を挿入する。
   Future<void> insertFdd(int drive) async {
     final session = _session;
-    if (session == null || _fddSlots.containsKey(drive)) {
+    if (session == null) {
       return;
     }
     final resource = await externalFileAccess.pickFile(
@@ -209,6 +226,9 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     );
     if (resource == null) {
       return;
+    }
+    if (_fddSlots.containsKey(drive)) {
+      await ejectFdd(drive);
     }
     try {
       final workspace = _workspace ??= await cacheWorkspace

@@ -43,6 +43,21 @@ void main() {
   EmulatorController controller() => container.read(provider.notifier);
   EmulatorViewState state() => container.read(provider);
 
+  test('SYS-04 bootModeを渡したリセットはsetBootModeを先に呼び、状態も更新する', () async {
+    await controller().reset(ResetKind.normal, bootMode: BootMode.dos);
+
+    expect(session.setBootModeCalls, [BootMode.dos]);
+    expect(session.resetCalls, [ResetKind.normal]);
+    expect(state().bootMode, BootMode.dos);
+  });
+
+  test('SYS-04 bootModeを渡さないリセットはsetBootModeを呼ばない', () async {
+    await controller().reset(ResetKind.special);
+
+    expect(session.setBootModeCalls, isEmpty);
+    expect(session.resetCalls, [ResetKind.special]);
+  });
+
   test('FDD-01 挿入は原本を作業領域へ複製し、複製先パスをコアへ渡す', () async {
     externalFileAccess.nextPickResult = FakeExternalResource(
       '/Volumes/USB/GAME.D88',
@@ -69,7 +84,7 @@ void main() {
     expect(state().fddMedia, isEmpty);
   });
 
-  test('FDD-01 挿入済みドライブへは重ねて挿入しない', () async {
+  test('FDD-01 挿入済みドライブへ再度挿入すると、先に排出してから入れ替える', () async {
     externalFileAccess.nextPickResult = FakeExternalResource(
       '/Volumes/USB/GAME.D88',
       displayName: 'GAME.D88',
@@ -82,7 +97,12 @@ void main() {
     );
     await controller().insertFdd(0);
 
-    expect(session.insertCalls, hasLength(1));
+    expect(session.insertCalls, hasLength(2));
+    expect(session.ejectCalls, [0]);
+    expect(cacheWorkspace.handle.exportCalls, [
+      ('fd0-GAME.D88', '/Volumes/USB/GAME.D88'),
+    ]);
+    expect(state().fddMedia[0], 'OTHER.D88');
   });
 
   test('FDD-01 コマンドが失敗したらアクセス権を返し状態を更新しない', () async {
