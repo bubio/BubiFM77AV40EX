@@ -55,6 +55,49 @@ if [ -n "${missing}" ]; then
 fi
 echo "==> FFIシンボル検査: $(printf '%s\n' ${EXPECTED} | wc -l | tr -d ' ') 個すべて存在"
 
+# --- x86_64/arm64のUniversalバイナリになっているかを確かめる ---
+#
+# メイン実行ファイルだけでなく、同梱するframeworkやdylibが片方の
+# アーキテクチャしか含まないと、その機種でだけ起動時に落ちる。
+# ビルドは成功したまま実機でしか気づけない壊れ方なので、
+# バンドル内の実行可能ファイルを総なめして検査する。
+missing_arch=""
+checked=0
+while IFS= read -r -d '' binary; do
+  archs="$(lipo -archs "${binary}" 2>/dev/null || true)"
+  if [ -z "${archs}" ]; then
+    continue
+  fi
+  checked=$((checked + 1))
+  if ! printf '%s\n' "${archs}" | grep -qw "x86_64" \
+    || ! printf '%s\n' "${archs}" | grep -qw "arm64"; then
+    missing_arch="${missing_arch}\n  ${binary}: ${archs}"
+  fi
+done < <(find "${APP}/Contents/MacOS" "${APP}/Contents/Frameworks" \
+  -type f \( -perm -u+x -o -name '*.dylib' \) -print0 2>/dev/null)
+
+if [ "${checked}" -eq 0 ]; then
+  echo "error: Universalバイナリ検査の対象が1つも見つかりませんでした。" >&2
+  echo "       find のパスやビルド出力構成を確認すること。" >&2
+  exit 1
+fi
+
+if [ -n "${missing_arch}" ]; then
+  echo "error: x86_64/arm64のUniversalになっていないバイナリがあります:" >&2
+  printf '%b\n' "${missing_arch}" >&2
+  exit 1
+fi
+echo "==> Universalバイナリ検査: ${checked} 個すべてx86_64/arm64を含む"
+
+# --- flutter_launcher_iconsの出力がバンドルへ反映されているかを確かめる ---
+BUILT_INFO_PLIST="${APP}/Contents/Info.plist"
+if ! plutil -p "${BUILT_INFO_PLIST}" | grep -q '"CFBundleIconName" => "AppIcon"'; then
+  echo "error: ビルド済みInfo.plistにCFBundleIconName=AppIconがありません。" >&2
+  echo "       flutter_launcher_iconsの再実行とAssets.xcassetsを確認すること。" >&2
+  exit 1
+fi
+echo "==> アイコン検査: CFBundleIconName=AppIcon"
+
 # --- App Sandboxが成果物へ紛れ込んでいないかを確かめる ---
 #
 # サンドボックスが有効だと保存先が ~/Library/Containers/ の下へ移り、
