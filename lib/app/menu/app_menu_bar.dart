@@ -81,7 +81,7 @@ class AppMenuBar extends StatelessWidget {
     };
   }
 
-  Widget _buildRadioGroup<T>(MenuRadioGroup<T> group) {
+  Widget _buildRadioGroup(MenuRadioGroup<dynamic> group) {
     return SubmenuButton(
       menuChildren: [
         for (final option in group.options) _radioItem(group, option),
@@ -92,14 +92,26 @@ class AppMenuBar extends StatelessWidget {
     );
   }
 
-  Widget _radioItem<T>(MenuRadioGroup<T> entry, MenuRadioOption<T> option) {
-    return RadioMenuButton<T>(
+  // `MenuRadioGroup<T>`の実際のTは呼び出し元（`_build`）の時点で
+  // `dynamic`へ消えている（`switch`の型パターンによる型テストの結果、
+  // 静的型がそこで失われるため）。`RadioMenuButton<T>`をTごとに
+  // 作り分けようとすると、その消えたTでインスタンス化してしまい、
+  // フィールドの実際の関数型との不一致で実行時に失敗する
+  // （選択が効かない壊れ方をする。実際に再現・確認済み）。
+  // ここでは常に`RadioMenuButton<Object?>`を使い、値の比較は`==`だけに
+  // 頼ることでTへの依存自体をなくす。選択時は`MenuRadioGroup.changeTo`
+  // （型を消した形の`onChanged`呼び出し）へ委ねる。
+  Widget _radioItem(
+    MenuRadioGroup<dynamic> entry,
+    MenuRadioOption<dynamic> option,
+  ) {
+    return RadioMenuButton<Object?>(
       value: option.value,
       groupValue: entry.groupValue,
       onChanged: option.enabled
           ? (value) {
               if (value != null) {
-                entry.onChanged(value);
+                entry.changeTo(value);
               }
             }
           : null,
@@ -107,7 +119,7 @@ class AppMenuBar extends StatelessWidget {
     );
   }
 
-  String _radioSelectedLabel<T>(MenuRadioGroup<T> entry) {
+  String _radioSelectedLabel(MenuRadioGroup<dynamic> entry) {
     for (final option in entry.options) {
       if (option.value == entry.groupValue) {
         return option.label;

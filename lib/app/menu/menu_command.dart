@@ -78,6 +78,23 @@ class MenuRadioGroup<T> extends MenuEntry {
   final T groupValue;
   final List<MenuRadioOption<T>> options;
   final void Function(T value) onChanged;
+
+  /// [onChanged]を型を消した形で呼ぶ。
+  ///
+  /// UI側（`app_menu_bar.dart`）はメニュー全体を`MenuEntry`という共通の
+  /// 型なし構造として走査するため、個々の`MenuRadioGroup<T>`が持つ実際の
+  /// `T`（`BootMode`や`ScreenFit`等）を呼び出し側で保持できない。
+  /// `entry.onChanged`をそのまま`MenuRadioGroup<dynamic>`越しに読み書き
+  /// すると、フィールドの実際の関数型（`void Function(BootMode)`等）と
+  /// 呼び出し側が期待する`void Function(dynamic)`が食い違い、
+  /// 実行時に`TypeError`で失敗する（選択してもコールバックが起きない
+  /// 壊れ方をする）。この呼び出しはインスタンスメソッドとして自分自身の
+  /// `T`の中で完結させることで、外側からの型消去の影響を受けない。
+  ///
+  /// `T`は非nullable前提（`groupValue`/`options`の値がそうであるため）。
+  /// `null`を渡すのは呼び出し側の誤り（`RadioMenuButton`の
+  /// `toggleable: true`など）であり、そのまま`TypeError`にする。
+  void changeTo(Object value) => onChanged(value as T);
 }
 
 /// 子項目を持つサブメニュー。
