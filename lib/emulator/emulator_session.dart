@@ -87,6 +87,37 @@ abstract class EmulatorSession {
   /// 未挿入のドライブへの排出は冪等に成功する。
   Future<int> ejectFdd(int drive);
 
+  /// [drive]にマウント中の媒体の書込み保護を設定し、コマンドの連番を
+  /// 返す（FDD-06）。
+  ///
+  /// 書込み保護はディスク単位のランタイム状態であり、ドライブの記憶
+  /// ではない。コアは次に挿入された別の媒体では、その媒体自身のヘッダ
+  /// から値を決め直すため、この呼出しは今マウントされている媒体にしか
+  /// 効かない。
+  Future<int> setFddWriteProtect(int drive, bool enabled);
+
+  /// ドライブごとのタイミング補正を設定し、コマンドの連番を返す（FDD-06）。
+  Future<int> setFddTiming(int drive, bool enabled);
+
+  /// ドライブごとのCRCエラー無視を設定し、コマンドの連番を返す（FDD-06）。
+  Future<int> setFddCrcCheck(int drive, bool ignore);
+
+  /// 空の2D/2DDディスクイメージを[destinationPath]へ作成し、コマンドの
+  /// 連番を返す（FDD-05）。挿入は行わない。呼び出し側が改めて
+  /// [insertFdd] を呼ぶこと。
+  Future<int> createBlankFdd(FddMediaType mediaType, String destinationPath);
+
+  /// [drive]に挿入中のD88のバンク情報を返す（FDD-04）。未挿入なら
+  /// 両方0。
+  ({int bankNum, int curBank}) getFddBankInfo(int drive);
+
+  /// [drive]に挿入中の媒体の実際の書込み保護状態を返す（FDD-06）。
+  ///
+  /// コアは挿入のたびにディスク自身のヘッダ由来の値へ決め直すため、
+  /// これは「そのドライブに対して最後に指定した値」ではなく「今
+  /// マウントされている媒体が実際に持つ値」を返す。未挿入ならfalse。
+  bool getFddWriteProtect(int drive);
+
   /// 観測値を読み出す。
   EmulatorStats readStats();
 

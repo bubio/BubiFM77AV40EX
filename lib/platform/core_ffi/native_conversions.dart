@@ -23,6 +23,7 @@ EmulatorErrorCode errorCodeFromNative(int value) => switch (value) {
   BfmResult.coreFailed => EmulatorErrorCode.coreFailed,
   BfmResult.unsupported => EmulatorErrorCode.unsupported,
   BfmResult.internal => EmulatorErrorCode.internal,
+  BfmResult.unsupportedGeometry => EmulatorErrorCode.unsupportedGeometry,
   _ => EmulatorErrorCode.unknown,
 };
 
@@ -55,6 +56,12 @@ int bootModeToNative(BootMode mode) => switch (mode) {
 int cpuTypeToNative(CpuType type) => switch (type) {
   CpuType.fast => BfmCpuType.fast,
   CpuType.slow => BfmCpuType.slow,
+};
+
+/// [FddMediaType] を `bfm_fdd_media_type` へ変換する。
+int fddMediaTypeToNative(FddMediaType type) => switch (type) {
+  FddMediaType.d2 => BfmFddMediaType.media2D,
+  FddMediaType.d2dd => BfmFddMediaType.media2DD,
 };
 
 /// [RunOptionSwitches] を `BFM_CMD_SET_OPTION_SWITCH` の arg0 へ変換する。
@@ -110,6 +117,8 @@ String describeErrorCode(EmulatorErrorCode code) => switch (code) {
     'the command kind is defined but not implemented yet',
   EmulatorErrorCode.internal =>
     'an unexpected exception was contained at the boundary',
+  EmulatorErrorCode.unsupportedGeometry =>
+    'the media geometry is not 2D/2DD after size check or conversion',
   EmulatorErrorCode.unknown =>
     'an unknown result code was returned by the core',
 };

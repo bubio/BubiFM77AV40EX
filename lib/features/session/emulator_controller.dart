@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,14 +13,36 @@ import '../../emulator/session_state.dart';
 import '../../platform/persistence/app_data_paths.dart';
 import '../../platform/persistence/cache_workspace.dart';
 import '../../platform/persistence/external_file_access.dart';
+import '../../platform/persistence/preferences_store.dart';
 import '../display/screen_fit.dart';
 import 'emulator_state.dart';
 import 'input/keyboard_key_map.dart';
 
-/// native container（D88/D77/D8E/1DD）だけを対象にする（design.md 16.1）。
-///
-/// converted/raw形式（TD0/IMD/DSK/NFD/FDIなど）はM3 8.1で扱う。
+/// native container（D88/D77/D8E/1DD）。同一コンテナへ書き戻せる
+/// （design.md 9.1）。
 const fddNativeContainerExtensions = ['d88', 'd77', 'd8e', '1dd'];
+
+/// コアが変換読込する形式（TD0/IMD/DSK/NFD/FDI、FDD-03）。原本は変更せず
+/// 作業用D88として扱う（design.md 9.1、FDD-09）。
+const fddConvertedExtensions = ['td0', 'imd', 'dsk', 'nfd', 'fdi'];
+
+/// FD1/FD2ごとの最近使ったファイルの上限件数（FDD-07）。
+const fddRecentFilesLimit = 5;
+
+DiskSourceKind _sourceKindOfPath(String path) {
+  final lower = path.toLowerCase();
+  for (final ext in fddNativeContainerExtensions) {
+    if (lower.endsWith('.$ext')) {
+      return DiskSourceKind.nativeContainer;
+    }
+  }
+  for (final ext in fddConvertedExtensions) {
+    if (lower.endsWith('.$ext')) {
+      return DiskSourceKind.converted;
+    }
+  }
+  return DiskSourceKind.raw;
+}
 
 /// エミュレーターの起動と画面の受け取りを持つController。
 ///
@@ -31,6 +54,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     required this.createSession,
     required this.externalFileAccess,
     required this.cacheWorkspace,
+    required this.preferences,
   });
 
   final AppDataPaths appDataPaths;
@@ -41,6 +65,9 @@ class EmulatorController extends Notifier<EmulatorViewState> {
 
   /// 挿入中の原本の複製を置くセッション作業領域（design.md 11.2、16.1）。
   final CacheWorkspace cacheWorkspace;
+
+  /// FD1/FD2ごとの最近使ったファイル（FDD-07）を保存する先。
+  final PreferencesStore preferences;
 
   EmulatorSession? _session;
   StreamSubscription<EmulatorEvent>? _events;
@@ -55,6 +82,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   bool _fullSpeed = false;
   CpuType _cpuType = CpuType.fast;
   RunOptionSwitches _optionSwitches = const RunOptionSwitches();
+
+  /// FD1/FD2ごとの書込み保護・タイミング補正・CRCエラー無視（FDD-06）。
+  /// 停止中に変更されても次回[launch]時に適用できるよう覚えておく。
+  final Map<int, FddDriveSettings> _fddDriveSettings = {};
 
   WorkspaceHandle? _workspace;
   final Map<int, _FddSlot> _fddSlots = {};
@@ -79,7 +110,85 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   @override
   EmulatorViewState build() {
     ref.onDispose(_teardown);
-    return const EmulatorViewState();
+    return EmulatorViewState(
+      fddRecentFiles: {
+        for (var drive = 0; drive < 2; drive++) drive: _readRecentFiles(drive),
+      },
+    );
+  }
+
+  String _recentFilesKey(int drive) => 'fdd.recent.fd$drive';
+
+  List<Map<String, String>> _readRecentEntries(int drive) {
+    final raw = preferences.getString(_recentFilesKey(drive));
+    if (raw == null) {
+      return [];
+    }
+    try {
+      final decoded = jsonDecode(raw) as List<Object?>;
+      return [
+        for (final entry in decoded)
+          if (entry is Map<String, Object?> &&
+              entry['token'] is String &&
+              entry['displayName'] is String)
+            {
+              'token': entry['token']! as String,
+              'displayName': entry['displayName']! as String,
+            },
+      ];
+    } on FormatException {
+      return [];
+    }
+  }
+
+  List<FddRecentFile> _readRecentFiles(int drive) => [
+    for (final entry in _readRecentEntries(drive))
+      (token: entry['token']!, displayName: entry['displayName']!),
+  ];
+
+  Future<void> _recordRecentFile(int drive, ExternalResource resource) async {
+    final entries = _readRecentEntries(drive)
+      ..removeWhere((entry) => entry['token'] == resource.token);
+    entries.insert(0, {
+      'token': resource.token,
+      'displayName': resource.displayName,
+    });
+    if (entries.length > fddRecentFilesLimit) {
+      entries.removeRange(fddRecentFilesLimit, entries.length);
+    }
+    await preferences.setString(_recentFilesKey(drive), jsonEncode(entries));
+    state = state.copyWith(
+      fddRecentFiles: {
+        ...state.fddRecentFiles,
+        drive: [
+          for (final entry in entries)
+            (token: entry['token']!, displayName: entry['displayName']!),
+        ],
+      },
+    );
+  }
+
+  Future<void> _forgetRecentFile(int drive, String token) async {
+    final entries = _readRecentEntries(drive)
+      ..removeWhere((entry) => entry['token'] == token);
+    await preferences.setString(_recentFilesKey(drive), jsonEncode(entries));
+    state = state.copyWith(
+      fddRecentFiles: {
+        ...state.fddRecentFiles,
+        drive: [
+          for (final entry in entries)
+            (token: entry['token']!, displayName: entry['displayName']!),
+        ],
+      },
+    );
+  }
+
+  /// FD1/FD2の最近使ったファイルの履歴を消す（FDD-07）。
+  Future<void> clearRecentFiles(int drive) async {
+    await preferences.setString(_recentFilesKey(drive), jsonEncode(const []));
+    state = state.copyWith(
+      fddRecentFiles: {...state.fddRecentFiles, drive: const []},
+    );
   }
 
   /// コアを起動して画面をつなぐ。すでに動いていれば何もしない。
@@ -126,11 +235,28 @@ class EmulatorController extends Notifier<EmulatorViewState> {
         if (_optionSwitches != const RunOptionSwitches()) {
           await session.setRunOptionSwitches(_optionSwitches);
         }
+        // 書込み保護はドライブではなく、マウントされた媒体自身が持つ
+        // 状態（コアはDISK::open()のたびにファイル自身のヘッダから
+        // 決め直す）。起動直後は何も挿入されていないため、ここでは
+        // タイミング補正・CRC無視というドライブ側の設定だけを
+        // 再適用する。書込み保護は挿入のたびに実際値を読み直す
+        // （_insertResource/_refreshFddDriveSettings参照）。
+        for (final entry in _fddDriveSettings.entries) {
+          final drive = entry.key;
+          final settings = entry.value;
+          if (settings.correctTiming) {
+            await session.setFddTiming(drive, true);
+          }
+          if (settings.ignoreCrc) {
+            await session.setFddCrcCheck(drive, true);
+          }
+        }
         state = state.copyWith(
           speedMultiplier: _speedMultiplier,
           fullSpeed: _fullSpeed,
           cpuType: _cpuType,
           optionSwitches: _optionSwitches,
+          fddDriveSettings: {..._fddDriveSettings},
         );
       } on Object {
         // 起動自体は成功しているため、実行設定の再適用失敗は
@@ -164,6 +290,8 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       fullSpeed: _fullSpeed,
       cpuType: _cpuType,
       optionSwitches: _optionSwitches,
+      fddDriveSettings: {..._fddDriveSettings},
+      fddRecentFiles: state.fddRecentFiles,
     );
   }
 
@@ -240,6 +368,48 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     await _session?.setRunOptionSwitches(switches);
   }
 
+  FddDriveSettings _driveSettingsOf(int drive) =>
+      _fddDriveSettings[drive] ?? const FddDriveSettings();
+
+  Future<void> _updateFddDriveSettings(
+    int drive,
+    FddDriveSettings settings,
+  ) async {
+    _fddDriveSettings[drive] = settings;
+    state = state.copyWith(
+      fddDriveSettings: {...state.fddDriveSettings, drive: settings},
+    );
+  }
+
+  /// マウント中の媒体の書込み保護を変える（FDD-06）。媒体自身が持つ
+  /// 状態であり、次に別の媒体を挿入すればその媒体自身のヘッダから
+  /// 値が決め直される（`_refreshMountedDiskState`参照）。
+  Future<void> setFddWriteProtect(int drive, bool enabled) async {
+    await _updateFddDriveSettings(
+      drive,
+      _driveSettingsOf(drive).copyWith(writeProtected: enabled),
+    );
+    await _session?.setFddWriteProtect(drive, enabled);
+  }
+
+  /// ドライブごとのタイミング補正を変える（FDD-06）。起動中は即時反映。
+  Future<void> setFddTiming(int drive, bool enabled) async {
+    await _updateFddDriveSettings(
+      drive,
+      _driveSettingsOf(drive).copyWith(correctTiming: enabled),
+    );
+    await _session?.setFddTiming(drive, enabled);
+  }
+
+  /// ドライブごとのCRCエラー無視を変える（FDD-06）。起動中は即時反映。
+  Future<void> setFddCrcCheck(int drive, bool ignore) async {
+    await _updateFddDriveSettings(
+      drive,
+      _driveSettingsOf(drive).copyWith(ignoreCrc: ignore),
+    );
+    await _session?.setFddCrcCheck(drive, ignore);
+  }
+
   /// キーが押された（INP-01）。
   ///
   /// OSのキーリピートは同じ[physicalKey]を離さないまま繰り返し通知するため、
@@ -292,7 +462,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     }
   }
 
-  /// FD1(0)/FD2(1)へ利用者が選んだ媒体を挿入する（FDD-01）。
+  /// FD1(0)/FD2(1)へ利用者が選んだ媒体を挿入する（FDD-01、FDD-03）。
   ///
   /// 原本は`CacheWorkspace`のセッション作業領域へ複製し、コアには
   /// 複製先のパスだけを渡す（design.md 9.1、16.1）。対象ドライブへ
@@ -300,14 +470,142 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   /// （＝利用者が入れ替えを確定した後）に、既存の媒体を先に排出
   /// （原本への書き戻しを含む）してから新しい媒体を挿入する。
   Future<void> insertFdd(int drive) async {
+    if (_session == null) {
+      return;
+    }
+    final resource = await externalFileAccess.pickFile(
+      allowedExtensions: [
+        ...fddNativeContainerExtensions,
+        ...fddConvertedExtensions,
+      ],
+    );
+    if (resource == null) {
+      return;
+    }
+    await _insertResource(drive, resource);
+  }
+
+  /// FD1(0)/FD2(1)へ最近使ったファイル（FDD-07）を再挿入する。
+  ///
+  /// [token]が指す原本が既に無い・アクセスできない場合は履歴から外す。
+  Future<void> insertFddFromRecent(int drive, String token) async {
+    if (_session == null) {
+      return;
+    }
+    final resource = await externalFileAccess.resolve(token);
+    if (resource == null) {
+      await _forgetRecentFile(drive, token);
+      return;
+    }
+    await _insertResource(drive, resource);
+  }
+
+  /// 空の2D/2DDディスクを[destinationPath]の選択先へ作成し、FD1(0)/FD2(1)
+  /// へ挿入する（FDD-05）。
+  Future<void> insertBlankFdd(int drive, FddMediaType mediaType) async {
     final session = _session;
     if (session == null) {
       return;
     }
-    final resource = await externalFileAccess.pickFile(
-      allowedExtensions: fddNativeContainerExtensions,
+    final resource = await externalFileAccess.pickSaveLocation(
+      suggestedFileName: mediaType == FddMediaType.d2
+          ? 'blank-2d.d88'
+          : 'blank-2dd.d88',
     );
     if (resource == null) {
+      return;
+    }
+    try {
+      final createId = await resource.withAccess(
+        (nativePath) => session.createBlankFdd(mediaType, nativePath),
+      );
+      final createError = await _awaitCommand(createId);
+      if (createError != null) {
+        await resource.release();
+        state = state.copyWith(failureMessage: '$createError');
+        return;
+      }
+    } on Object catch (error) {
+      await resource.release();
+      state = state.copyWith(failureMessage: '$error');
+      return;
+    }
+    await _insertResource(drive, resource);
+  }
+
+  /// 挿入済みのD88内でバンクを切り替える（FDD-04）。
+  ///
+  /// 排出して他バンクを含む全体を原本へ書き戻してから、同じ作業コピーを
+  /// 新しいバンクで再挿入する（design.md 9.1「選択バンクの更新時に他
+  /// バンクを保持して同じコンテナへ書き戻す」）。原本の再選択は行わない。
+  Future<void> insertFddBank(int drive, int bank) async {
+    final session = _session;
+    final slot = _fddSlots[drive];
+    final workspace = _workspace;
+    if (session == null || slot == null || workspace == null) {
+      return;
+    }
+    final ejectId = await session.ejectFdd(drive);
+    final ejectError = await _awaitCommand(ejectId);
+    if (ejectError != null) {
+      state = state.copyWith(failureMessage: '$ejectError');
+      return;
+    }
+    await slot.resource.withAccess(
+      (nativePath) =>
+          workspace.exportAtomic(slot.workspaceFileName, nativePath),
+    );
+    final workspacePath = '${workspace.nativePath}/${slot.workspaceFileName}';
+    final insertId = await session.insertFdd(drive, workspacePath, bank: bank);
+    final insertError = await _awaitCommand(insertId);
+    if (insertError != null) {
+      state = state.copyWith(failureMessage: '$insertError');
+      return;
+    }
+    _refreshMountedDiskState(session, drive);
+  }
+
+  /// workspace内の最新D88を利用者が選ぶ保存先へ保存する（FDD-09
+  /// `Save As D88…`）。元形式への逆変換は行わず、原本にも触れない。
+  Future<void> saveFddAs(int drive) async {
+    final session = _session;
+    final slot = _fddSlots[drive];
+    final workspace = _workspace;
+    if (session == null || slot == null || workspace == null) {
+      return;
+    }
+    final destination = await externalFileAccess.pickSaveLocation(
+      suggestedFileName: '${slot.resource.displayName}.d88',
+    );
+    if (destination == null) {
+      return;
+    }
+    final ejectId = await session.ejectFdd(drive);
+    final ejectError = await _awaitCommand(ejectId);
+    if (ejectError != null) {
+      await destination.release();
+      state = state.copyWith(failureMessage: '$ejectError');
+      return;
+    }
+    await destination.withAccess(
+      (nativePath) =>
+          workspace.exportAtomic(slot.workspaceFileName, nativePath),
+    );
+    await destination.release();
+    final workspacePath = '${workspace.nativePath}/${slot.workspaceFileName}';
+    final insertId = await session.insertFdd(drive, workspacePath);
+    final insertError = await _awaitCommand(insertId);
+    if (insertError != null) {
+      state = state.copyWith(failureMessage: '$insertError');
+      return;
+    }
+    _refreshMountedDiskState(session, drive);
+  }
+
+  Future<void> _insertResource(int drive, ExternalResource resource) async {
+    final session = _session;
+    if (session == null) {
+      await resource.release();
       return;
     }
     if (_fddSlots.containsKey(drive)) {
@@ -333,11 +631,37 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       );
       state = state.copyWith(
         fddMedia: {...state.fddMedia, drive: resource.displayName},
+        fddSourceKind: {
+          ...state.fddSourceKind,
+          drive: _sourceKindOfPath(resource.displayName),
+        },
       );
+      _refreshMountedDiskState(session, drive);
+      await _recordRecentFile(drive, resource);
     } on Object catch (error) {
       await resource.release();
       state = state.copyWith(failureMessage: '$error');
     }
+  }
+
+  /// 挿入・バンク切替の直後にコアへ問い合わせ、バンク情報と書込み保護の
+  /// 表示をマウント中の媒体が実際に持つ値へ合わせる（FDD-04、FDD-06）。
+  ///
+  /// 書込み保護はドライブの記憶ではなく媒体自身が持つ状態（コアは
+  /// `DISK::open()`のたびにファイル自身のヘッダから決め直す）。ここで
+  /// 実際値を読み直さず前の媒体の値をそのまま表示し続けると、
+  /// 見た目と実際の保護状態が食い違う。
+  void _refreshMountedDiskState(EmulatorSession session, int drive) {
+    final info = session.getFddBankInfo(drive);
+    final writeProtected = session.getFddWriteProtect(drive);
+    final settings = _driveSettingsOf(drive)
+        .copyWith(writeProtected: writeProtected);
+    _fddDriveSettings[drive] = settings;
+    state = state.copyWith(
+      fddBankNum: {...state.fddBankNum, drive: info.bankNum},
+      fddCurBank: {...state.fddCurBank, drive: info.curBank},
+      fddDriveSettings: {...state.fddDriveSettings, drive: settings},
+    );
   }
 
   /// FD1(0)/FD2(1)から媒体を排出する（FDD-01）。
@@ -366,7 +690,21 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     await slot.resource.release();
     _fddSlots.remove(drive);
     final media = {...state.fddMedia}..remove(drive);
-    state = state.copyWith(fddMedia: media);
+    final bankNum = {...state.fddBankNum}..remove(drive);
+    final curBank = {...state.fddCurBank}..remove(drive);
+    final sourceKind = {...state.fddSourceKind}..remove(drive);
+    // 書込み保護は媒体自身が持つ状態のため、排出後はfalseへ戻す
+    // （コアもDISK::close()で同様に戻す。design.md「FDD拡張」参照）。
+    final driveSettings = _driveSettingsOf(drive)
+        .copyWith(writeProtected: false);
+    _fddDriveSettings[drive] = driveSettings;
+    state = state.copyWith(
+      fddMedia: media,
+      fddBankNum: bankNum,
+      fddCurBank: curBank,
+      fddSourceKind: sourceKind,
+      fddDriveSettings: {...state.fddDriveSettings, drive: driveSettings},
+    );
   }
 
   /// 前回の観測との差分からView/Core FPSを求める（design.md 12.4）。

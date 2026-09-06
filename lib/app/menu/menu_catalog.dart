@@ -33,6 +33,19 @@ List<MenuGroup> buildMenuCatalog({
   required Map<int, String?> fddMedia,
   required void Function(int drive) onFddInsert,
   required void Function(int drive) onFddEject,
+  required Map<int, FddDriveSettings> fddDriveSettings,
+  required void Function(int drive, bool enabled) onFddWriteProtectChanged,
+  required void Function(int drive, bool enabled) onFddTimingChanged,
+  required void Function(int drive, bool ignore) onFddCrcCheckChanged,
+  required void Function(int drive, FddMediaType type) onFddInsertBlank,
+  required Map<int, int> fddBankNum,
+  required Map<int, int> fddCurBank,
+  required void Function(int drive, int bank) onFddBankChanged,
+  required Map<int, DiskSourceKind> fddSourceKind,
+  required void Function(int drive) onFddSaveAs,
+  required Map<int, List<FddRecentFile>> fddRecentFiles,
+  required void Function(int drive, String token) onFddInsertFromRecent,
+  required void Function(int drive) onFddClearRecentFiles,
   required ScreenFit screenFit,
   required void Function(ScreenFit fit) onScreenFitChanged,
   required AppLocaleMode localeMode,
@@ -148,6 +161,98 @@ List<MenuGroup> buildMenuCatalog({
                 label: l10n.fddEject,
                 enabled: isRunning && fddMedia[drive] != null,
                 onSelected: () => onFddEject(drive),
+              ),
+              MenuAction(
+                'disk.fd$drive.insertBlank2D',
+                label: l10n.fddInsertBlank2D,
+                enabled: isRunning,
+                onSelected: () => onFddInsertBlank(drive, FddMediaType.d2),
+              ),
+              MenuAction(
+                'disk.fd$drive.insertBlank2DD',
+                label: l10n.fddInsertBlank2DD,
+                enabled: isRunning,
+                onSelected: () => onFddInsertBlank(drive, FddMediaType.d2dd),
+              ),
+              MenuCheckbox(
+                'disk.fd$drive.writeProtected',
+                label: l10n.fddWriteProtected,
+                // 書込み保護はマウント中の媒体自身が持つ状態であり、
+                // ドライブの記憶ではない（design.md「FDD拡張」）。
+                // 未挿入では意味を持たないため、Ejectと同じ条件で無効化する。
+                enabled: isRunning && fddMedia[drive] != null,
+                checked: (fddDriveSettings[drive] ?? const FddDriveSettings())
+                    .writeProtected,
+                onChanged: (value) => onFddWriteProtectChanged(drive, value),
+              ),
+              MenuCheckbox(
+                'disk.fd$drive.correctTiming',
+                label: l10n.fddCorrectTiming,
+                enabled: true,
+                checked: (fddDriveSettings[drive] ?? const FddDriveSettings())
+                    .correctTiming,
+                onChanged: (value) => onFddTimingChanged(drive, value),
+              ),
+              MenuCheckbox(
+                'disk.fd$drive.ignoreCrc',
+                label: l10n.fddIgnoreCrc,
+                enabled: true,
+                checked: (fddDriveSettings[drive] ?? const FddDriveSettings())
+                    .ignoreCrc,
+                onChanged: (value) => onFddCrcCheckChanged(drive, value),
+              ),
+              MenuAction(
+                'disk.fd$drive.saveAs',
+                label: l10n.fddSaveAs,
+                enabled:
+                    isRunning &&
+                    fddMedia[drive] != null &&
+                    fddSourceKind[drive] != null &&
+                    fddSourceKind[drive] != DiskSourceKind.nativeContainer,
+                onSelected: () => onFddSaveAs(drive),
+              ),
+              if ((fddBankNum[drive] ?? 0) > 1)
+                MenuRadioGroup<int>(
+                  'disk.fd$drive.bank',
+                  label: '',
+                  groupValue: fddCurBank[drive] ?? 0,
+                  options: [
+                    for (var bank = 0; bank < fddBankNum[drive]!; bank++)
+                      MenuRadioOption(
+                        value: bank,
+                        label: l10n.fddBankLabel(bank + 1),
+                      ),
+                  ],
+                  onChanged: (bank) => onFddBankChanged(drive, bank),
+                ),
+              MenuSubmenu(
+                'disk.fd$drive.recent',
+                label: l10n.fddRecentFiles,
+                entries: [
+                  if ((fddRecentFiles[drive] ?? const []).isEmpty)
+                    MenuAction(
+                      'disk.fd$drive.recent.empty',
+                      label: l10n.fddRecentFilesEmpty,
+                      enabled: false,
+                      onSelected: () {},
+                    )
+                  else
+                    for (final recent in fddRecentFiles[drive]!)
+                      MenuAction(
+                        'disk.fd$drive.recent.${recent.token}',
+                        label: recent.displayName,
+                        enabled: isRunning,
+                        onSelected: () =>
+                            onFddInsertFromRecent(drive, recent.token),
+                      ),
+                  MenuSeparator('disk.fd$drive.recent.sep'),
+                  MenuAction(
+                    'disk.fd$drive.recent.clear',
+                    label: l10n.fddClearRecentFiles,
+                    enabled: (fddRecentFiles[drive] ?? const []).isNotEmpty,
+                    onSelected: () => onFddClearRecentFiles(drive),
+                  ),
+                ],
               ),
             ],
           ),

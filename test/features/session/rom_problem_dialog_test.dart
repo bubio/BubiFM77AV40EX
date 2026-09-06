@@ -44,6 +44,7 @@ void main() {
             appDataPaths: appDataPaths,
             externalFileAccess: FakeExternalFileAccess(),
             cacheWorkspace: FakeCacheWorkspace(),
+            preferences: FakePreferencesStore(),
             createSession: ({
               required String homeDir,
               String? romDir,

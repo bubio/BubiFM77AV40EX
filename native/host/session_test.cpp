@@ -125,14 +125,14 @@ bool is_regular_file(const std::string& path)
  * upstream の EMU::create_blank_floppy_disk（emu.cpp）と同じにする。
  * 資産をコミットせず、テストコードでその場に作る。
  */
-bool write_blank_d88(const std::string& path)
+bool write_blank_d88(const std::string& path, bool protect = false)
 {
 	std::string header;
 	header.append("BLANK", 5);
-	header.append(17 - 5, '\0'); // title[17]
-	header.append(9, '\0');      // rsrv[9]
-	header.push_back('\0');      // protect
-	header.push_back('\0');      // type = MEDIA_TYPE_2D
+	header.append(17 - 5, '\0');           // title[17]
+	header.append(9, '\0');                // rsrv[9]
+	header.push_back(protect ? 0x10 : 0);  // protect（vm/disk.cppはbuffer[0x1a]!=0を見る）
+	header.push_back('\0');                // type = MEDIA_TYPE_2D
 	const uint32_t size = static_cast<uint32_t>(17 + 9 + 1 + 1 + 4 + 164 * 4);
 	header.append(reinterpret_cast<const char*>(&size), sizeof(size));
 	header.append(164 * 4, '\0'); // trkptr[164]、全トラック未使用
@@ -340,12 +340,13 @@ void test_command_events()
 	          == BFM_ERR_INVALID_ARGUMENT,
 	      "未定義のリセット種別は invalidArgument");
 
-	// 型として定義済みだが未実装（M3以降）のコマンドは unsupported で完了する。
-	// BFM_CMD_INSERT_FDD/EJECT_FDDはWP5で実装済みのため test_media() で検査する。
-	bfm_command write_protect{};
-	write_protect.kind = BFM_CMD_SET_FDD_WRITE_PROTECT;
+	// 型として定義済みだが未実装（M7以降）のコマンドは unsupported で完了する。
+	// BFM_CMD_INSERT_FDD/EJECT_FDD、SET_FDD_WRITE_PROTECT/TIMING/CRC_CHECKは
+	// M3で実装済みのため test_media() で検査する。
+	bfm_command mouse{};
+	mouse.kind = BFM_CMD_MOUSE;
 	uint64_t unsupported_id = 0;
-	check(bfm_send_command(session, &write_protect, &unsupported_id) == BFM_OK,
+	check(bfm_send_command(session, &mouse, &unsupported_id) == BFM_OK,
 	      "未実装コマンドも受け付ける");
 	code = -1;
 	check(wait_for_completion(session, unsupported_id, 5000, &code), "未実装コマンドの完了通知が届く");
@@ -1256,6 +1257,163 @@ void test_media()
 	events.clear();
 	check(send_and_collect(eject_out_of_range, &events) == BFM_ERR_INVALID_ARGUMENT,
 	      "範囲外のドライブへの排出は invalidArgument");
+
+	// --- M3 FDD-06: 書込み保護・タイミング補正・CRCエラー無視 ---
+	bfm_command write_protect{};
+	write_protect.kind = BFM_CMD_SET_FDD_WRITE_PROTECT;
+	write_protect.arg0 = 0;
+	write_protect.arg1 = 1;
+	events.clear();
+	check(send_and_collect(write_protect, &events) == BFM_OK, "FD1の書込み保護を設定できる");
+
+	bfm_command timing{};
+	timing.kind = BFM_CMD_SET_FDD_TIMING;
+	timing.arg0 = 0;
+	timing.arg1 = 1;
+	events.clear();
+	check(send_and_collect(timing, &events) == BFM_OK, "FD1のタイミング補正を設定できる");
+
+	bfm_command crc{};
+	crc.kind = BFM_CMD_SET_FDD_CRC_CHECK;
+	crc.arg0 = 0;
+	crc.arg1 = 1;
+	events.clear();
+	check(send_and_collect(crc, &events) == BFM_OK, "FD1のCRCエラー無視を設定できる");
+
+	bfm_command bad_drive_switch = write_protect;
+	bad_drive_switch.arg0 = 2;
+	events.clear();
+	check(send_and_collect(bad_drive_switch, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "範囲外のドライブへの書込み保護設定は invalidArgument");
+
+	bfm_command bad_value_switch = write_protect;
+	bad_value_switch.arg1 = 2;
+	events.clear();
+	check(send_and_collect(bad_value_switch, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "0/1以外の値は invalidArgument");
+
+	// ここまででFD1は挿入済み（「排出後の再挿入は成功する」）。以降の
+	// テストは空きドライブを前提とするため、先に排出しておく。
+	events.clear();
+	check(send_and_collect(eject_fd1, &events) == BFM_OK, "後続検査のためFD1を排出できる");
+
+	// --- M3 FDD-03: rawイメージのサイズ検証 ---
+	const std::string bad_raw_image = media_dir + "/bad.raw";
+	check(write_file(bad_raw_image, std::string(1234, '\0')),
+	      "不正サイズのrawテストイメージを作れる");
+	bfm_command insert_bad_raw{};
+	insert_bad_raw.kind = BFM_CMD_INSERT_FDD;
+	insert_bad_raw.arg0 = 0;
+	insert_bad_raw.arg1 = 0;
+	insert_bad_raw.text = bad_raw_image.c_str();
+	events.clear();
+	check(send_and_collect(insert_bad_raw, &events) == BFM_ERR_UNSUPPORTED_GEOMETRY,
+	      "2D/2DDのバイト数と一致しないrawは unsupportedGeometry");
+	check(!has_media_changed(events, 0, 1), "拒否されればMEDIA_CHANGEDは届かない");
+
+	// --- M3 FDD-05: 空の2D/2DDディスク作成 ---
+	const std::string blank_2d = media_dir + "/blank-2d.d88";
+	bfm_command create_blank_2d{};
+	create_blank_2d.kind = BFM_CMD_CREATE_BLANK_FDD;
+	create_blank_2d.arg0 = BFM_FDD_MEDIA_2D;
+	create_blank_2d.text = blank_2d.c_str();
+	events.clear();
+	check(send_and_collect(create_blank_2d, &events) == BFM_OK, "空の2Dディスクを作成できる");
+	check(is_regular_file(blank_2d), "作成先に実ファイルが残る");
+
+	const std::string blank_2dd = media_dir + "/blank-2dd.d88";
+	bfm_command create_blank_2dd{};
+	create_blank_2dd.kind = BFM_CMD_CREATE_BLANK_FDD;
+	create_blank_2dd.arg0 = BFM_FDD_MEDIA_2DD;
+	create_blank_2dd.text = blank_2dd.c_str();
+	events.clear();
+	check(send_and_collect(create_blank_2dd, &events) == BFM_OK, "空の2DDディスクを作成できる");
+
+	bfm_command create_blank_bad_type = create_blank_2d;
+	create_blank_bad_type.arg0 = 99;
+	events.clear();
+	check(send_and_collect(create_blank_bad_type, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "不正な媒体種別は invalidArgument");
+
+	// 作成した空ディスクをFD1へ挿入できる（バンク情報も検査する）。
+	bfm_command insert_blank = insert_fd1;
+	insert_blank.text = blank_2d.c_str();
+	events.clear();
+	check(send_and_collect(insert_blank, &events) == BFM_OK, "作成した空の2Dディスクを挿入できる");
+
+	// --- M3 FDD-04: バンク情報の取得 ---
+	int32_t bank_num = -1;
+	int32_t cur_bank = -1;
+	check(bfm_get_fdd_bank_info(session, 0, &bank_num, &cur_bank) == BFM_OK,
+	      "バンク情報を取得できる");
+	check(bank_num == 1, "単一バンクのD88はbank_num==1");
+	check(cur_bank == 0, "単一バンクのD88はcur_bank==0");
+
+	check(bfm_get_fdd_bank_info(session, 2, &bank_num, &cur_bank) == BFM_ERR_INVALID_ARGUMENT,
+	      "範囲外のドライブは invalidArgument");
+
+	events.clear();
+	check(send_and_collect(eject_fd1, &events) == BFM_OK, "挿入済みのFD1を排出できる");
+	check(bfm_get_fdd_bank_info(session, 0, &bank_num, &cur_bank) == BFM_OK,
+	      "排出後もバンク情報を取得できる");
+	check(bank_num == 0, "排出後はbank_num==0");
+
+	// --- M3 FDD-06: 書込み保護の実際値はマウント中のディスクに従う ---
+	//
+	// vm/disk.cppのDISK::open()は呼出しのたびにwrite_protectedをまず
+	// falseへ戻し、開いたファイル自身のヘッダprotectバイトを見て必要なら
+	// trueへ立て直す。DISK::close()は変更があれば現在のwrite_protected
+	// をそのファイル自身のヘッダへ書き戻すため、書込み保護は「ドライブの
+	// 記憶」ではなく「そのファイル自身が持つ状態」である（利用者からの
+	// 指摘の再現検査）。ここでは2つの別ファイルを使い、一方を保護しても
+	// もう一方へ持ち越されないことを確かめる。
+	const std::string protected_image = media_dir + "/protected.d88";
+	check(write_blank_d88(protected_image, /*protect=*/true),
+	      "書込み保護済みのテストイメージを作れる");
+	const std::string unprotected_image = media_dir + "/unprotected.d88";
+	check(write_blank_d88(unprotected_image, /*protect=*/false),
+	      "書込み保護なしのテストイメージを作れる");
+
+	bfm_command insert_protected = insert_fd1;
+	insert_protected.text = protected_image.c_str();
+	events.clear();
+	check(send_and_collect(insert_protected, &events) == BFM_OK,
+	      "書込み保護済みディスクを挿入できる");
+	int32_t write_protected = -1;
+	check(bfm_get_fdd_write_protect(session, 0, &write_protected) == BFM_OK,
+	      "書込み保護の実際値を取得できる");
+	check(write_protected == 1, "保護済みディスクのヘッダを反映してtrueになる");
+
+	events.clear();
+	check(send_and_collect(eject_fd1, &events) == BFM_OK, "保護済みディスクを排出できる");
+	bfm_command insert_unprotected = insert_fd1;
+	insert_unprotected.text = unprotected_image.c_str();
+	events.clear();
+	check(send_and_collect(insert_unprotected, &events) == BFM_OK,
+	      "書込み保護されていない別ディスクを同じドライブへ挿入できる");
+	write_protected = -1;
+	check(bfm_get_fdd_write_protect(session, 0, &write_protected) == BFM_OK &&
+	          write_protected == 0,
+	      "前のディスクの保護状態を持ち越さず、新しいディスクのヘッダに従う");
+
+	events.clear();
+	check(send_and_collect(write_protect, &events) == BFM_OK,
+	      "マウント中のディスクへ明示的に保護を設定できる");
+	write_protected = -1;
+	check(bfm_get_fdd_write_protect(session, 0, &write_protected) == BFM_OK &&
+	          write_protected == 1,
+	      "明示設定した値が実際値として読める");
+
+	check(bfm_get_fdd_write_protect(session, 2, &write_protected) ==
+	          BFM_ERR_INVALID_ARGUMENT,
+	      "範囲外のドライブは invalidArgument");
+
+	events.clear();
+	check(send_and_collect(eject_fd1, &events) == BFM_OK, "後続検査のためFD1を排出できる");
+	write_protected = -1;
+	check(bfm_get_fdd_write_protect(session, 0, &write_protected) == BFM_OK &&
+	          write_protected == 0,
+	      "排出後は書込み保護もfalseへ戻る");
 
 	bfm_stats stats{};
 	check(bfm_get_stats(session, &stats) == BFM_OK, "統計を取得できる");

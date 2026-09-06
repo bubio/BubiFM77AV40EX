@@ -17,6 +17,11 @@ class EmulatorViewState {
     this.failureMessage,
     this.fddMedia = const {},
     this.fddLastAccessed = const {},
+    this.fddDriveSettings = const {},
+    this.fddBankNum = const {},
+    this.fddCurBank = const {},
+    this.fddSourceKind = const {},
+    this.fddRecentFiles = const {},
     this.bootMode = BootMode.basic,
     this.cpuType = CpuType.fast,
     this.speedMultiplier = SpeedMultiplier.x1,
@@ -54,6 +59,23 @@ class EmulatorViewState {
   /// 持続的なランプ点灯として見せるかどうかは受け手が自分で
   /// タイムアウトを判断する（design.md 16.1）。
   final Map<int, DateTime> fddLastAccessed;
+
+  /// FD1/FD2ごとの書込み保護・タイミング補正・CRCエラー無視（FDD-06）。
+  /// キーがなければ既定値（すべて無効）。
+  final Map<int, FddDriveSettings> fddDriveSettings;
+
+  /// FD1/FD2に挿入中のD88の総バンク数（FDD-04）。キーがなければ未挿入。
+  final Map<int, int> fddBankNum;
+
+  /// FD1/FD2に挿入中のD88の現在のバンク番号（FDD-04）。
+  final Map<int, int> fddCurBank;
+
+  /// FD1/FD2に挿入中の媒体の由来（design.md 9.1）。`Save As D88…`は
+  /// native container以外のときだけ有効にする（FDD-09）。
+  final Map<int, DiskSourceKind> fddSourceKind;
+
+  /// FD1/FD2ごとの最近使ったファイル（FDD-07、新しい順）。
+  final Map<int, List<FddRecentFile>> fddRecentFiles;
 
   /// 起動に使ったブートモード（design.md 12.4のステータスバー`[BASIC|DOS]`）。
   ///
@@ -97,6 +119,11 @@ class EmulatorViewState {
     bool clearFailure = false,
     Map<int, String>? fddMedia,
     Map<int, DateTime>? fddLastAccessed,
+    Map<int, FddDriveSettings>? fddDriveSettings,
+    Map<int, int>? fddBankNum,
+    Map<int, int>? fddCurBank,
+    Map<int, DiskSourceKind>? fddSourceKind,
+    Map<int, List<FddRecentFile>>? fddRecentFiles,
     BootMode? bootMode,
     CpuType? cpuType,
     int? speedMultiplier,
@@ -117,6 +144,11 @@ class EmulatorViewState {
           : (failureMessage ?? this.failureMessage),
       fddMedia: fddMedia ?? this.fddMedia,
       fddLastAccessed: fddLastAccessed ?? this.fddLastAccessed,
+      fddDriveSettings: fddDriveSettings ?? this.fddDriveSettings,
+      fddBankNum: fddBankNum ?? this.fddBankNum,
+      fddCurBank: fddCurBank ?? this.fddCurBank,
+      fddSourceKind: fddSourceKind ?? this.fddSourceKind,
+      fddRecentFiles: fddRecentFiles ?? this.fddRecentFiles,
       bootMode: bootMode ?? this.bootMode,
       cpuType: cpuType ?? this.cpuType,
       speedMultiplier: speedMultiplier ?? this.speedMultiplier,

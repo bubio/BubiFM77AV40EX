@@ -97,3 +97,69 @@ abstract final class SpeedMultiplier {
   static const int x8 = 3;
   static const int x16 = 4;
 }
+
+/// 空ディスク作成の媒体種別（specification.md FDD-05）。
+enum FddMediaType {
+  /// 40 cylinder×2 side×16 sector×256 byte（327,680 bytes）。
+  d2,
+
+  /// 80 cylinder×2 side×16 sector×256 byte（655,360 bytes）。
+  d2dd,
+}
+
+/// FDDドライブごとの書込み保護／タイミング補正／CRCエラー無視
+/// （specification.md FDD-06）。
+///
+/// [writeProtected]はディスク単位のランタイム状態、[correctTiming]と
+/// [ignoreCrc]はドライブ単位のconfig値で、いずれも即時反映される。
+class FddDriveSettings {
+  const FddDriveSettings({
+    this.writeProtected = false,
+    this.correctTiming = false,
+    this.ignoreCrc = false,
+  });
+
+  final bool writeProtected;
+  final bool correctTiming;
+  final bool ignoreCrc;
+
+  FddDriveSettings copyWith({
+    bool? writeProtected,
+    bool? correctTiming,
+    bool? ignoreCrc,
+  }) {
+    return FddDriveSettings(
+      writeProtected: writeProtected ?? this.writeProtected,
+      correctTiming: correctTiming ?? this.correctTiming,
+      ignoreCrc: ignoreCrc ?? this.ignoreCrc,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is FddDriveSettings &&
+      other.writeProtected == writeProtected &&
+      other.correctTiming == correctTiming &&
+      other.ignoreCrc == ignoreCrc;
+
+  @override
+  int get hashCode => Object.hash(writeProtected, correctTiming, ignoreCrc);
+}
+
+/// FD1/FD2の最近使ったファイル1件（specification.md FDD-07）。
+///
+/// [token]は再選択時に`ExternalFileAccess.resolve`へ渡す永続トークン、
+/// [displayName]は表示用の名前（フルパスを含まない）。
+typedef FddRecentFile = ({String token, String displayName});
+
+/// 挿入中の媒体の由来（design.md 9.1）。
+enum DiskSourceKind {
+  /// D88/D77/D8E/1DD。選択バンク以外を保持して同じコンテナへ書き戻せる。
+  nativeContainer,
+
+  /// TD0/IMD/DSK/NFD/FDI。原本を変更せず作業用D88として扱う（FDD-09）。
+  converted,
+
+  /// headerless raw。convertedと同様、原本を変更しない（FDD-09）。
+  raw,
+}

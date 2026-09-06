@@ -42,6 +42,7 @@ Future<Widget> buildApp({RomManifest? romManifest}) async {
           appDataPaths: appDataPaths,
           externalFileAccess: externalFileAccess,
           cacheWorkspace: cacheWorkspace,
+          preferences: preferences,
           createSession:
               ({
                 required String homeDir,

@@ -131,6 +131,51 @@
   "@fddEject": {
     "description": "Button that ejects the media from a drive."
   },
+  "fddInsertBlank2D": "Insert Blank 2D…",
+  "@fddInsertBlank2D": {
+    "description": "Creates a blank 2D floppy image and inserts it into this drive."
+  },
+  "fddInsertBlank2DD": "Insert Blank 2DD…",
+  "@fddInsertBlank2DD": {
+    "description": "Creates a blank 2DD floppy image and inserts it into this drive."
+  },
+  "fddWriteProtected": "Write Protected",
+  "@fddWriteProtected": {
+    "description": "Checkbox toggling write protection for this drive."
+  },
+  "fddCorrectTiming": "Correct Timing",
+  "@fddCorrectTiming": {
+    "description": "Checkbox toggling disk timing correction for this drive."
+  },
+  "fddIgnoreCrc": "Ignore CRC Errors",
+  "@fddIgnoreCrc": {
+    "description": "Checkbox toggling CRC error tolerance for this drive."
+  },
+  "fddSaveAs": "Save As D88…",
+  "@fddSaveAs": {
+    "description": "Saves the working copy of a converted or raw image to a D88 file chosen by the user, without touching the original."
+  },
+  "fddBankLabel": "Bank {bankNumber}",
+  "@fddBankLabel": {
+    "description": "Radio option label for one bank inside a multi-bank D88 image.",
+    "placeholders": {
+      "bankNumber": {
+        "type": "int"
+      }
+    }
+  },
+  "fddRecentFiles": "Recent Files",
+  "@fddRecentFiles": {
+    "description": "Submenu listing recently used media for this drive."
+  },
+  "fddRecentFilesEmpty": "(No Recent Files)",
+  "@fddRecentFilesEmpty": {
+    "description": "Placeholder shown in the Recent Files submenu when the drive has no history yet."
+  },
+  "fddClearRecentFiles": "Clear Recent Files",
+  "@fddClearRecentFiles": {
+    "description": "Clears the recent files history for this drive."
+  },
   "statusViewFps": "View {fps} fps",
   "@statusViewFps": {
     "description": "Status bar: frames actually published to the screen per second.",

@@ -395,6 +395,98 @@ class FfiEmulatorSession implements EmulatorSession {
     }
   }
 
+  Future<int> _sendFddSwitch(int kind, int drive, bool value) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = kind;
+      command.ref.arg0 = drive;
+      command.ref.arg1 = value ? 1 : 0;
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
+  Future<int> setFddWriteProtect(int drive, bool enabled) =>
+      _sendFddSwitch(BfmCommandKind.setFddWriteProtect, drive, enabled);
+
+  @override
+  Future<int> setFddTiming(int drive, bool enabled) =>
+      _sendFddSwitch(BfmCommandKind.setFddTiming, drive, enabled);
+
+  @override
+  Future<int> setFddCrcCheck(int drive, bool ignore) =>
+      _sendFddSwitch(BfmCommandKind.setFddCrcCheck, drive, ignore);
+
+  @override
+  Future<int> createBlankFdd(
+    FddMediaType mediaType,
+    String destinationPath,
+  ) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    final pathUtf8 = destinationPath.toNativeUtf8();
+    try {
+      command.ref.kind = BfmCommandKind.createBlankFdd;
+      command.ref.arg0 = fddMediaTypeToNative(mediaType);
+      command.ref.text = pathUtf8.cast<Char>();
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(pathUtf8);
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
+  ({int bankNum, int curBank}) getFddBankInfo(int drive) {
+    _ensureUsable();
+    final bankNum = calloc<Int32>();
+    final curBank = calloc<Int32>();
+    try {
+      final result = _bindings.getFddBankInfo(_handle, drive, bankNum, curBank);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return (bankNum: bankNum.value, curBank: curBank.value);
+    } finally {
+      calloc.free(bankNum);
+      calloc.free(curBank);
+    }
+  }
+
+  @override
+  bool getFddWriteProtect(int drive) {
+    _ensureUsable();
+    final out = calloc<Int32>();
+    try {
+      final result = _bindings.getFddWriteProtect(_handle, drive, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value != 0;
+    } finally {
+      calloc.free(out);
+    }
+  }
+
   @override
   Future<void> keyDown(int vkCode) =>
       _sendKeyCommand(BfmCommandKind.keyDown, vkCode);

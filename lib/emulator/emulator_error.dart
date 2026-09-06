@@ -21,6 +21,10 @@ enum EmulatorErrorCode {
   /// 境界で捕捉した想定外の例外。
   internal,
 
+  /// rawイメージのサイズがFM7系の2D/2DDジオメトリのどちらとも一致しない、
+  /// または変換形式の変換後media_typeが2D/2DD以外だった（FDD-03）。
+  unsupportedGeometry,
+
   /// 既知のどれにも当てはまらない値。ヘッダーとの同期漏れを表す。
   unknown,
 }

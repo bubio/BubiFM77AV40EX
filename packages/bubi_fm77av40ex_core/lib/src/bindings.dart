@@ -118,6 +118,25 @@ final class BubiCoreBindings {
           .lookup<
             NativeFunction<Int32 Function(Pointer<BfmSession>, Pointer<Uint32>)>
           >('bfm_get_media_access')
+          .asFunction(),
+      getFddBankInfo = library
+          .lookup<
+            NativeFunction<
+              Int32 Function(
+                Pointer<BfmSession>,
+                Int32,
+                Pointer<Int32>,
+                Pointer<Int32>,
+              )
+            >
+          >('bfm_get_fdd_bank_info')
+          .asFunction(),
+      getFddWriteProtect = library
+          .lookup<
+            NativeFunction<
+              Int32 Function(Pointer<BfmSession>, Int32, Pointer<Int32>)
+            >
+          >('bfm_get_fdd_write_protect')
           .asFunction();
 
   /// 既定のライブラリを開いて束縛する。
@@ -146,6 +165,14 @@ final class BubiCoreBindings {
   /// FD1/FD2アクセス状態のread-and-clearポーリング（bfm_get_media_access）。
   /// 消費者は1つに保つこと。
   final int Function(Pointer<BfmSession>, Pointer<Uint32>) getMediaAccess;
+
+  /// D88のバンク情報（bfm_get_fdd_bank_info、M3 FDD-04）。
+  final int Function(Pointer<BfmSession>, int, Pointer<Int32>, Pointer<Int32>)
+  getFddBankInfo;
+
+  /// ドライブごとの書込み保護の実際値（bfm_get_fdd_write_protect、M3 FDD-06）。
+  final int Function(Pointer<BfmSession>, int, Pointer<Int32>)
+  getFddWriteProtect;
 }
 
 /// ネイティブライブラリを開く。

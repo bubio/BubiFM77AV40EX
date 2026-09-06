@@ -15,6 +15,10 @@ abstract final class BfmResult {
   static const int coreFailed = 5;
   static const int unsupported = 6;
   static const int internal = 7;
+
+  /// rawイメージのサイズがFM7系の2D/2DDジオメトリのどちらとも一致しない、
+  /// または変換形式の変換後media_typeが2D/2DD以外だった（M3 FDD-03）。
+  static const int unsupportedGeometry = 8;
 }
 
 /// `bfm_state`
@@ -44,6 +48,12 @@ abstract final class BfmBootMode {
 abstract final class BfmCpuType {
   static const int fast = 0; // 2.0MHz相当
   static const int slow = 1; // 1.2MHz
+}
+
+/// `bfm_fdd_media_type`。空ディスク作成（M3 FDD-05）の媒体種別。
+abstract final class BfmFddMediaType {
+  static const int media2D = 0;
+  static const int media2DD = 1;
 }
 
 /// `BFM_CMD_SET_OPTION_SWITCH` の arg0 に渡すビット。
@@ -76,6 +86,7 @@ abstract final class BfmCommandKind {
   static const int setFddWriteProtect = 0x0302;
   static const int setFddTiming = 0x0303;
   static const int setFddCrcCheck = 0x0304;
+  static const int createBlankFdd = 0x0305;
   static const int insertCmt = 0x0310;
   static const int ejectCmt = 0x0311;
   static const int controlCmt = 0x0312;

@@ -37,6 +37,7 @@
 
 #include "common.h"
 #include "emu.h"
+#include "vm/disk.h"
 #include "vm/fm7/fm7_common.h"
 
 #include "core_host_symbols.h"
@@ -66,6 +67,68 @@ SpeedMultiplierMode speed_multiplier_mode_from_env()
  * WP5はFD1/FD2に限り、upstreamのUSE_FLOPPY_DISK（4）のうち先頭2つだけを使う。
  */
 constexpr int64_t kFddDriveCount = 2;
+
+/*
+ * FDDイメージの拡張子分類（specification.md FDD-02/FDD-03、design.md 9.1）。
+ * native containerとconverted（コアが変換読込する形式）はそのままコアへ
+ * 渡してよい。どちらにも一致しない拡張子はraw扱いとし、コアへ渡す前に
+ * ブリッジ自身でファイルサイズを確認する（下記kRaw2DBytes/kRaw2DDBytes）。
+ */
+const char* const kNativeContainerExtensions[] = {".d88", ".d77", ".d8e", ".1dd"};
+const char* const kConvertedExtensions[] = {".td0", ".imd", ".dsk", ".nfd", ".fdi"};
+
+bool has_extension(const std::string& path, const char* const* extensions, size_t count)
+{
+	for (size_t i = 0; i < count; ++i) {
+		const size_t ext_len = strlen(extensions[i]);
+		if (path.size() < ext_len) {
+			continue;
+		}
+		if (strcasecmp(path.c_str() + (path.size() - ext_len), extensions[i]) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/*
+ * headerless rawのFM7系ジオメトリ（specification.md 105行）。
+ * 40 cylinder×2 side×16 sector×256 byte（2D）と80×2×16×256（2DD）だけを
+ * 対象とし、同じ容量を別geometryとして推測しない。
+ */
+constexpr int64_t kRaw2DBytes = 40 * 2 * 16 * 256;   // 327,680
+constexpr int64_t kRaw2DDBytes = 80 * 2 * 16 * 256;  // 655,360
+
+bool file_size_of(const std::string& path, int64_t* out_size)
+{
+	struct stat st;
+	if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) {
+		return false;
+	}
+	*out_size = static_cast<int64_t>(st.st_size);
+	return true;
+}
+
+/*
+ * rawイメージ（native containerでもconverted対象拡張子でもないファイル）を
+ * コアへ渡してよいか判定する（design.md 9.1「raw変換は容量だけで汎用
+ * geometry表へフォールスルーさせない」）。native/converted拡張子は対象外
+ * （常にtrue）。
+ */
+bool is_acceptable_fdd_source(const std::string& path)
+{
+	if (has_extension(path, kNativeContainerExtensions,
+	                   sizeof(kNativeContainerExtensions) / sizeof(kNativeContainerExtensions[0])) ||
+	    has_extension(path, kConvertedExtensions,
+	                   sizeof(kConvertedExtensions) / sizeof(kConvertedExtensions[0]))) {
+		return true;
+	}
+	int64_t size = 0;
+	if (!file_size_of(path, &size)) {
+		return false;
+	}
+	return size == kRaw2DBytes || size == kRaw2DDBytes;
+}
 
 /*
  * upstream の cpp_homedir はプロセス全域の変数であり、EMU の初回生成で
@@ -352,6 +415,30 @@ struct bfm_session {
 	 */
 	std::atomic<uint32_t> media_access_bits{0};
 
+	/*
+	 * D88のバンク情報（M3 FDD-04）。emu->d88_file[drv]はCore threadだけが
+	 * 触れるEMUのメンバのため、挿入・排出のたびにapply_command（Core
+	 * thread）がここへ複製する。bfm_get_fdd_bank_infoはこの複製だけを
+	 * 読み、どのスレッドからでも安全に呼べる（media_access_bitsと同じ
+	 * 考え方）。未挿入は両方0。
+	 */
+	std::atomic<int32_t> fdd_bank_num[kFddDriveCount]{};
+	std::atomic<int32_t> fdd_cur_bank[kFddDriveCount]{};
+
+	/*
+	 * ドライブごとの書込み保護（M3 FDD-06）。upstreamのDISK::write_protectedは
+	 * ディスクインスタンス単位の状態で、`DISK::open()`が呼出しのたびに
+	 * まずfalseへ戻してから、開いたD88ファイル自身のヘッダprotectバイト
+	 * （`vm/disk.cpp`の`buffer[0x1a]`）を見て必要ならtrueへ立て直す
+	 * （`disk.h`のコンストラクタでの初期化はプロセス起動時の1回だけ）。
+	 * つまり挿入するたびに、そのファイル自身が持つ書込み保護の有無へ
+	 * 決まり直す。ここへはinsert完了直後にCore threadが実際の値を
+	 * 読んで複製し、set_fdd_write_protectでは指定値をそのまま複製する。
+	 * bfm_get_fdd_write_protectはこの複製だけを読む
+	 * （fdd_bank_num/fdd_cur_bankと同じ考え方）。
+	 */
+	std::atomic<bool> fdd_write_protected[kFddDriveCount]{};
+
 	// --- Core threadだけが触る ---
 	EMU* emu = nullptr;
 
@@ -465,12 +552,28 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 			code = BFM_ERR_INVALID_STATE;
 			break;
 		}
+		if (!is_acceptable_fdd_source(queued.text)) {
+			// native container/convertedのどちらでもない拡張子で、かつ
+			// FM7系の2D/2DDのどちらのバイト数とも一致しない（M3 FDD-03）。
+			// コアの汎用geometry表へフォールスルーさせず、ここで拒否する。
+			code = BFM_ERR_UNSUPPORTED_GEOMETRY;
+			break;
+		}
 		session->emu->open_floppy_disk(drv, queued.text.c_str(), static_cast<int>(queued.arg1));
 		if (!session->emu->is_floppy_disk_inserted(drv)) {
 			// コアが形式を受理しなかった（不正なD88など）。
 			code = BFM_ERR_INVALID_ARGUMENT;
 			break;
 		}
+		// M3 FDD-04: バンク数・現在のバンクをbfm_get_fdd_bank_info向けに
+		// 複製する（emu->d88_fileはCore threadだけが読めるため）。
+		session->fdd_bank_num[drv].store(session->emu->d88_file[drv].bank_num);
+		session->fdd_cur_bank[drv].store(session->emu->d88_file[drv].cur_bank);
+		// M3 FDD-06: DISK::open()はファイル自身のヘッダprotectバイトを見て
+		// write_protectedを決め直す（bfm_session::fdd_write_protectedの
+		// コメント参照）。挿入直後の実際の値をここで複製する。
+		session->fdd_write_protected[drv].store(
+		    session->emu->is_floppy_disk_protected(drv));
 		bfm_event event{};
 		event.kind = BFM_EVENT_MEDIA_CHANGED;
 		event.arg0 = drv;
@@ -492,11 +595,71 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 		// ここで書き戻しを終える。戻った時点で呼び出し側は作業コピーの
 		// 内容を原本へ原子的に反映してよい。
 		session->emu->close_floppy_disk(drv);
+		session->fdd_bank_num[drv].store(0);
+		session->fdd_cur_bank[drv].store(0);
+		session->fdd_write_protected[drv].store(false);
 		bfm_event event{};
 		event.kind = BFM_EVENT_MEDIA_CHANGED;
 		event.arg0 = drv;
 		event.arg1 = 0;
 		session->push_event(event);
+		break;
+	}
+	case BFM_CMD_SET_FDD_WRITE_PROTECT: {
+		if (queued.arg0 < 0 || queued.arg0 >= kFddDriveCount ||
+		    (queued.arg1 != 0 && queued.arg1 != 1)) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		const int drv = static_cast<int>(queued.arg0);
+		// EMU::is_floppy_disk_protected(drv, value)はディスク単位の
+		// ランタイム状態を書くだけで、未挿入でも呼べる（M3 FDD-06）。
+		session->emu->is_floppy_disk_protected(drv, queued.arg1 != 0);
+		session->fdd_write_protected[drv].store(queued.arg1 != 0);
+		break;
+	}
+	case BFM_CMD_SET_FDD_TIMING: {
+		if (queued.arg0 < 0 || queued.arg0 >= kFddDriveCount ||
+		    (queued.arg1 != 0 && queued.arg1 != 1)) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		// config.correct_disk_timing[drv]はDISK::correct_timing()が
+		// 呼出しのたびに読むため、update_config()は不要（M3 FDD-06）。
+		config.correct_disk_timing[queued.arg0] = queued.arg1 != 0;
+		break;
+	}
+	case BFM_CMD_SET_FDD_CRC_CHECK: {
+		if (queued.arg0 < 0 || queued.arg0 >= kFddDriveCount ||
+		    (queued.arg1 != 0 && queued.arg1 != 1)) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		config.ignore_disk_crc[queued.arg0] = queued.arg1 != 0;
+		break;
+	}
+	case BFM_CMD_CREATE_BLANK_FDD: {
+		// M3 FDD-05。挿入は行わない。呼び出し側が改めてBFM_CMD_INSERT_FDD
+		// を送る（design.md 9「空ディスク作成は一時ファイルへ完全に書き、
+		// 同一ボリューム上で置換する」）。
+		if ((queued.arg0 != BFM_FDD_MEDIA_2D && queued.arg0 != BFM_FDD_MEDIA_2DD) ||
+		    queued.text.empty()) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		const uint8_t media_type =
+		    queued.arg0 == BFM_FDD_MEDIA_2DD ? MEDIA_TYPE_2DD : MEDIA_TYPE_2D;
+		const std::string tmp_path = queued.text + ".tmp";
+		if (!session->emu->create_blank_floppy_disk(tmp_path.c_str(), media_type)) {
+			remove(tmp_path.c_str());
+			code = BFM_ERR_INTERNAL;
+			break;
+		}
+		if (rename(tmp_path.c_str(), queued.text.c_str()) != 0) {
+			remove(tmp_path.c_str());
+			code = BFM_ERR_INTERNAL;
+			break;
+		}
 		break;
 	}
 	case BFM_CMD_SET_BOOT_MODE:
@@ -1119,6 +1282,38 @@ BFM_API bfm_result bfm_get_media_access(bfm_session* session, uint32_t* out_bits
 		return BFM_ERR_INVALID_ARGUMENT;
 	}
 	*out_bits = session->media_access_bits.exchange(0);
+	return BFM_OK;
+}
+
+/*
+ * D88のバンク情報（M3 FDD-04）。bfm_session::fdd_bank_num/fdd_cur_bankの
+ * コメントを参照。Core threadの実行を待たせない読み出し専用の複製を返す。
+ */
+BFM_API bfm_result bfm_get_fdd_bank_info(bfm_session* session, int32_t drive,
+                                         int32_t* out_bank_num, int32_t* out_cur_bank)
+{
+	if (session == nullptr || out_bank_num == nullptr || out_cur_bank == nullptr ||
+	    drive < 0 || drive >= kFddDriveCount) {
+		return BFM_ERR_INVALID_ARGUMENT;
+	}
+	*out_bank_num = session->fdd_bank_num[drive].load();
+	*out_cur_bank = session->fdd_cur_bank[drive].load();
+	return BFM_OK;
+}
+
+/*
+ * ドライブごとの書込み保護の実際値（M3 FDD-06）。
+ * bfm_session::fdd_write_protectedのコメントを参照。挿入直後は
+ * そのファイル自身のヘッダprotectバイトを反映した値になる。
+ */
+BFM_API bfm_result bfm_get_fdd_write_protect(bfm_session* session, int32_t drive,
+                                             int32_t* out_value)
+{
+	if (session == nullptr || out_value == nullptr || drive < 0 ||
+	    drive >= kFddDriveCount) {
+		return BFM_ERR_INVALID_ARGUMENT;
+	}
+	*out_value = session->fdd_write_protected[drive].load() ? 1 : 0;
 	return BFM_OK;
 }
 

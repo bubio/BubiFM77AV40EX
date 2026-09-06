@@ -245,6 +245,33 @@ Future<void> _checkEmulatorSession(
   );
   check(optionSwitchCommandId > 0, 'オプションスイッチの変更を投入できる（SYS-06）');
 
+  final writeProtectId = await session.setFddWriteProtect(0, true);
+  check(writeProtectId > 0, 'FDDの書込み保護を投入できる（FDD-06）');
+  final timingId = await session.setFddTiming(0, true);
+  check(timingId > 0, 'FDDのタイミング補正を投入できる（FDD-06）');
+  final crcId = await session.setFddCrcCheck(0, true);
+  check(crcId > 0, 'FDDのCRCエラー無視を投入できる（FDD-06）');
+
+  final blankPath = '$homeDir/dart-check-blank.d88';
+  final createBlankId = await session.createBlankFdd(
+    FddMediaType.d2,
+    blankPath,
+  );
+  check(createBlankId > 0, '空の2Dディスク作成を投入できる（FDD-05）');
+  for (
+    var waited = 0;
+    waited < 500 && !File(blankPath).existsSync();
+    waited++
+  ) {
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  check(File(blankPath).existsSync(), '作成した空ディスクのファイルが実在する');
+
+  final bankInfo = session.getFddBankInfo(0);
+  check(bankInfo.bankNum == 0, '未挿入ドライブのbank_numは0（FDD-04）');
+
+  check(session.getFddWriteProtect(0) == false, '未挿入ドライブの書込み保護はfalse（FDD-06）');
+
   final commandId = await session.reset(ResetKind.special);
   check(commandId > 0, '特殊リセットの連番IDが返る');
 

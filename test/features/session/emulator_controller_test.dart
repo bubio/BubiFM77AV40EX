@@ -28,6 +28,7 @@ void main() {
         appDataPaths: FakeAppDataPaths(),
         externalFileAccess: externalFileAccess,
         cacheWorkspace: cacheWorkspace,
+        preferences: FakePreferencesStore(),
         createSession: ({
           required String homeDir,
           String? romDir,
@@ -207,6 +208,224 @@ void main() {
     expect(state().fddMedia, isEmpty);
   });
 
+  test('FDD-06 書込み保護・タイミング補正・CRC無視は起動中ならコアへ即時に送り、状態も更新する', () async {
+    await controller().setFddWriteProtect(0, true);
+    await controller().setFddTiming(0, true);
+    await controller().setFddCrcCheck(0, true);
+
+    expect(session.setFddWriteProtectCalls, [(0, true)]);
+    expect(session.setFddTimingCalls, [(0, true)]);
+    expect(session.setFddCrcCheckCalls, [(0, true)]);
+    expect(
+      state().fddDriveSettings[0],
+      const FddDriveSettings(
+        writeProtected: true,
+        correctTiming: true,
+        ignoreCrc: true,
+      ),
+    );
+  });
+
+  test('FDD-06 タイミング補正・CRC無視は次回launch時に新しいセッションへ再適用される', () async {
+    await controller().setFddTiming(1, true);
+    await controller().setFddCrcCheck(1, true);
+    await controller().shutdown();
+    session = FakeEmulatorSession();
+
+    await controller().launch();
+
+    expect(session.setFddTimingCalls, [(1, true)]);
+    expect(session.setFddCrcCheckCalls, [(1, true)]);
+  });
+
+  test('FDD-06 書込み保護は媒体自身が持つ状態のため、launch時には再適用しない', () async {
+    await controller().setFddWriteProtect(1, true);
+    await controller().shutdown();
+    session = FakeEmulatorSession();
+
+    await controller().launch();
+
+    expect(session.setFddWriteProtectCalls, isEmpty);
+  });
+
+  test('FDD-06 挿入すると書込み保護の表示は媒体自身が持つ実際値になる', () async {
+    session.fddWriteProtectByDrive[0] = true;
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/PROTECTED.D88',
+      displayName: 'PROTECTED.D88',
+    );
+
+    await controller().insertFdd(0);
+
+    expect(state().fddDriveSettings[0]?.writeProtected, isTrue);
+  });
+
+  test('FDD-06 排出すると書込み保護の表示はfalseへ戻る', () async {
+    session.fddWriteProtectByDrive[0] = true;
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/PROTECTED.D88',
+      displayName: 'PROTECTED.D88',
+    );
+    await controller().insertFdd(0);
+
+    await controller().ejectFdd(0);
+
+    expect(state().fddDriveSettings[0]?.writeProtected, isFalse);
+  });
+
+  test('FDD-06 前のディスクの保護状態を持ち越さず、次のディスクの実際値に従う', () async {
+    session.fddWriteProtectByDrive[0] = true;
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/PROTECTED.D88',
+      displayName: 'PROTECTED.D88',
+    );
+    await controller().insertFdd(0);
+
+    session.fddWriteProtectByDrive[0] = false;
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/OTHER.D88',
+      displayName: 'OTHER.D88',
+    );
+    await controller().insertFdd(0);
+
+    expect(state().fddDriveSettings[0]?.writeProtected, isFalse);
+  });
+
+  test('FDD-05 空ディスクを作成すると通常の挿入フローに合流する', () async {
+    externalFileAccess.nextSaveLocationResult = FakeExternalResource(
+      '/Volumes/USB/NEW.D88',
+      displayName: 'NEW.D88',
+    );
+
+    await controller().insertBlankFdd(0, FddMediaType.d2dd);
+
+    expect(session.createBlankFddCalls, [
+      (FddMediaType.d2dd, '/Volumes/USB/NEW.D88'),
+    ]);
+    expect(session.insertCalls, hasLength(1));
+    expect(state().fddMedia[0], 'NEW.D88');
+    expect(
+      externalFileAccess.pickSaveLocationSuggestedNames,
+      contains('blank-2dd.d88'),
+    );
+  });
+
+  test('FDD-05 保存先の選択をキャンセルすると何も起きない', () async {
+    externalFileAccess.nextSaveLocationResult = null;
+
+    await controller().insertBlankFdd(0, FddMediaType.d2);
+
+    expect(session.createBlankFddCalls, isEmpty);
+    expect(session.insertCalls, isEmpty);
+  });
+
+  test('FDD-04 バンク切替は排出して書き戻してから同じ作業コピーを新バンクで再挿入する', () async {
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/GAME.D88',
+      displayName: 'GAME.D88',
+    );
+    await controller().insertFdd(0);
+    session.fddBankInfoByDrive[0] = (bankNum: 2, curBank: 1);
+
+    await controller().insertFddBank(0, 1);
+
+    expect(session.ejectCalls, [0]);
+    expect(session.insertCalls, hasLength(2));
+    final (drive, imagePath, bank) = session.insertCalls[1];
+    expect(drive, 0);
+    expect(imagePath, '${cacheWorkspace.handle.nativePath}/fd0-GAME.D88');
+    expect(bank, 1);
+    // 原本を再選択せず、同じ作業コピーへ書き戻してから再挿入する。
+    expect(cacheWorkspace.handle.exportCalls, [
+      ('fd0-GAME.D88', '/Volumes/USB/GAME.D88'),
+    ]);
+    expect(state().fddBankNum[0], 2);
+    expect(state().fddCurBank[0], 1);
+  });
+
+  test('FDD-09 Save Asは原本に触れず、選択先へ保存してから挿入したままにする', () async {
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/GAME.TD0',
+      displayName: 'GAME.TD0',
+    );
+    await controller().insertFdd(0);
+    externalFileAccess.nextSaveLocationResult = FakeExternalResource(
+      '/Volumes/USB/SAVED.D88',
+      displayName: 'SAVED.D88',
+    );
+
+    await controller().saveFddAs(0);
+
+    expect(session.ejectCalls, [0]);
+    expect(cacheWorkspace.handle.exportCalls, [
+      ('fd0-GAME.TD0', '/Volumes/USB/SAVED.D88'),
+    ]);
+    // 原本(GAME.TD0)へは一度もexportAtomicしていない。
+    expect(
+      cacheWorkspace.handle.exportCalls.any(
+        (call) => call.$2 == '/Volumes/USB/GAME.TD0',
+      ),
+      isFalse,
+    );
+    expect(session.insertCalls, hasLength(2));
+    expect(state().fddMedia[0], isNotNull);
+  });
+
+  test('FDD-07 挿入した媒体は最近使ったファイルへ記録され、再選択できる', () async {
+    final resource = FakeExternalResource(
+      '/Volumes/USB/GAME.D88',
+      displayName: 'GAME.D88',
+    );
+    externalFileAccess.nextPickResult = resource;
+    await controller().insertFdd(0);
+    await controller().ejectFdd(0);
+
+    expect(state().fddRecentFiles[0], [
+      (token: '/Volumes/USB/GAME.D88', displayName: 'GAME.D88'),
+    ]);
+
+    externalFileAccess.resolveResultByToken['/Volumes/USB/GAME.D88'] =
+        FakeExternalResource('/Volumes/USB/GAME.D88', displayName: 'GAME.D88');
+    await controller().insertFddFromRecent(0, '/Volumes/USB/GAME.D88');
+
+    expect(externalFileAccess.resolveCalls, ['/Volumes/USB/GAME.D88']);
+    expect(state().fddMedia[0], 'GAME.D88');
+  });
+
+  test('FDD-07 失効したトークンは履歴から外す', () async {
+    await controller().insertFddFromRecent(0, 'stale-token');
+
+    expect(session.insertCalls, isEmpty);
+  });
+
+  test('FDD-07 履歴は次回launch時にも保持される', () async {
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/GAME.D88',
+      displayName: 'GAME.D88',
+    );
+    await controller().insertFdd(0);
+    await controller().shutdown();
+    session = FakeEmulatorSession();
+
+    await controller().launch();
+
+    expect(state().fddRecentFiles[0], [
+      (token: '/Volumes/USB/GAME.D88', displayName: 'GAME.D88'),
+    ]);
+  });
+
+  test('FDD-07 履歴を消去できる', () async {
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/GAME.D88',
+      displayName: 'GAME.D88',
+    );
+    await controller().insertFdd(0);
+
+    await controller().clearRecentFiles(0);
+
+    expect(state().fddRecentFiles[0], isEmpty);
+  });
+
   test('FDD-01 未挿入のドライブを排出しても何もしない', () async {
     await controller().ejectFdd(1);
 
@@ -245,6 +464,7 @@ void main() {
               appDataPaths: FakeAppDataPaths(),
               externalFileAccess: FakeExternalFileAccess(),
               cacheWorkspace: FakeCacheWorkspace(),
+              preferences: FakePreferencesStore(),
               createSession: ({
                 required String homeDir,
                 String? romDir,

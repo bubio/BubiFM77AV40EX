@@ -44,7 +44,14 @@ typedef enum {
 	BFM_ERR_NO_EVENT = 4,         /* poll時にイベントがない */
 	BFM_ERR_CORE_FAILED = 5,      /* Core thread内で異常が発生した */
 	BFM_ERR_UNSUPPORTED = 6,      /* 型としては定義済みだが未実装 */
-	BFM_ERR_INTERNAL = 7          /* 境界で捕捉した想定外の例外 */
+	BFM_ERR_INTERNAL = 7,         /* 境界で捕捉した想定外の例外 */
+	/*
+	 * rawイメージのサイズがFM7系の2D/2DDジオメトリのどちらとも一致しない、
+	 * または変換形式（TD0/IMD/DSK/NFD/FDI）の変換後media_typeが2D/2DD以外
+	 * だった（M3 FDD-03）。design.md 9.1「raw変換は容量だけで汎用geometry
+	 * 表へフォールスルーさせない」を満たすための専用コード。
+	 */
+	BFM_ERR_UNSUPPORTED_GEOMETRY = 8
 } bfm_result;
 
 typedef enum {
@@ -79,6 +86,15 @@ typedef enum {
 	BFM_CPU_FAST = 0, /* 2.0MHz相当 */
 	BFM_CPU_SLOW = 1  /* 1.2MHz */
 } bfm_cpu_type;
+
+/*
+ * 空ディスク作成の媒体種別（specification.md FDD-05）。値はupstreamの
+ * MEDIA_TYPE_2D/MEDIA_TYPE_2DD（vm/disk.h）と同じ意味。
+ */
+typedef enum {
+	BFM_FDD_MEDIA_2D = 0,
+	BFM_FDD_MEDIA_2DD = 1
+} bfm_fdd_media_type;
 
 /*
  * BFM_CMD_SET_OPTION_SWITCH の arg0 に渡すビット（specification.md
@@ -157,12 +173,51 @@ typedef enum {
 	 * BFM_OK を返す（冪等）。挿入中ならコアがそのドライブへ書き戻して
 	 * から排出する。呼び出し側は、この完了イベントを受けてから
 	 * 作業コピーを原本へ原子的に反映すること。
+	 *
+	 * BFM_CMD_INSERT_FDD が受理する形式（specification.md FDD-02/FDD-03）:
+	 * D88/D77/D8E/1DDはそのままコアへ渡す。拡張子がTD0/IMD/DSK/NFD/FDIの
+	 * 場合はコアが変換してから開き、変換後のmedia_typeが2D/2DD以外なら
+	 * BFM_ERR_UNSUPPORTED_GEOMETRY で拒否して即座に排出する。それ以外の
+	 * 拡張子（raw扱い）はコアへ渡す前にブリッジがファイルサイズを直接
+	 * 確認し、327,680（2D）または655,360（2DD）バイトのどちらでもなければ
+	 * コアを呼ばずに BFM_ERR_UNSUPPORTED_GEOMETRY で拒否する
+	 * （design.md 9.1「raw変換は容量だけで汎用geometry表へフォールスルー
+	 * させない」）。
+	 *
+	 * BFM_CMD_INSERT_FDD の arg1（D88バンク番号）は同一ファイル内の
+	 * バンク切替にも使う。バンク数と現在のバンクは bfm_get_fdd_bank_info
+	 * で取得できる（M3 FDD-04）。
 	 */
-	BFM_CMD_INSERT_FDD = 0x0300,             /* WP5 FDD-01 */
+	BFM_CMD_INSERT_FDD = 0x0300,             /* WP5 FDD-01、M3 FDD-03/FDD-04 */
 	BFM_CMD_EJECT_FDD = 0x0301,              /* WP5 FDD-01 */
-	BFM_CMD_SET_FDD_WRITE_PROTECT = 0x0302,  /* M3 FDD-03 */
-	BFM_CMD_SET_FDD_TIMING = 0x0303,         /* M3 FDD-05 */
+	/*
+	 * BFM_CMD_SET_FDD_WRITE_PROTECT / _TIMING / _CRC_CHECK
+	 * （specification.md FDD-06、ドライブごとの書込み保護・タイミング
+	 * 補正・CRCエラー無視）。arg0 はドライブ番号、arg1 は0/1
+	 * （それ以外は BFM_ERR_INVALID_ARGUMENT）。
+	 *
+	 * WRITE_PROTECT は upstream の EMU::is_floppy_disk_protected(drv, value)
+	 * を呼ぶ、ディスク単位のランタイム状態。未挿入でも設定でき、次に
+	 * 挿入されたディスクへそのまま適用される。
+	 *
+	 * TIMING / CRC_CHECK は upstream の config.correct_disk_timing[drv] /
+	 * config.ignore_disk_crc[drv]（drive_num添字の配列）へ直接書く。
+	 * どちらもDISK側が呼出しのたびに読むため、update_config() は不要で
+	 * 即時反映される。
+	 */
+	BFM_CMD_SET_FDD_WRITE_PROTECT = 0x0302,  /* M3 FDD-06 */
+	BFM_CMD_SET_FDD_TIMING = 0x0303,         /* M3 FDD-06 */
 	BFM_CMD_SET_FDD_CRC_CHECK = 0x0304,      /* M3 FDD-06 */
+	/*
+	 * BFM_CMD_CREATE_BLANK_FDD: 空の2D/2DDディスクイメージを作る
+	 * （specification.md FDD-05）。arg0 は bfm_fdd_media_type、text は
+	 * 作成先の絶対パス。upstream の EMU::create_blank_floppy_disk() を
+	 * 一時ファイルへ書いてから同一ボリュームで原子的に rename する
+	 * （design.md 9「空ディスク作成は一時ファイルへ完全に書き、同一
+	 * ボリューム上で置換する」）。ドライブへの挿入は別途
+	 * BFM_CMD_INSERT_FDD で行う（このコマンド自体は挿入しない）。
+	 */
+	BFM_CMD_CREATE_BLANK_FDD = 0x0305,       /* M3 FDD-05 */
 	BFM_CMD_INSERT_CMT = 0x0310,             /* M7 P2 */
 	BFM_CMD_EJECT_CMT = 0x0311,              /* M7 P2 */
 	BFM_CMD_CONTROL_CMT = 0x0312,            /* M7 P2 */
@@ -380,6 +435,31 @@ BFM_API bfm_result bfm_get_stats(bfm_session* session, bfm_stats* out);
  * 消費者は1つに保つこと。複数箇所から呼ぶと取り合いになる。
  */
 BFM_API bfm_result bfm_get_media_access(bfm_session* session, uint32_t* out_bits);
+
+/*
+ * D88のバンク情報（design.md 「D88 bank list」、M3 FDD-04）。
+ *
+ * upstream の EMU::open_floppy_disk() が挿入時に file_bank/bank_num を
+ * 数え上げて emu->d88_file[drv] へ保持する。この関数は挿入・排出の
+ * 完了後にその値を読むだけで、Core threadの実行を待たせない。
+ * out_bank_num は総バンク数（単一ディスクのD88なら1）、out_cur_bank は
+ * 現在開いているバンク番号（0始まり）。未挿入なら両方0を返す。
+ */
+BFM_API bfm_result bfm_get_fdd_bank_info(bfm_session* session, int32_t drive,
+                                         int32_t* out_bank_num,
+                                         int32_t* out_cur_bank);
+
+/*
+ * ドライブごとの書込み保護の実際値（M3 FDD-06）。0または1をout_valueへ
+ * 書く。upstreamの DISK::open() はディスク単位のwrite_protectedを
+ * 呼出しのたびにまずfalseへ戻してから、開いたD88ファイル自身の
+ * ヘッダprotectバイトを見て必要ならtrueへ立て直す（vm/disk.cpp）。
+ * つまり挿入直後は「そのファイル自身が持つ書込み保護の有無」を返す。
+ * BFM_CMD_SET_FDD_WRITE_PROTECTで明示的に変更した場合はその値を返す。
+ * 未挿入なら0を返す。
+ */
+BFM_API bfm_result bfm_get_fdd_write_protect(bfm_session* session, int32_t drive,
+                                             int32_t* out_value);
 
 /*
  * 音声（design.md 7、16.1「音声はVMの駆動源にしない」）。

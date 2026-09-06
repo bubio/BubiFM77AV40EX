@@ -145,6 +145,21 @@ class FakeEmulatorSession implements EmulatorSession {
   final List<bool> setFullSpeedCalls = [];
   final List<CpuType> setCpuTypeCalls = [];
   final List<RunOptionSwitches> setRunOptionSwitchesCalls = [];
+  final List<(int drive, bool enabled)> setFddWriteProtectCalls = [];
+  final List<(int drive, bool enabled)> setFddTimingCalls = [];
+  final List<(int drive, bool ignore)> setFddCrcCheckCalls = [];
+  final List<(FddMediaType mediaType, String destinationPath)>
+  createBlankFddCalls = [];
+
+  /// [getFddBankInfo]が返す値。キーはドライブ番号。未登録なら未挿入
+  /// （bankNum=0、curBank=0）を返す。
+  final Map<int, ({int bankNum, int curBank})> fddBankInfoByDrive = {};
+
+  /// [getFddWriteProtect]が返す値。キーはドライブ番号。未登録なら
+  /// false。ネイティブ側と同様、[setFddWriteProtect]で更新され、
+  /// [ejectFdd]の成功時にfalseへ戻る（マウント中の媒体自身が持つ状態、
+  /// ドライブの記憶ではないことをFakeでも再現する）。
+  final Map<int, bool> fddWriteProtectByDrive = {};
 
   /// 次に受理する挿入・排出コマンドの完了結果。nullなら成功。
   ///
@@ -175,6 +190,7 @@ class FakeEmulatorSession implements EmulatorSession {
   @override
   Future<int> ejectFdd(int drive) async {
     ejectCalls.add(drive);
+    fddWriteProtectByDrive[drive] = false;
     final id = _nextCommandId++;
     final error = nextEjectError;
     nextEjectError = null;
@@ -223,6 +239,48 @@ class FakeEmulatorSession implements EmulatorSession {
     setRunOptionSwitchesCalls.add(switches);
     return _nextCommandId++;
   }
+
+  @override
+  Future<int> setFddWriteProtect(int drive, bool enabled) async {
+    setFddWriteProtectCalls.add((drive, enabled));
+    fddWriteProtectByDrive[drive] = enabled;
+    return _nextCommandId++;
+  }
+
+  @override
+  Future<int> setFddTiming(int drive, bool enabled) async {
+    setFddTimingCalls.add((drive, enabled));
+    return _nextCommandId++;
+  }
+
+  @override
+  Future<int> setFddCrcCheck(int drive, bool ignore) async {
+    setFddCrcCheckCalls.add((drive, ignore));
+    return _nextCommandId++;
+  }
+
+  /// 次に受理する`createBlankFdd`の完了結果。nullなら成功。
+  EmulatorErrorCode? nextCreateBlankFddError;
+
+  @override
+  Future<int> createBlankFdd(
+    FddMediaType mediaType,
+    String destinationPath,
+  ) async {
+    createBlankFddCalls.add((mediaType, destinationPath));
+    final id = _nextCommandId++;
+    final error = nextCreateBlankFddError;
+    nextCreateBlankFddError = null;
+    scheduleMicrotask(() => emit(CommandCompleted(id, error: error)));
+    return id;
+  }
+
+  @override
+  ({int bankNum, int curBank}) getFddBankInfo(int drive) =>
+      fddBankInfoByDrive[drive] ?? (bankNum: 0, curBank: 0);
+
+  @override
+  bool getFddWriteProtect(int drive) => fddWriteProtectByDrive[drive] ?? false;
 
   @override
   Future<void> keyDown(int vkCode) async {}
@@ -295,6 +353,13 @@ class FakeExternalResource implements ExternalResource {
 /// あらかじめ用意した`ExternalResource`を1回だけ返す`ExternalFileAccess`。
 class FakeExternalFileAccess implements ExternalFileAccess {
   ExternalResource? nextPickResult;
+  ExternalResource? nextSaveLocationResult;
+
+  /// [resolve]がトークンごとに返す結果。未登録ならnull（失効扱い）。
+  final Map<String, ExternalResource?> resolveResultByToken = {};
+
+  final List<String> resolveCalls = [];
+  final List<String?> pickSaveLocationSuggestedNames = [];
 
   @override
   Future<ExternalResource?> pickDirectory({String? dialogTitle}) =>
@@ -314,10 +379,18 @@ class FakeExternalFileAccess implements ExternalFileAccess {
   Future<ExternalResource?> pickSaveLocation({
     String? dialogTitle,
     String? suggestedFileName,
-  }) => throw UnimplementedError();
+  }) async {
+    pickSaveLocationSuggestedNames.add(suggestedFileName);
+    final result = nextSaveLocationResult;
+    nextSaveLocationResult = null;
+    return result;
+  }
 
   @override
-  Future<ExternalResource?> resolve(String token) => throw UnimplementedError();
+  Future<ExternalResource?> resolve(String token) async {
+    resolveCalls.add(token);
+    return resolveResultByToken[token];
+  }
 }
 
 /// メモリ上に作業ディレクトリの操作記録だけを持つ`WorkspaceHandle`。
