@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../features/display/fullscreen_controller.dart';
+import '../features/display/screenshot_service.dart';
 import '../features/session/rom_boot_decision.dart';
 import '../features/session/rom_settings_state.dart';
 import '../features/session/session_providers.dart';
@@ -135,6 +137,10 @@ class _HomeState extends ConsumerState<_Home> {
     );
     final settings = ref.watch(settingsControllerProvider);
     final settingsController = ref.read(settingsControllerProvider.notifier);
+    final fullscreen = ref.watch(fullscreenControllerProvider);
+    final fullscreenController = ref.read(
+      fullscreenControllerProvider.notifier,
+    );
 
     // ROM走査が終わるたびに、自動起動するかROM問題ダイアログを出すかを
     // 判定する（`rom_boot_decision.dart`）。初期画面はエミュレーター表示を
@@ -176,6 +182,14 @@ class _HomeState extends ConsumerState<_Home> {
       onFddClearRecentFiles: emulatorController.clearRecentFiles,
       screenFit: emulator.fit,
       onScreenFitChanged: emulatorController.setFit,
+      scanlineEnabled: emulator.scanlineEnabled,
+      onScanlineChanged: emulatorController.setScanlineEnabled,
+      hostFilter: emulator.hostFilter,
+      onHostFilterChanged: emulatorController.setHostFilter,
+      isFullscreen: fullscreen.isFullscreen,
+      fullscreenSupported: fullscreen.supported,
+      onFullscreenChanged: fullscreenController.setFullscreen,
+      onCaptureScreen: _captureScreen,
       localeMode: settings.localeMode,
       onLocaleModeChanged: settingsController.setLocaleMode,
     );
@@ -197,6 +211,18 @@ class _HomeState extends ConsumerState<_Home> {
         _showRomProblemDialog();
       case RomBootAction.none:
         break;
+    }
+  }
+
+  /// 画面を保存する（VID-05）。失敗は単発の便利機能のためログのみとし、
+  /// 利用者へは出さない（development_plan.md「表示」進捗の判断）。
+  Future<void> _captureScreen() async {
+    final key = ref.read(screenshotBoundaryKeyProvider);
+    final service = ref.read(screenshotServiceProvider);
+    try {
+      await service.capture(key);
+    } on ScreenshotException catch (error) {
+      debugPrint('Screenshot failed: $error');
     }
   }
 

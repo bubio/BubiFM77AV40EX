@@ -1,4 +1,5 @@
 import '../../emulator/session_state.dart';
+import '../../features/display/screen_filter.dart';
 import '../../features/display/screen_fit.dart';
 import '../../features/settings/settings_state.dart';
 import '../l10n/generated/app_localizations.dart';
@@ -48,6 +49,14 @@ List<MenuGroup> buildMenuCatalog({
   required void Function(int drive) onFddClearRecentFiles,
   required ScreenFit screenFit,
   required void Function(ScreenFit fit) onScreenFitChanged,
+  required bool scanlineEnabled,
+  required void Function(bool enabled) onScanlineChanged,
+  required HostScreenFilter hostFilter,
+  required void Function(HostScreenFilter filter) onHostFilterChanged,
+  required bool isFullscreen,
+  required bool fullscreenSupported,
+  required void Function(bool enabled) onFullscreenChanged,
+  required void Function() onCaptureScreen,
   required AppLocaleMode localeMode,
   required void Function(AppLocaleMode mode) onLocaleModeChanged,
 }) {
@@ -277,16 +286,43 @@ List<MenuGroup> buildMenuCatalog({
             ),
           ],
         ),
+        MenuSubmenu(
+          'device.display',
+          label: l10n.menuDeviceDisplay,
+          entries: [
+            MenuCheckbox(
+              'device.display.scanline',
+              label: l10n.deviceDisplayScanline,
+              enabled: true,
+              checked: scanlineEnabled,
+              onChanged: onScanlineChanged,
+            ),
+          ],
+        ),
       ],
     ),
     MenuGroup(
       id: MenuGroupId.host,
       label: l10n.menuHost,
       entries: [
+        MenuAction(
+          'host.captureScreen',
+          label: l10n.hostCaptureScreen,
+          enabled: isRunning,
+          onSelected: onCaptureScreen,
+        ),
+        const MenuSeparator('host.sep0'),
         MenuSubmenu(
           'host.screen',
           label: l10n.menuHostScreen,
           entries: [
+            MenuCheckbox(
+              'host.screen.fullscreen',
+              label: l10n.hostScreenFullscreen,
+              enabled: fullscreenSupported,
+              checked: isFullscreen,
+              onChanged: onFullscreenChanged,
+            ),
             MenuRadioGroup<ScreenFit>(
               'host.screen.fit',
               label: l10n.displayFit,
@@ -306,6 +342,22 @@ List<MenuGroup> buildMenuCatalog({
                 ),
               ],
               onChanged: onScreenFitChanged,
+            ),
+            MenuRadioGroup<HostScreenFilter>(
+              'host.screen.filter',
+              label: l10n.hostScreenFilter,
+              groupValue: hostFilter,
+              options: [
+                MenuRadioOption(
+                  value: HostScreenFilter.rgb,
+                  label: l10n.hostScreenFilterRgb,
+                ),
+                MenuRadioOption(
+                  value: HostScreenFilter.none,
+                  label: l10n.hostScreenFilterNone,
+                ),
+              ],
+              onChanged: onHostFilterChanged,
             ),
           ],
         ),

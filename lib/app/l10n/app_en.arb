@@ -247,13 +247,41 @@
   "@menuDeviceSound": {
     "description": "Device submenu for the sound chip configuration."
   },
+  "menuDeviceDisplay": "Display",
+  "@menuDeviceDisplay": {
+    "description": "Device submenu for guest-side display options (VID-04)."
+  },
+  "deviceDisplayScanline": "Scanline",
+  "@deviceDisplayScanline": {
+    "description": "Checkbox toggling the scanline effect (VID-04)."
+  },
   "menuHost": "Host",
   "@menuHost": {
     "description": "In-app menu group: host-side screen, sound, and UI settings."
   },
+  "hostCaptureScreen": "Capture Screen",
+  "@hostCaptureScreen": {
+    "description": "Action saving a screenshot of the emulator screen (VID-05)."
+  },
   "menuHostScreen": "Screen",
   "@menuHostScreen": {
     "description": "Host submenu for display fit and window options."
+  },
+  "hostScreenFullscreen": "Fullscreen",
+  "@hostScreenFullscreen": {
+    "description": "Checkbox toggling fullscreen display (VID-03)."
+  },
+  "hostScreenFilter": "Filter",
+  "@hostScreenFilter": {
+    "description": "Host submenu for the RGB filter selection (VID-04)."
+  },
+  "hostScreenFilterNone": "None",
+  "@hostScreenFilterNone": {
+    "description": "No host-side RGB filter."
+  },
+  "hostScreenFilterRgb": "RGB Filter",
+  "@hostScreenFilterRgb": {
+    "description": "CRT-style RGB subpixel filter."
   },
   "menuHostLanguage": "Language",
   "@menuHostLanguage": {

@@ -2,6 +2,7 @@ import 'package:bubi_fm77av40ex/emulator/emulator_error.dart';
 import 'package:bubi_fm77av40ex/emulator/emulator_event.dart';
 import 'package:bubi_fm77av40ex/emulator/emulator_stats.dart';
 import 'package:bubi_fm77av40ex/emulator/session_state.dart';
+import 'package:bubi_fm77av40ex/features/display/screen_filter.dart';
 import 'package:bubi_fm77av40ex/features/session/emulator_controller.dart';
 import 'package:bubi_fm77av40ex/features/session/emulator_state.dart';
 import 'package:fake_async/fake_async.dart';
@@ -50,6 +51,18 @@ void main() {
     expect(session.setBootModeCalls, [BootMode.dos]);
     expect(session.resetCalls, [ResetKind.normal]);
     expect(state().bootMode, BootMode.dos);
+  });
+
+  test('VID-04 setScanlineEnabledは即座にstateへ反映される（コアへは送らない）', () {
+    expect(state().scanlineEnabled, isFalse);
+    controller().setScanlineEnabled(true);
+    expect(state().scanlineEnabled, isTrue);
+  });
+
+  test('VID-04 setHostFilterは即座にstateへ反映される（コアへは送らない）', () {
+    expect(state().hostFilter, HostScreenFilter.none);
+    controller().setHostFilter(HostScreenFilter.rgb);
+    expect(state().hostFilter, HostScreenFilter.rgb);
   });
 
   test('SYS-04 bootModeを渡さないリセットはsetBootModeを呼ばない', () async {

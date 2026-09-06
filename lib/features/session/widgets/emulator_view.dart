@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/l10n/generated/app_localizations.dart';
 import '../../../emulator/session_state.dart';
+import '../../display/screenshot_service.dart';
 import '../../display/widgets/emulator_screen.dart';
 import '../../settings/settings_controller.dart';
 import '../session_providers.dart';
@@ -66,12 +67,17 @@ class EmulatorView extends ConsumerWidget {
                         _ => '',
                       }, style: const TextStyle(color: Colors.white)),
                     )
-                  : EmulatorScreen(
-                      key: const Key('emulatorScreen'),
-                      textureId: textureId,
-                      frameWidth: state.frameWidth,
-                      frameHeight: state.frameHeight,
-                      fit: state.fit,
+                  : RepaintBoundary(
+                      key: ref.watch(screenshotBoundaryKeyProvider),
+                      child: EmulatorScreen(
+                        key: const Key('emulatorScreen'),
+                        textureId: textureId,
+                        frameWidth: state.frameWidth,
+                        frameHeight: state.frameHeight,
+                        fit: state.fit,
+                        scanlineEnabled: state.scanlineEnabled,
+                        filter: state.hostFilter,
+                      ),
                     ),
             ),
             StatusBar(

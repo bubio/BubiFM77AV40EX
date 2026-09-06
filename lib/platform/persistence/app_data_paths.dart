@@ -17,6 +17,14 @@ abstract interface class AppDataPaths {
   /// 利用者へ案内するため、UIに表示してよい唯一のパスである。
   Future<String> romsDirectoryPath();
 
+  /// スクリーンショットの保存先（design.md 11.4）。
+  ///
+  /// デスクトップではOSのPicturesディレクトリ配下にアプリ名の
+  /// フォルダーを作る。対応していないOSでは`null`（VID-05）。
+  /// feature層が`dart:io`へ直接触れずに書き出せるよう、パス文字列では
+  /// なく[AppDataLocation]を返す（design.md 3.1）。
+  Future<AppDataLocation?> pictureFile(String fileName);
+
   /// 状態スロット（`states/slot-N/`）を表すハンドル。
   Future<AppDataLocation> stateSlot(int slotIndex);
 

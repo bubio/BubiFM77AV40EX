@@ -3,6 +3,7 @@ import 'package:bubi_fm77av40ex/app/l10n/generated/app_localizations_en.dart';
 import 'package:bubi_fm77av40ex/app/menu/menu_catalog.dart';
 import 'package:bubi_fm77av40ex/app/menu/menu_command.dart';
 import 'package:bubi_fm77av40ex/emulator/session_state.dart';
+import 'package:bubi_fm77av40ex/features/display/screen_filter.dart';
 import 'package:bubi_fm77av40ex/features/display/screen_fit.dart';
 import 'package:bubi_fm77av40ex/features/settings/settings_state.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,6 +30,10 @@ void main() {
     Map<int, DiskSourceKind> fddSourceKind = const {},
     Map<int, List<FddRecentFile>> fddRecentFiles = const {},
     ScreenFit screenFit = ScreenFit.aspect,
+    bool scanlineEnabled = false,
+    HostScreenFilter hostFilter = HostScreenFilter.none,
+    bool isFullscreen = false,
+    bool fullscreenSupported = false,
     AppLocaleMode localeMode = AppLocaleMode.system,
   }) {
     return buildMenuCatalog(
@@ -63,6 +68,14 @@ void main() {
       onFddClearRecentFiles: (_) {},
       screenFit: screenFit,
       onScreenFitChanged: (_) {},
+      scanlineEnabled: scanlineEnabled,
+      onScanlineChanged: (_) {},
+      hostFilter: hostFilter,
+      onHostFilterChanged: (_) {},
+      isFullscreen: isFullscreen,
+      fullscreenSupported: fullscreenSupported,
+      onFullscreenChanged: (_) {},
+      onCaptureScreen: () {},
       localeMode: localeMode,
       onLocaleModeChanged: (_) {},
     );
@@ -268,47 +281,99 @@ void main() {
     expect(mountedCheckbox.enabled, isTrue);
   });
 
-  test('Device: Soundサブメニューの下にOPNだけを持つ', () {
+  test('Device: Sound、Displayサブメニューを持つ', () {
     final entries = catalog()
         .firstWhere((g) => g.id == MenuGroupId.device)
         .entries;
-    expect(entries, hasLength(1));
+    expect(entries, hasLength(2));
     final sound = entries[0] as MenuSubmenu;
     expect(sound.id, 'device.sound');
     final radio = sound.entries.single as MenuRadioGroup<String>;
     expect(radio.options.map((o) => o.label), ['OPN']);
+    final display = entries[1] as MenuSubmenu;
+    expect(display.id, 'device.display');
   });
 
-  test('Host: Screen、区切り、Languageの順', () {
+  test('Device > Displayは走査線チェックボックスを持つ（VID-04）', () {
+    final display =
+        catalog(scanlineEnabled: true)
+                .firstWhere((g) => g.id == MenuGroupId.device)
+                .entries[1]
+            as MenuSubmenu;
+    final scanline = display.entries.single as MenuCheckbox;
+    expect(scanline.id, 'device.display.scanline');
+    expect(scanline.checked, isTrue);
+  });
+
+  test('Host > Capture Screenは起動中だけ有効', () {
+    final stopped =
+        catalog(isRunning: false)
+                .firstWhere((g) => g.id == MenuGroupId.host)
+                .entries[0]
+            as MenuAction;
+    expect(stopped.enabled, isFalse);
+    final running =
+        catalog(isRunning: true)
+                .firstWhere((g) => g.id == MenuGroupId.host)
+                .entries[0]
+            as MenuAction;
+    expect(running.enabled, isTrue);
+  });
+
+  test('Host: Capture Screen、区切り、Screen、区切り、Languageの順', () {
     final entries = catalog()
         .firstWhere((g) => g.id == MenuGroupId.host)
         .entries;
-    expect(entries, hasLength(3));
+    expect(entries, hasLength(5));
     expect(
       entries[0],
-      isA<MenuSubmenu>().having((e) => e.id, 'id', 'host.screen'),
+      isA<MenuAction>().having((e) => e.id, 'id', 'host.captureScreen'),
     );
     expect(entries[1], isA<MenuSeparator>());
     expect(
       entries[2],
+      isA<MenuSubmenu>().having((e) => e.id, 'id', 'host.screen'),
+    );
+    expect(entries[3], isA<MenuSeparator>());
+    expect(
+      entries[4],
       isA<MenuSubmenu>().having((e) => e.id, 'id', 'host.language'),
     );
   });
 
-  test('Host > Screenのラジオはaspect/integer/fillの順', () {
+  test('Host > Screenはfullscreen、fit、filterの順', () {
     final host = catalog().firstWhere((g) => g.id == MenuGroupId.host).entries;
-    final screen = host[0] as MenuSubmenu;
-    final fit = screen.entries.single as MenuRadioGroup<ScreenFit>;
+    final screen = host[2] as MenuSubmenu;
+    expect(screen.entries, hasLength(3));
+    expect(
+      screen.entries[0],
+      isA<MenuCheckbox>().having((e) => e.id, 'id', 'host.screen.fullscreen'),
+    );
+    final fit = screen.entries[1] as MenuRadioGroup<ScreenFit>;
     expect(fit.options.map((o) => o.value), [
       ScreenFit.aspect,
       ScreenFit.integer,
       ScreenFit.fill,
     ]);
+    final filter = screen.entries[2] as MenuRadioGroup<HostScreenFilter>;
+    expect(filter.options.map((o) => o.value), [
+      HostScreenFilter.rgb,
+      HostScreenFilter.none,
+    ]);
+  });
+
+  test('Host > Screen > Fullscreenは未対応OSでは無効', () {
+    final host = catalog(fullscreenSupported: false)
+        .firstWhere((g) => g.id == MenuGroupId.host)
+        .entries;
+    final screen = host[2] as MenuSubmenu;
+    final fullscreen = screen.entries[0] as MenuCheckbox;
+    expect(fullscreen.enabled, isFalse);
   });
 
   test('Host > Languageのラジオはsystem/english/japaneseの順', () {
     final host = catalog().firstWhere((g) => g.id == MenuGroupId.host).entries;
-    final language = host[2] as MenuSubmenu;
+    final language = host[4] as MenuSubmenu;
     final mode = language.entries.single as MenuRadioGroup<AppLocaleMode>;
     expect(mode.options.map((o) => o.value), [
       AppLocaleMode.system,

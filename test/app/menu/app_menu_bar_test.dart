@@ -4,6 +4,7 @@ import 'package:bubi_fm77av40ex/app/menu/app_menu_bar.dart';
 import 'package:bubi_fm77av40ex/app/menu/menu_catalog.dart';
 import 'package:bubi_fm77av40ex/app/menu/menu_command.dart';
 import 'package:bubi_fm77av40ex/emulator/session_state.dart';
+import 'package:bubi_fm77av40ex/features/display/screen_filter.dart';
 import 'package:bubi_fm77av40ex/features/display/screen_fit.dart';
 import 'package:bubi_fm77av40ex/features/settings/settings_state.dart';
 import 'package:flutter/material.dart';
@@ -64,6 +65,14 @@ void main() {
       onFddClearRecentFiles: (_) {},
       screenFit: ScreenFit.aspect,
       onScreenFitChanged: onScreenFitChanged ?? (_) {},
+      scanlineEnabled: false,
+      onScanlineChanged: (_) {},
+      hostFilter: HostScreenFilter.none,
+      onHostFilterChanged: (_) {},
+      isFullscreen: false,
+      fullscreenSupported: false,
+      onFullscreenChanged: (_) {},
+      onCaptureScreen: () {},
       localeMode: AppLocaleMode.system,
       onLocaleModeChanged: onLocaleModeChanged ?? (_) {},
     );

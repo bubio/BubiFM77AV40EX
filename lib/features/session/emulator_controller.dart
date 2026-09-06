@@ -14,6 +14,7 @@ import '../../platform/persistence/app_data_paths.dart';
 import '../../platform/persistence/cache_workspace.dart';
 import '../../platform/persistence/external_file_access.dart';
 import '../../platform/persistence/preferences_store.dart';
+import '../display/screen_filter.dart';
 import '../display/screen_fit.dart';
 import 'emulator_state.dart';
 import 'input/keyboard_key_map.dart';
@@ -318,6 +319,16 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   /// 表示領域への合わせ方を変える（VID-02）。
   void setFit(ScreenFit fit) {
     state = state.copyWith(fit: fit);
+  }
+
+  /// ホスト側の走査線効果を切り替える（VID-04）。コアへは送らない。
+  void setScanlineEnabled(bool enabled) {
+    state = state.copyWith(scanlineEnabled: enabled);
+  }
+
+  /// ホスト側のRGBフィルターを変える（VID-04）。コアへは送らない。
+  void setHostFilter(HostScreenFilter filter) {
+    state = state.copyWith(hostFilter: filter);
   }
 
   /// マスター音量を変える（0.0〜1.0、design.md 12.4）。

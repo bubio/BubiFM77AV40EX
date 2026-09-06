@@ -17,10 +17,18 @@ public class BubiFm77Av40ExPlatformPlugin: NSObject, FlutterPlugin {
       binaryMessenger: registrar.messenger)
     let instance = BubiFm77Av40ExPlatformPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
+
+    let fullScreenEvents = FlutterEventChannel(
+      name: "bubi_fm77av40ex/platform/fullscreen",
+      binaryMessenger: registrar.messenger)
+    fullScreenEvents.setStreamHandler(instance.fullScreenStreamHandler)
   }
 
   /// アクセスを開始したURL。解放するまで保持する。
   private var activeScopes: [String: URL] = [:]
+
+  /// フルスクリーン状態変化（VID-03）の配信元。
+  private let fullScreenStreamHandler = FullScreenStreamHandler()
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
@@ -73,9 +81,50 @@ public class BubiFm77Av40ExPlatformPlugin: NSObject, FlutterPlugin {
       stopAccess(token: token)
       result(nil)
 
+    case "isFullScreen":
+      result(mainWindow()?.styleMask.contains(.fullScreen) ?? false)
+
+    case "setFullScreen":
+      guard let arguments = call.arguments as? [String: Any],
+        let value = arguments["value"] as? Bool
+      else {
+        result(argumentError())
+        return
+      }
+      setFullScreen(value)
+      result(nil)
+
+    case "picturesDirectoryPath":
+      let paths = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask)
+      guard let path = paths.first?.path else {
+        result(
+          FlutterError(
+            code: "notFound", message: "Pictures directory is not available.", details: nil))
+        return
+      }
+      result(path)
+
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+
+  /// アプリの唯一のウィンドウ。フルスクリーン制御の対象にする。
+  private func mainWindow() -> NSWindow? {
+    NSApplication.shared.windows.first
+  }
+
+  /// 現状と異なる場合だけ切り替える。実際の状態反映は
+  /// `NSWindow`の通知（[FullScreenStreamHandler]）を経由して届く。
+  private func setFullScreen(_ value: Bool) {
+    guard let window = mainWindow() else {
+      return
+    }
+    let isFullScreen = window.styleMask.contains(.fullScreen)
+    if isFullScreen == value {
+      return
+    }
+    window.toggleFullScreen(nil)
   }
 
   private func argumentError() -> FlutterError {
@@ -149,5 +198,45 @@ public class BubiFm77Av40ExPlatformPlugin: NSObject, FlutterPlugin {
       return
     }
     url.stopAccessingSecurityScopedResource()
+  }
+}
+
+/// フルスクリーンの出入り（VID-03）をDartへ配信する。
+///
+/// 緑ボタンや標準ショートカットなどOS操作による変化も同じ通知経路
+/// （`NSWindow.didEnterFullScreenNotification`/
+/// `didExitFullScreenNotification`）で拾えるため、Dartからのコマンドが
+/// 介さない変化も取りこぼさない。
+private class FullScreenStreamHandler: NSObject, FlutterStreamHandler {
+  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink)
+    -> FlutterError?
+  {
+    self.eventSink = events
+    guard let window = NSApplication.shared.windows.first else {
+      return nil
+    }
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(didEnterFullScreen), name: NSWindow.didEnterFullScreenNotification,
+      object: window)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(didExitFullScreen), name: NSWindow.didExitFullScreenNotification,
+      object: window)
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    NotificationCenter.default.removeObserver(self)
+    eventSink = nil
+    return nil
+  }
+
+  private var eventSink: FlutterEventSink?
+
+  @objc private func didEnterFullScreen() {
+    eventSink?(true)
+  }
+
+  @objc private func didExitFullScreen() {
+    eventSink?(false)
   }
 }

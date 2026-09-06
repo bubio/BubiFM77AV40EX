@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:bubi_fm77av40ex_platform/bubi_fm77av40ex_platform.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app_data_paths.dart';
@@ -9,9 +10,13 @@ import 'app_data_paths.dart';
 /// macOSは`~/Library/Application Support/BubiFM77AV40EX/`。
 /// 物理パスの組み立てはここだけで行い、feature層へ露出させない。
 class OsAppDataPaths implements AppDataPaths {
-  OsAppDataPaths({this.applicationName = 'BubiFM77AV40EX'});
+  OsAppDataPaths({
+    this.applicationName = 'BubiFM77AV40EX',
+    this.picturesDirectory = const PicturesDirectory(),
+  });
 
   final String applicationName;
+  final PicturesDirectory picturesDirectory;
   Directory? _root;
 
   /// アプリケーションデータの基準ディレクトリ。
@@ -58,6 +63,17 @@ class OsAppDataPaths implements AppDataPaths {
 
   @override
   Future<String> romsDirectoryPath() async => (await romsDirectory()).path;
+
+  @override
+  Future<AppDataLocation?> pictureFile(String fileName) async {
+    final base = await picturesDirectory.path();
+    if (base == null) {
+      return null;
+    }
+    final directory = Directory('$base/$applicationName');
+    await directory.create(recursive: true);
+    return _FileAppDataLocation(File('${directory.path}/$fileName'));
+  }
 
   @override
   Future<String> coreHomeDirectoryPath() async => (await root()).path;

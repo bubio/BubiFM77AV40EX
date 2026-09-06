@@ -1,5 +1,6 @@
 import '../../emulator/led_state.dart';
 import '../../emulator/session_state.dart';
+import '../display/screen_filter.dart';
 import '../display/screen_fit.dart';
 
 /// エミュレーター画面の状態。
@@ -13,6 +14,8 @@ class EmulatorViewState {
     this.frameWidth = 640,
     this.frameHeight = 400,
     this.fit = ScreenFit.aspect,
+    this.scanlineEnabled = false,
+    this.hostFilter = HostScreenFilter.none,
     this.ledState = const LedState(),
     this.failureMessage,
     this.fddMedia = const {},
@@ -42,6 +45,13 @@ class EmulatorViewState {
 
   /// 表示領域への合わせ方（VID-02）。
   final ScreenFit fit;
+
+  /// ホスト側の走査線効果が有効かどうか（VID-04）。永続化しない
+  /// セッション内の表示状態で、[fit]と同じ扱いにする（design.md 16.1）。
+  final bool scanlineEnabled;
+
+  /// ホスト側のRGBフィルター選択（VID-04）。[fit]と同じく永続化しない。
+  final HostScreenFilter hostFilter;
 
   /// INS、KANA、CAPSの意味づけ済み状態（INP-02）。
   final LedState ledState;
@@ -114,6 +124,8 @@ class EmulatorViewState {
     int? frameWidth,
     int? frameHeight,
     ScreenFit? fit,
+    bool? scanlineEnabled,
+    HostScreenFilter? hostFilter,
     LedState? ledState,
     String? failureMessage,
     bool clearFailure = false,
@@ -138,6 +150,8 @@ class EmulatorViewState {
       frameWidth: frameWidth ?? this.frameWidth,
       frameHeight: frameHeight ?? this.frameHeight,
       fit: fit ?? this.fit,
+      scanlineEnabled: scanlineEnabled ?? this.scanlineEnabled,
+      hostFilter: hostFilter ?? this.hostFilter,
       ledState: ledState ?? this.ledState,
       failureMessage: clearFailure
           ? null

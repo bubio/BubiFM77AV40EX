@@ -54,3 +54,7 @@ flutter:
   generate: true
   assets:
     - assets/branding/
+  # ホスト側の走査線・RGBフィルター効果（VID-04）。design.md 16.1参照。
+  shaders:
+    - shaders/scanline.frag
+    - shaders/rgb_filter.frag

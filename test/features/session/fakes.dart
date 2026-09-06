@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:bubi_fm77av40ex/emulator/emulator_error.dart';
 import 'package:bubi_fm77av40ex/emulator/emulator_event.dart';
@@ -69,6 +70,7 @@ class FakeAppDataPaths implements AppDataPaths {
 
   String romsPath;
   String homePath;
+  String? picturesPath = '/data/BubiFM77AV40EX/pictures';
 
   /// 位置の解決そのものが失敗する場合に投げる例外。
   Object? throwOnRomsPath;
@@ -89,6 +91,15 @@ class FakeAppDataPaths implements AppDataPaths {
   }
 
   @override
+  Future<AppDataLocation?> pictureFile(String fileName) async {
+    final base = picturesPath;
+    if (base == null) {
+      return null;
+    }
+    return FakeFileAppDataLocation(File('$base/$fileName'));
+  }
+
+  @override
   Future<AppDataLocation> stateSlot(int slotIndex) =>
       throw UnimplementedError();
 
@@ -100,6 +111,38 @@ class FakeAppDataPaths implements AppDataPaths {
 
   @override
   Future<AppDataLocation> history() => throw UnimplementedError();
+}
+
+/// 実ファイルへ書く[AppDataLocation]のテスト用実装。
+///
+/// テストコードは`dart:io`へ触れてよい（架構テストが禁じるのは
+/// `lib/features`だけ）ため、実際に書き出されたか検証できるようにする。
+class FakeFileAppDataLocation implements AppDataLocation {
+  FakeFileAppDataLocation(this._file);
+
+  final File _file;
+
+  @override
+  String get nativePath => _file.path;
+
+  @override
+  Future<bool> exists() => _file.exists();
+
+  @override
+  Future<List<int>> read() => _file.readAsBytes();
+
+  @override
+  Future<void> writeAtomic(List<int> bytes) async {
+    await _file.parent.create(recursive: true);
+    await _file.writeAsBytes(bytes, flush: true);
+  }
+
+  @override
+  Future<void> delete() async {
+    if (await _file.exists()) {
+      await _file.delete();
+    }
+  }
 }
 
 class FakeRomScanner implements RomScanner {

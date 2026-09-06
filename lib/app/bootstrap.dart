@@ -5,6 +5,8 @@ import 'package:bubi_fm77av40ex_platform/bubi_fm77av40ex_platform.dart';
 
 import '../emulator/rom/rom_manifest.dart';
 import '../emulator/session_state.dart';
+import '../features/display/fullscreen_controller.dart';
+import '../features/display/screenshot_service.dart';
 import '../features/session/emulator_controller.dart';
 import '../features/session/rom_settings_controller.dart';
 import '../features/session/session_providers.dart';
@@ -13,6 +15,7 @@ import '../platform/persistence/file_system_rom_scanner.dart';
 import '../platform/persistence/os_app_data_paths.dart';
 import '../platform/persistence/os_cache_workspace.dart';
 import '../platform/persistence/os_external_file_access.dart';
+import '../platform/persistence/os_window_chrome.dart';
 import '../platform/core_ffi/bubi_audio_sink.dart';
 import '../platform/core_ffi/bubi_video_texture_attacher.dart';
 import '../platform/core_ffi/ffi_emulator_session.dart';
@@ -68,6 +71,12 @@ Future<Widget> buildApp({RomManifest? romManifest}) async {
       ),
       settingsControllerProvider.overrideWith(
         () => SettingsController(preferences: preferences),
+      ),
+      fullscreenControllerProvider.overrideWith(
+        () => FullscreenController(windowChrome: OsWindowChrome()),
+      ),
+      screenshotServiceProvider.overrideWithValue(
+        ScreenshotService(appDataPaths: appDataPaths),
       ),
     ],
     child: const BubiFm77Av40ExApp(),
