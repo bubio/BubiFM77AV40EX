@@ -70,6 +70,31 @@ typedef enum {
 } bfm_boot_mode;
 
 /*
+ * CPU種別（specification.md SYS-05）。値はupstreamの config.cpu_type と
+ * 同じ。BFM_CMD_SET_CPU_TYPE はコアの update_config() を呼ぶため、
+ * リセットを待たずに反映される（design.md 16.1「実行設定の即時反映と
+ * 拡張RAMの例外」）。
+ */
+typedef enum {
+	BFM_CPU_FAST = 0, /* 2.0MHz相当 */
+	BFM_CPU_SLOW = 1  /* 1.2MHz */
+} bfm_cpu_type;
+
+/*
+ * BFM_CMD_SET_OPTION_SWITCH の arg0 に渡すビット（specification.md
+ * SYS-06）。この3ビットの組だけを毎回丸ごと置き換える（マージしない）。
+ * サイクルスチールとHSYNC同期はコアの update_config() で即時反映されるが、
+ * 拡張RAMはコアがリセット時にしか読まないため、次のリセットまで見た目に
+ * 反映されない（design.md 16.1）。arg0 にこの3ビット以外が立っていたら
+ * BFM_ERR_INVALID_ARGUMENT を返す。
+ */
+enum {
+	BFM_OPTSW_CYCLE_STEAL = 0x1,
+	BFM_OPTSW_EXTENDED_RAM = 0x2,
+	BFM_OPTSW_SYNC_TO_HSYNC = 0x4
+};
+
+/*
  * コマンド種別。design.md 4.2 の6分類を上位バイトで区切る。
  * WP1で実装するのは 0x01xx のリセットだけであり、他は予約である。
  * 予約値は enum として存在するが bfm_send_command は BFM_ERR_UNSUPPORTED を
@@ -80,11 +105,42 @@ typedef enum {
 	BFM_CMD_RESET = 0x0100,                  /* WP1 */
 	BFM_CMD_SPECIAL_RESET = 0x0101,          /* WP1 */
 
-	/* 実行 */
-	BFM_CMD_SET_SPEED_MULTIPLIER = 0x0200,   /* M3 SYS-05 */
-	BFM_CMD_SET_FULL_SPEED = 0x0201,         /* M3 SYS-06 */
+	/*
+	 * 実行。
+	 *
+	 * BFM_CMD_SET_SPEED_MULTIPLIER: arg0 は速度倍率の指数（0=x1、1=x2、
+	 * 2=x4、3=x8、4=x16）。upstreamの config.cpu_power と同じ範囲で、
+	 * ここへ直接書いて vm->update_config() を呼ぶ。Core threadが
+	 * `vm->run()`を呼ぶ間隔（壁時計、frame_period）自体は変えない。
+	 * `config.cpu_power`は1回のdrive()内で消費できるCPUクロック予算を
+	 * `2^arg0`倍にする（`vm/event.cpp`のEVENT::drive()）。VSYNC等の
+	 * イベントスケジューリングは「1 drive() = 1フレーム分のevent-clock」
+	 * という固定単位で進むため、drive()の呼出し間隔・音声の生成ペースは
+	 * 変わらない。一方、ホストCPUは1フレーム分のevent-clockを進める間に
+	 * `2^arg0`倍のゲスト側CPU命令を実行できるため、VSYNC割込み待ちに
+	 * 縛られないCPU律速の処理（BASICの実行速度、ディスクI/O待ちの
+	 * ビジーループなど）は実際に速くなる（design.md 16.1「CPU速度倍率の
+	 * 仕様」、利用者確認済み）。即時に反映される。範囲外は
+	 * BFM_ERR_INVALID_ARGUMENT。
+	 *
+	 * BFM_CMD_SET_FULL_SPEED: 無制限速度（SYS-03の「無制限」）。arg0は
+	 * 0または1（それ以外はBFM_ERR_INVALID_ARGUMENT）。1の間、Core thread
+	 * は壁時計の待機を省き、`vm->run()`を間を置かず呼び続ける。
+	 * `vm->run()`の呼出し間隔自体（＝VSYNC等のevent-clockスケジューリング
+	 * と音声の生成ペース）が実時間より速くなるため、音声は生成量が
+	 * 実時間48kHzの消費量を上回り、有界リングのオーバーラン方針
+	 * （最古破棄）により再生が途切れがちになる（利用者確認済み。
+	 * design.md 16.1「Full Speedの仕様」）。速度倍率（arg0の大小）が
+	 * 高いほど、1回のdrive()あたりの実効CPU処理量が増えるため、Full
+	 * Speedと組み合わせた実効速度も速くなる。
+	 *
+	 * BFM_CMD_SET_CPU_TYPE: arg0 は bfm_cpu_type。update_config() 経由で
+	 * 即時反映される。
+	 */
+	BFM_CMD_SET_SPEED_MULTIPLIER = 0x0200,   /* M3 SYS-03 */
+	BFM_CMD_SET_FULL_SPEED = 0x0201,         /* M3 SYS-03（無制限） */
 	BFM_CMD_SET_BOOT_MODE = 0x0202,          /* WP2 SYS-04。arg0 は bfm_boot_mode */
-	BFM_CMD_SET_CPU_TYPE = 0x0203,           /* M3 SYS-03 */
+	BFM_CMD_SET_CPU_TYPE = 0x0203,           /* M3 SYS-05 */
 
 	/*
 	 * 媒体。
@@ -119,8 +175,13 @@ typedef enum {
 	BFM_CMD_AUTO_KEY = 0x0404,               /* M3 INP-05 */
 
 	/* 構成 */
+	/*
+	 * BFM_CMD_SET_OPTION_SWITCH: arg0 は BFM_OPTSW_* の組合せ
+	 * （bubi_fm77av.h 前掲）。サイクルスチール／HSYNC同期は即時、
+	 * 拡張RAMは次のリセットまで反映されない（design.md 16.1）。
+	 */
 	BFM_CMD_SET_SOUND_TYPE = 0x0500,         /* M3 AUD-03 */
-	BFM_CMD_SET_OPTION_SWITCH = 0x0501,      /* M3 SYS-03 */
+	BFM_CMD_SET_OPTION_SWITCH = 0x0501,      /* M3 SYS-06 */
 	BFM_CMD_SET_VOLUME = 0x0502,             /* M3 AUD-05 */
 	BFM_CMD_SET_FRAME_RATE = 0x0503,         /* M3 VID-05 */
 

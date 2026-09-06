@@ -49,6 +49,13 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   /// （design.md 12.4）。
   double _masterVolume = 1.0;
 
+  /// 直近に指定された実行設定（SYS-03、SYS-05、SYS-06）。
+  /// 停止中に変更されても次回[launch]時に適用できるよう覚えておく。
+  int _speedMultiplier = SpeedMultiplier.x1;
+  bool _fullSpeed = false;
+  CpuType _cpuType = CpuType.fast;
+  RunOptionSwitches _optionSwitches = const RunOptionSwitches();
+
   WorkspaceHandle? _workspace;
   final Map<int, _FddSlot> _fddSlots = {};
   final Map<int, Completer<EmulatorErrorCode?>> _pendingCommands = {};
@@ -101,6 +108,34 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       state = state.copyWith(session: session.state, textureId: textureId);
       _lastStats = null;
       _statsTimer = Timer.periodic(_statsPollInterval, (_) => _pollStats());
+      // 実行設定は起動が終わってから覚えている値を再適用する。既定値
+      // どおりなら何も送らない（新しいコアの初期値と同じであり、
+      // 無駄な往復を避ける）。ここで失敗しても、すでに動き出した
+      // セッションをfailedへ巻き戻さない（SYS-03、SYS-05、SYS-06は
+      // 起動そのものに必須ではないため、外側のtry/catchへ伝えない）。
+      try {
+        if (_speedMultiplier != SpeedMultiplier.x1) {
+          await session.setSpeedMultiplier(_speedMultiplier);
+        }
+        if (_fullSpeed) {
+          await session.setFullSpeed(_fullSpeed);
+        }
+        if (_cpuType != CpuType.fast) {
+          await session.setCpuType(_cpuType);
+        }
+        if (_optionSwitches != const RunOptionSwitches()) {
+          await session.setRunOptionSwitches(_optionSwitches);
+        }
+        state = state.copyWith(
+          speedMultiplier: _speedMultiplier,
+          fullSpeed: _fullSpeed,
+          cpuType: _cpuType,
+          optionSwitches: _optionSwitches,
+        );
+      } on Object {
+        // 起動自体は成功しているため、実行設定の再適用失敗は
+        // failureMessageへ出さず、選択値をstateへ反映しないだけにする。
+      }
     } on Object catch (error) {
       state = state.copyWith(
         session: SessionState.failed,
@@ -120,7 +155,16 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       await ejectFdd(drive);
     }
     await _teardown();
-    state = const EmulatorViewState();
+    // 実行設定（SYS-03、SYS-05、SYS-06）とマスター音量は次回launch時に
+    // 再適用するため覚えたままにする。表示もそれに合わせ、既定値へ
+    // 戻さない（メニューの選択表示が実際に覚えている値と食い違うのを
+    // 防ぐ）。
+    state = EmulatorViewState(
+      speedMultiplier: _speedMultiplier,
+      fullSpeed: _fullSpeed,
+      cpuType: _cpuType,
+      optionSwitches: _optionSwitches,
+    );
   }
 
   /// リセットを投入する。
@@ -155,6 +199,45 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   void setVolume(double volume) {
     _masterVolume = volume;
     _session?.setVolume(volume);
+  }
+
+  /// CPU速度倍率を変える（SYS-03）。
+  ///
+  /// コアの`update_config()`経由で即時反映されるため、起動中なら
+  /// すぐに切り替わる。停止中は選択を覚えておくだけで、コアには
+  /// 送らない（送る宛先セッションがない）。
+  Future<void> setSpeedMultiplier(int multiplier) async {
+    _speedMultiplier = multiplier;
+    state = state.copyWith(speedMultiplier: multiplier);
+    await _session?.setSpeedMultiplier(multiplier);
+  }
+
+  /// 無制限速度（Full Speed）の有効・無効を変える（SYS-03の「無制限」）。
+  ///
+  /// 起動中なら即座にCore threadの壁時計待機を止める／再開する。
+  Future<void> setFullSpeed(bool enabled) async {
+    _fullSpeed = enabled;
+    state = state.copyWith(fullSpeed: enabled);
+    await _session?.setFullSpeed(enabled);
+  }
+
+  /// CPU種別を変える（SYS-05）。起動中ならコアの`update_config()`経由で
+  /// 即時反映される。
+  Future<void> setCpuType(CpuType type) async {
+    _cpuType = type;
+    state = state.copyWith(cpuType: type);
+    await _session?.setCpuType(type);
+  }
+
+  /// サイクルスチール・拡張RAM・HSYNC同期を変える（SYS-06）。
+  ///
+  /// サイクルスチールとHSYNC同期は起動中なら即時反映される。拡張RAMは
+  /// コアがリセット時にしか読まないため、次のリセットまで実際の挙動には
+  /// 反映されない（[state]の表示上はここで即座に更新する）。
+  Future<void> setRunOptionSwitches(RunOptionSwitches switches) async {
+    _optionSwitches = switches;
+    state = state.copyWith(optionSwitches: switches);
+    await _session?.setRunOptionSwitches(switches);
   }
 
   /// キーが押された（INP-01）。

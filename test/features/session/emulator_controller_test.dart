@@ -58,6 +58,78 @@ void main() {
     expect(session.resetCalls, [ResetKind.special]);
   });
 
+  test('SYS-03 CPU速度倍率は起動中ならコアへ即時に送り、状態も更新する', () async {
+    await controller().setSpeedMultiplier(SpeedMultiplier.x8);
+
+    expect(session.setSpeedMultiplierCalls.last, SpeedMultiplier.x8);
+    expect(state().speedMultiplier, SpeedMultiplier.x8);
+  });
+
+  test('SYS-03 Full Speedは起動中ならコアへ即時に送り、状態も更新する', () async {
+    await controller().setFullSpeed(true);
+
+    expect(session.setFullSpeedCalls.last, isTrue);
+    expect(state().fullSpeed, isTrue);
+  });
+
+  test('SYS-05 CPU種別は起動中ならコアへ即時に送り、状態も更新する', () async {
+    await controller().setCpuType(CpuType.slow);
+
+    expect(session.setCpuTypeCalls.last, CpuType.slow);
+    expect(state().cpuType, CpuType.slow);
+  });
+
+  test('SYS-06 オプションスイッチは起動中ならコアへ即時に送り、状態も更新する', () async {
+    const switches = RunOptionSwitches(cycleSteal: true, extendedRam: true);
+    await controller().setRunOptionSwitches(switches);
+
+    expect(session.setRunOptionSwitchesCalls.last, switches);
+    expect(state().optionSwitches, switches);
+  });
+
+  test('実行設定は次回launch時に新しいセッションへ再適用される', () async {
+    await controller().setSpeedMultiplier(SpeedMultiplier.x2);
+    await controller().setFullSpeed(true);
+    await controller().setCpuType(CpuType.slow);
+    const switches = RunOptionSwitches(syncToHsync: true);
+    await controller().setRunOptionSwitches(switches);
+
+    await controller().shutdown();
+    // createSessionはsetUpのクロージャーが参照する`session`変数を
+    // 差し替えるだけで、次のlaunchから新しいFakeへ切り替わる。
+    session = FakeEmulatorSession();
+    await controller().launch();
+
+    expect(session.setSpeedMultiplierCalls, [SpeedMultiplier.x2]);
+    expect(session.setFullSpeedCalls, [true]);
+    expect(session.setCpuTypeCalls, [CpuType.slow]);
+    expect(session.setRunOptionSwitchesCalls, [switches]);
+  });
+
+  test('launch直後は既定値どおりの実行設定を送らない（無駄な往復を避ける）', () async {
+    await controller().shutdown();
+    session = FakeEmulatorSession();
+    await controller().launch();
+
+    expect(session.setSpeedMultiplierCalls, isEmpty);
+    expect(session.setFullSpeedCalls, isEmpty);
+    expect(session.setCpuTypeCalls, isEmpty);
+    expect(session.setRunOptionSwitchesCalls, isEmpty);
+  });
+
+  test('停止後も実行設定の選択はstateに残る（メニュー表示とのずれを防ぐ）', () async {
+    await controller().setSpeedMultiplier(SpeedMultiplier.x4);
+    await controller().setFullSpeed(true);
+    await controller().setCpuType(CpuType.slow);
+
+    await controller().shutdown();
+
+    expect(state().speedMultiplier, SpeedMultiplier.x4);
+    expect(state().fullSpeed, isTrue);
+    expect(state().cpuType, CpuType.slow);
+    expect(state().isRunning, isFalse);
+  });
+
   test('FDD-01 挿入は原本を作業領域へ複製し、複製先パスをコアへ渡す', () async {
     externalFileAccess.nextPickResult = FakeExternalResource(
       '/Volumes/USB/GAME.D88',

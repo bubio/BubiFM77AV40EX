@@ -35,6 +35,36 @@ abstract class EmulatorSession {
   /// [reset] または再起動からになる（SYS-04）。
   Future<int> setBootMode(BootMode mode);
 
+  /// CPU速度倍率を設定し、コマンドの連番を返す（SYS-03）。
+  ///
+  /// [multiplier] は[SpeedMultiplier]の値。ネイティブ側のCore threadが
+  /// 壁時計の1tickあたりに`vm->run()`を呼ぶ回数を変えるため、次の
+  /// リセットを待たずに反映される。
+  Future<int> setSpeedMultiplier(int multiplier);
+
+  /// 無制限速度（Full Speed）の有効・無効を設定し、コマンドの連番を
+  /// 返す（SYS-03の「無制限」）。
+  ///
+  /// 有効な間、ネイティブ側のCore threadは壁時計の待機を省いて
+  /// `vm->run()`を呼び続ける。速度は実質ホストのCPU性能で決まる。
+  /// 音声は生成量が実時間の消費量を大きく上回るため、有界リングの
+  /// オーバーラン方針（最古破棄）により途切れがちになる。
+  Future<int> setFullSpeed(bool enabled);
+
+  /// CPU種別を設定し、コマンドの連番を返す（SYS-05）。
+  ///
+  /// コアの`update_config()`を呼ぶため、次のリセットを待たずに
+  /// 反映される。
+  Future<int> setCpuType(CpuType type);
+
+  /// サイクルスチール・拡張RAM・HSYNC同期を設定し、コマンドの連番を
+  /// 返す（SYS-06）。
+  ///
+  /// [switches]の3項目を毎回丸ごと置き換える。サイクルスチールと
+  /// HSYNC同期は即時反映されるが、拡張RAMは次のリセットまで見た目に
+  /// 反映されない。
+  Future<int> setRunOptionSwitches(RunOptionSwitches switches);
+
   /// キーを押す。[vkCode] は win32 の仮想キーコード（INP-01）。
   ///
   /// リピートの抑止と重複押下の除去は呼び出し側（Controller）の責務で、

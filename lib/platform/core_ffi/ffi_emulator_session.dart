@@ -272,6 +272,86 @@ class FfiEmulatorSession implements EmulatorSession {
   }
 
   @override
+  Future<int> setSpeedMultiplier(int multiplier) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = BfmCommandKind.setSpeedMultiplier;
+      command.ref.arg0 = multiplier;
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
+  Future<int> setFullSpeed(bool enabled) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = BfmCommandKind.setFullSpeed;
+      command.ref.arg0 = enabled ? 1 : 0;
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
+  Future<int> setCpuType(CpuType type) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = BfmCommandKind.setCpuType;
+      command.ref.arg0 = cpuTypeToNative(type);
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
+  Future<int> setRunOptionSwitches(RunOptionSwitches switches) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = BfmCommandKind.setOptionSwitch;
+      command.ref.arg0 = runOptionSwitchesToNative(switches);
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
   Future<int> insertFdd(int drive, String imagePath, {int bank = 0}) async {
     _ensureUsable();
     final command = calloc<BfmCommand>();

@@ -38,6 +38,26 @@ abstract final class BfmBootMode {
   static const int dos = 1;
 }
 
+/// `bfm_cpu_type`。値は upstream の `config.cpu_type` と同じ。
+/// [BfmCommandKind.setCpuType] はコアの `update_config()` を呼ぶため、
+/// リセットを待たずに反映される。
+abstract final class BfmCpuType {
+  static const int fast = 0; // 2.0MHz相当
+  static const int slow = 1; // 1.2MHz
+}
+
+/// `BFM_CMD_SET_OPTION_SWITCH` の arg0 に渡すビット。
+///
+/// この3ビットの組だけを毎回丸ごと置き換える（マージしない）。
+/// サイクルスチールとHSYNC同期は即時反映されるが、拡張RAMはコアが
+/// リセット時にしか読まないため次のリセットまで反映されない
+/// （design.md 16.1）。
+abstract final class BfmOptionSwitch {
+  static const int cycleSteal = 0x1;
+  static const int extendedRam = 0x2;
+  static const int syncToHsync = 0x4;
+}
+
 /// `bfm_command_kind`。上位バイトが design.md 4.2 の分類に対応する。
 ///
 /// WP1 で実装済みなのは [reset] と [specialReset] だけで、

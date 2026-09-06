@@ -51,6 +51,18 @@ int bootModeToNative(BootMode mode) => switch (mode) {
   BootMode.dos => BfmBootMode.dos,
 };
 
+/// [CpuType] を `bfm_cpu_type` へ変換する。
+int cpuTypeToNative(CpuType type) => switch (type) {
+  CpuType.fast => BfmCpuType.fast,
+  CpuType.slow => BfmCpuType.slow,
+};
+
+/// [RunOptionSwitches] を `BFM_CMD_SET_OPTION_SWITCH` の arg0 へ変換する。
+int runOptionSwitchesToNative(RunOptionSwitches switches) =>
+    (switches.cycleSteal ? BfmOptionSwitch.cycleSteal : 0) |
+    (switches.extendedRam ? BfmOptionSwitch.extendedRam : 0) |
+    (switches.syncToHsync ? BfmOptionSwitch.syncToHsync : 0);
+
 /// `bfm_event` の各フィールドから [EmulatorEvent] を組み立てる。
 EmulatorEvent emulatorEventFromNative({
   required int kind,

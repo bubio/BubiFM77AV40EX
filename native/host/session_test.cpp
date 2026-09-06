@@ -706,6 +706,182 @@ void test_boot_mode()
 	bfm_destroy(session);
 }
 
+// --- 11.1 実行設定（SYS-03、SYS-05、SYS-06） ---
+void test_run_settings()
+{
+	group("実行設定（速度・CPU種別・オプションスイッチ）");
+
+	bfm_session* session = make_session();
+	if (session == nullptr) {
+		check(false, "生成できる");
+		return;
+	}
+	bfm_start(session);
+	check(wait_for_state(session, BFM_STATE_RUNNING, 5000), "running へ遷移する");
+
+	bfm_command command{};
+	uint64_t id = 0;
+	int32_t code = -1;
+
+	// 速度倍率（SYS-03）。
+	command = bfm_command{};
+	command.kind = BFM_CMD_SET_SPEED_MULTIPLIER;
+	command.arg0 = 4; // x16
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "x16を投入できる");
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_OK, "範囲内の速度倍率が成功で完了する");
+
+	command.arg0 = 5;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "範囲外も受理はする");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_ERR_INVALID_ARGUMENT, "範囲外の速度倍率は invalidArgument");
+
+	command.arg0 = 0; // x1に戻す
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "x1に戻せる");
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+
+	// 速度倍率（config.cpu_power）はCore threadがvm->run()を呼ぶ間隔
+	// （壁時計、frame_period）自体を変えない。x1とx16でframes_run
+	// （vm->run()の呼出し回数）のペースがほぼ変わらないことを確かめる
+	// （design.md 16.1「CPU速度倍率の仕様」）。効果は1回のdrive()内で
+	// 処理されるゲスト側CPU命令数に出るため、frames_runでは測れず、
+	// ここでは「呼出し間隔（＝VSYNCと音声の生成ペース）が変わらない」
+	// ことだけを回帰検知の対象にする。
+	{
+		bfm_stats before{};
+		check(bfm_get_stats(session, &before) == BFM_OK, "計測前の統計を取得できる");
+		std::this_thread::sleep_for(std::chrono::milliseconds(200));
+		bfm_stats after_x1{};
+		check(bfm_get_stats(session, &after_x1) == BFM_OK, "x1の統計を取得できる");
+		const uint64_t frames_at_x1 = after_x1.frames_run - before.frames_run;
+
+		command = bfm_command{};
+		command.kind = BFM_CMD_SET_SPEED_MULTIPLIER;
+		command.arg0 = 4; // x16
+		check(bfm_send_command(session, &command, &id) == BFM_OK, "計測用にx16を投入できる");
+		check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+
+		bfm_stats before_x16{};
+		check(bfm_get_stats(session, &before_x16) == BFM_OK, "x16計測前の統計を取得できる");
+		std::this_thread::sleep_for(std::chrono::milliseconds(200));
+		bfm_stats after_x16{};
+		check(bfm_get_stats(session, &after_x16) == BFM_OK, "x16の統計を取得できる");
+		const uint64_t frames_at_x16 = after_x16.frames_run - before_x16.frames_run;
+
+		// どちらもおよそ200ms分（12フレーム前後、59.94fps）で、大きな
+		// 桁違いにはならないはずである。スレッドpacingのばらつきを
+		// 許容しつつ、frames_runがspeed_shift方式のように何倍にも
+		// ならないことだけを確認する。
+		check(frames_at_x16 < frames_at_x1 * 3 + 6,
+		      "x16でもframes_runのペースはx1からVSYNC分以上には増えない"
+		      "（壁時計の呼出し間隔は変わらない）");
+
+		command.arg0 = 0; // 以降の検査へ影響しないようx1へ戻す
+		check(bfm_send_command(session, &command, &id) == BFM_OK, "x1へ戻せる");
+		check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	}
+
+	// Full Speed（SYS-03の無制限）。arg0は0/1のbool、それ以外はinvalid。
+	command = bfm_command{};
+	command.kind = BFM_CMD_SET_FULL_SPEED;
+	command.arg0 = 2;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "不正値も受理はする");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_ERR_INVALID_ARGUMENT, "0/1以外はinvalidArgument");
+
+	// Full Speedは壁時計の待機を省くことを、frames_runの実測値で
+	// 確かめる（bfm_session::full_speedのコメント、design.md 16.1）。
+	// 速度倍率（x16）を設定したままでも、Full Speedを有効にしない限り
+	// frames_runのペースは壁時計どおりのままのはずである。
+	{
+		command.arg0 = 4; // x16のまま比較用の基準を取る
+		command.kind = BFM_CMD_SET_SPEED_MULTIPLIER;
+		check(bfm_send_command(session, &command, &id) == BFM_OK, "計測用にx16を投入できる");
+		check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+
+		bfm_stats before_x16{};
+		check(bfm_get_stats(session, &before_x16) == BFM_OK, "x16計測前の統計を取得できる");
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		bfm_stats after_x16{};
+		check(bfm_get_stats(session, &after_x16) == BFM_OK, "x16の統計を取得できる");
+		const uint64_t frames_at_x16 = after_x16.frames_run - before_x16.frames_run;
+
+		command = bfm_command{};
+		command.kind = BFM_CMD_SET_FULL_SPEED;
+		command.arg0 = 1;
+		check(bfm_send_command(session, &command, &id) == BFM_OK, "Full Speedを有効化できる");
+		code = -1;
+		check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+		check(code == BFM_OK, "Full Speedの有効化が成功で完了する");
+
+		bfm_stats before_full{};
+		check(bfm_get_stats(session, &before_full) == BFM_OK, "Full Speed計測前の統計を取得できる");
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		bfm_stats after_full{};
+		check(bfm_get_stats(session, &after_full) == BFM_OK, "Full Speedの統計を取得できる");
+		const uint64_t frames_at_full = after_full.frames_run - before_full.frames_run;
+
+		check(frames_at_full > frames_at_x16 * 2,
+		      "Full Speedはx16よりさらにframes_runが明確に多い（壁時計の待機がない）");
+
+		command = bfm_command{};
+		command.kind = BFM_CMD_SET_FULL_SPEED;
+		command.arg0 = 0;
+		check(bfm_send_command(session, &command, &id) == BFM_OK, "Full Speedを無効化できる");
+		check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+
+		command.kind = BFM_CMD_SET_SPEED_MULTIPLIER;
+		command.arg0 = 0; // 以降の検査へ影響しないようx1へ戻す
+		check(bfm_send_command(session, &command, &id) == BFM_OK, "x1へ戻せる");
+		check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	}
+
+	// CPU種別（SYS-05）。
+	command = bfm_command{};
+	command.kind = BFM_CMD_SET_CPU_TYPE;
+	command.arg0 = BFM_CPU_SLOW;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "1.2MHzを投入できる");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_OK, "既知のCPU種別が成功で完了する");
+
+	command.arg0 = 42;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "不正値も受理はする");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_ERR_INVALID_ARGUMENT, "不正なCPU種別はinvalidArgument");
+
+	command.arg0 = BFM_CPU_FAST;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "2.0MHzへ戻せる");
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+
+	// オプションスイッチ（SYS-06）。
+	command = bfm_command{};
+	command.kind = BFM_CMD_SET_OPTION_SWITCH;
+	command.arg0 = BFM_OPTSW_CYCLE_STEAL | BFM_OPTSW_EXTENDED_RAM | BFM_OPTSW_SYNC_TO_HSYNC;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "3ビットとも投入できる");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_OK, "既知のビットだけなら成功で完了する");
+
+	command.arg0 = 0;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "全解除も投入できる");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_OK, "全解除も成功で完了する");
+
+	command.arg0 = 0x8;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "未知ビットも受理はする");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_ERR_INVALID_ARGUMENT, "未知のビットが立っているとinvalidArgument");
+
+	bfm_stop(session);
+	bfm_destroy(session);
+}
+
 // --- 別プロセスで行う検査 ---
 //
 // home_dir はプロセス全体で1つに固定されるため、書込み不能な home_dir を
@@ -1116,6 +1292,7 @@ int main(int argc, char** argv)
 	test_single_live_session();
 	test_rom_wiring();
 	test_boot_mode();
+	test_run_settings();
 	test_video();
 	test_input();
 	test_audio();

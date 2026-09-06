@@ -141,6 +141,10 @@ class FakeEmulatorSession implements EmulatorSession {
   final List<int> ejectCalls = [];
   final List<ResetKind> resetCalls = [];
   final List<BootMode> setBootModeCalls = [];
+  final List<int> setSpeedMultiplierCalls = [];
+  final List<bool> setFullSpeedCalls = [];
+  final List<CpuType> setCpuTypeCalls = [];
+  final List<RunOptionSwitches> setRunOptionSwitchesCalls = [];
 
   /// 次に受理する挿入・排出コマンドの完了結果。nullなら成功。
   ///
@@ -193,6 +197,30 @@ class FakeEmulatorSession implements EmulatorSession {
   @override
   Future<int> setBootMode(BootMode mode) async {
     setBootModeCalls.add(mode);
+    return _nextCommandId++;
+  }
+
+  @override
+  Future<int> setSpeedMultiplier(int multiplier) async {
+    setSpeedMultiplierCalls.add(multiplier);
+    return _nextCommandId++;
+  }
+
+  @override
+  Future<int> setFullSpeed(bool enabled) async {
+    setFullSpeedCalls.add(enabled);
+    return _nextCommandId++;
+  }
+
+  @override
+  Future<int> setCpuType(CpuType type) async {
+    setCpuTypeCalls.add(type);
+    return _nextCommandId++;
+  }
+
+  @override
+  Future<int> setRunOptionSwitches(RunOptionSwitches switches) async {
+    setRunOptionSwitchesCalls.add(switches);
     return _nextCommandId++;
   }
 

@@ -166,6 +166,30 @@
   "@menuControlSpecialReset": {
     "description": "Control menu item that resets with BREAK held."
   },
+  "menuControlSpeed": "CPU Speed",
+  "@menuControlSpeed": {
+    "description": "Control submenu: CPU speed multiplier radio group (SYS-03)."
+  },
+  "menuControlFullSpeed": "Full Speed",
+  "@menuControlFullSpeed": {
+    "description": "Control checkbox: unlimited speed, no wall-clock throttle (SYS-03)."
+  },
+  "menuControlCpuType": "CPU Type",
+  "@menuControlCpuType": {
+    "description": "Control submenu: CPU clock type radio group (SYS-05)."
+  },
+  "menuControlCycleSteal": "Cycle Steal",
+  "@menuControlCycleSteal": {
+    "description": "Control checkbox: cycle steal option switch (SYS-06)."
+  },
+  "menuControlExtendedRam": "Extended RAM",
+  "@menuControlExtendedRam": {
+    "description": "Control checkbox: extended RAM option switch (SYS-06)."
+  },
+  "menuControlSyncToHsync": "HSYNC Sync",
+  "@menuControlSyncToHsync": {
+    "description": "Control checkbox: sync-to-HSYNC option switch (SYS-06)."
+  },
   "menuDisk": "Disk",
   "@menuDisk": {
     "description": "In-app menu group: floppy disk media."

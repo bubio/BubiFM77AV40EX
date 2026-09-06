@@ -18,6 +18,10 @@ void main() {
   List<MenuGroup> catalog({
     bool isRunning = true,
     BootMode bootMode = BootMode.basic,
+    int speedMultiplier = SpeedMultiplier.x1,
+    bool fullSpeed = false,
+    CpuType cpuType = CpuType.fast,
+    RunOptionSwitches optionSwitches = const RunOptionSwitches(),
     ScreenFit screenFit = ScreenFit.aspect,
     AppLocaleMode localeMode = AppLocaleMode.system,
   }) {
@@ -27,6 +31,14 @@ void main() {
       onReset: (_) {},
       bootMode: bootMode,
       onBootModeChanged: (_) {},
+      speedMultiplier: speedMultiplier,
+      onSpeedMultiplierChanged: (_) {},
+      fullSpeed: fullSpeed,
+      onFullSpeedChanged: (_) {},
+      cpuType: cpuType,
+      onCpuTypeChanged: (_) {},
+      optionSwitches: optionSwitches,
+      onOptionSwitchesChanged: (_) {},
       fddMedia: const {},
       onFddInsert: (_) {},
       onFddEject: (_) {},
@@ -47,11 +59,12 @@ void main() {
     ]);
   });
 
-  test('Control: Reset、Special Reset、区切り、Boot Modeラジオの順', () {
+  test('Control: Reset、Special Reset、区切り、CPU Speed、Full Speed、'
+      'CPU Type、Boot Mode、オプションスイッチ3件の順', () {
     final entries = catalog()
         .firstWhere((g) => g.id == MenuGroupId.control)
         .entries;
-    expect(entries, hasLength(4));
+    expect(entries, hasLength(10));
     expect(
       entries[0],
       isA<MenuAction>().having((e) => e.id, 'id', 'control.reset'),
@@ -61,12 +74,63 @@ void main() {
       isA<MenuAction>().having((e) => e.id, 'id', 'control.specialReset'),
     );
     expect(entries[2], isA<MenuSeparator>());
-    final bootModeGroup = entries[3] as MenuRadioGroup<BootMode>;
+    final speedGroup = entries[3] as MenuRadioGroup<int>;
+    expect(speedGroup.id, 'control.speedMultiplier');
+    expect(speedGroup.options.map((o) => o.value), [
+      SpeedMultiplier.x1,
+      SpeedMultiplier.x2,
+      SpeedMultiplier.x4,
+      SpeedMultiplier.x8,
+      SpeedMultiplier.x16,
+    ]);
+    expect(
+      entries[4],
+      isA<MenuCheckbox>().having((e) => e.id, 'id', 'control.fullSpeed'),
+    );
+    final cpuTypeGroup = entries[5] as MenuRadioGroup<CpuType>;
+    expect(cpuTypeGroup.id, 'control.cpuType');
+    expect(cpuTypeGroup.options.map((o) => o.value), [
+      CpuType.fast,
+      CpuType.slow,
+    ]);
+    final bootModeGroup = entries[6] as MenuRadioGroup<BootMode>;
     expect(bootModeGroup.id, 'control.bootMode');
     expect(bootModeGroup.options.map((o) => o.value), [
       BootMode.basic,
       BootMode.dos,
     ]);
+    expect(
+      entries[7],
+      isA<MenuCheckbox>().having((e) => e.id, 'id', 'control.cycleSteal'),
+    );
+    expect(
+      entries[8],
+      isA<MenuCheckbox>().having((e) => e.id, 'id', 'control.extendedRam'),
+    );
+    expect(
+      entries[9],
+      isA<MenuCheckbox>().having((e) => e.id, 'id', 'control.syncToHsync'),
+    );
+  });
+
+  test('Controlのオプションスイッチのチェック状態は引数に従う', () {
+    final entries = catalog(
+      optionSwitches: const RunOptionSwitches(
+        cycleSteal: true,
+        extendedRam: true,
+        syncToHsync: true,
+      ),
+    ).firstWhere((g) => g.id == MenuGroupId.control).entries;
+    expect((entries[7] as MenuCheckbox).checked, isTrue);
+    expect((entries[8] as MenuCheckbox).checked, isTrue);
+    expect((entries[9] as MenuCheckbox).checked, isTrue);
+  });
+
+  test('Full Speedのチェック状態は引数に従う', () {
+    final entries = catalog(fullSpeed: true)
+        .firstWhere((g) => g.id == MenuGroupId.control)
+        .entries;
+    expect((entries[4] as MenuCheckbox).checked, isTrue);
   });
 
   test('Controlのリセット項目は停止中に無効化する', () {

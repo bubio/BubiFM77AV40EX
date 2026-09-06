@@ -25,6 +25,8 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <mutex>
 #include <new>
@@ -35,6 +37,7 @@
 
 #include "common.h"
 #include "emu.h"
+#include "vm/fm7/fm7_common.h"
 
 #include "core_host_symbols.h"
 
@@ -42,6 +45,21 @@ namespace {
 
 constexpr uint32_t kDefaultCommandCapacity = 64;
 constexpr uint32_t kDefaultEventCapacity = 256;
+
+/*
+ * CPU速度倍率（SYS-03）の実装方式。bfm_session::speed_shiftの
+ * コメントを参照。検証用に両方を残しており、既定はkCpuPower。
+ */
+enum class SpeedMultiplierMode { kCpuPower, kRepeatDrive };
+
+SpeedMultiplierMode speed_multiplier_mode_from_env()
+{
+	const char* value = std::getenv("BUBI_SPEED_MULTIPLIER_MODE");
+	if (value != nullptr && std::strcmp(value, "repeat") == 0) {
+		return SpeedMultiplierMode::kRepeatDrive;
+	}
+	return SpeedMultiplierMode::kCpuPower;
+}
 
 /*
  * P0で受け付けるFDDドライブ数（FD1、FD2）。design.md 9.1・development_plan.md
@@ -264,6 +282,40 @@ struct bfm_session {
 	 */
 	std::atomic<bool> force_publish{true};
 
+	/*
+	 * Full Speed（SYS-03の「無制限」）。trueの間、Core threadのtickループは
+	 * 壁時計の`sleep_until(deadline)`を省き、`vm->run()`を間を置かず
+	 * 呼び続ける。`vm->run()`の呼出し間隔自体（＝VSYNC等のevent-clock
+	 * スケジューリングと音声の生成ペース）が実時間より速くなるため、
+	 * 音声は生成量が消費量（実時間48kHz）を上回り、有界リングの
+	 * オーバーラン方針（最古破棄、design.md 7）により再生が途切れがちに
+	 * なる（利用者確認済み。design.md 16.1「Full Speedの仕様」）。
+	 */
+	std::atomic<bool> full_speed{false};
+
+	/*
+	 * CPU速度倍率の指数。0=x1〜4=x16。`speed_mode`（下記）によって
+	 * 2通りの実装のどちらへ使うかが変わる（design.md 16.1「CPU速度倍率の
+	 * 仕様」参照。比較検証のため両方を残してある）。
+	 *
+	 *   - kCpuPower（既定）: `config.cpu_power`へ書き、`vm->update_config()`
+	 *     を呼ぶ。drive()の呼出し間隔・音声の生成ペースは変えず、1回の
+	 *     drive()内のCPUクロック予算だけを増やす。VSYNC待ちの部分や
+	 *     音楽は変わらず、CPU律速の処理（BASICの実行速度など）だけが
+	 *     速くなる。
+	 *   - kRepeatDrive: この値をここへ書くだけで、Core threadのtick
+	 *     ループが壁時計の1周期あたり`vm->run()`を`1 << speed_shift`回
+	 *     呼ぶ。VSYNC待ちの部分も含めて体感速度が上がるが、音声生成も
+	 *     同じ回数呼ばれるため、有界リングのオーバーラン（最古破棄）
+	 *     により音楽も速く（＝間引かれて）聞こえる副作用がある。
+	 *
+	 * `speed_mode`はBFM_CREATE_OPTIONS等の公開ABIには出さず、環境変数
+	 * `BUBI_SPEED_MULTIPLIER_MODE`（"repeat"でkRepeatDrive、それ以外・
+	 * 未設定でkCpuPower）だけで切り替える検証用のフックとする。
+	 */
+	std::atomic<int> speed_shift{0};
+	const SpeedMultiplierMode speed_mode = speed_multiplier_mode_from_env();
+
 	std::thread core_thread;
 	std::string home_dir;
 	std::string core_dir; // コアがROMを読み USERDIC.DAT を書く位置
@@ -456,6 +508,65 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 			config.boot_mode = static_cast<int>(queued.arg0);
 		}
 		break;
+	case BFM_CMD_SET_SPEED_MULTIPLIER:
+		// arg0は0(x1)〜4(x16)の指数（SYS-03）。bfm_session::speed_mode
+		// （環境変数BUBI_SPEED_MULTIPLIER_MODEで切替、既定はkCpuPower）
+		// によって書き先を変える。両方式の違いはbfm_session::speed_shift
+		// のコメントとdesign.md 16.1「CPU速度倍率の仕様」を参照。
+		if (queued.arg0 < 0 || queued.arg0 > 4) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+		} else if (session->speed_mode == SpeedMultiplierMode::kRepeatDrive) {
+			session->speed_shift.store(static_cast<int>(queued.arg0));
+		} else {
+			config.cpu_power = static_cast<int>(queued.arg0);
+			vm->update_config();
+		}
+		break;
+	case BFM_CMD_SET_FULL_SPEED:
+		// bfm_session::full_speedへ書くだけで、Core threadのtickループが
+		// 次回以降のtickから読む（SYS-03の「無制限」、本ファイル前掲の
+		// bfm_session::full_speedのコメントを参照）。
+		if (queued.arg0 != 0 && queued.arg0 != 1) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+		} else {
+			session->full_speed.store(queued.arg0 != 0);
+		}
+		break;
+	case BFM_CMD_SET_CPU_TYPE:
+		// DISPLAY/FM7_MAINMEM/FM7_MAINIOのupdate_config()がいずれも
+		// config.cpu_type を読み直すため即時に反映される（SYS-05）。
+		if (queued.arg0 != BFM_CPU_FAST && queued.arg0 != BFM_CPU_SLOW) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+		} else {
+			config.cpu_type = static_cast<int>(queued.arg0);
+			vm->update_config();
+		}
+		break;
+	case BFM_CMD_SET_OPTION_SWITCH: {
+		// SYS-06。bubi_fm77av.h前掲のとおり、この3ビットの組だけを毎回
+		// 丸ごと置き換える。他の用途のdipswitch/option_switchビット
+		// （FM7_DIPSW_FM8_PROTECT_FD0Fやupstream側が立てる
+		// FM7_OPTSW_DICTROM_AVなど）は読み書きせず残す。
+		constexpr int64_t kKnownBits =
+		    BFM_OPTSW_CYCLE_STEAL | BFM_OPTSW_EXTENDED_RAM | BFM_OPTSW_SYNC_TO_HSYNC;
+		if ((queued.arg0 & ~kKnownBits) != 0) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		const bool cycle_steal = (queued.arg0 & BFM_OPTSW_CYCLE_STEAL) != 0;
+		const bool extended_ram = (queued.arg0 & BFM_OPTSW_EXTENDED_RAM) != 0;
+		const bool sync_to_hsync = (queued.arg0 & BFM_OPTSW_SYNC_TO_HSYNC) != 0;
+		config.dipswitch = (config.dipswitch & ~(FM7_DIPSW_CYCLESTEAL | FM7_DIPSW_SYNC_TO_HSYNC)) |
+		                   (cycle_steal ? FM7_DIPSW_CYCLESTEAL : 0) |
+		                   (sync_to_hsync ? FM7_DIPSW_SYNC_TO_HSYNC : 0);
+		// 拡張RAM本体とFM77AV系のページ2拡張RAMを1つのトグルとして扱う。
+		// 反映はFM7_MAINMEM::initialize()（次のリセット）まで持ち越しになる。
+		config.option_switch =
+		    (config.option_switch & ~(FM7_OPTSW_EXTRAM | FM7_OPTSW_EXTRAM_AV)) |
+		    (extended_ram ? (FM7_OPTSW_EXTRAM | FM7_OPTSW_EXTRAM_AV) : 0);
+		vm->update_config();
+		break;
+	}
 	default:
 		// 型として定義済みだが未実装。担当WPは bubi_fm77av.h を参照。
 		code = BFM_ERR_UNSUPPORTED;
@@ -684,15 +795,34 @@ void core_thread_main(bfm_session* session)
 				apply_command(session, vm, queued);
 			}
 
-			session->note_vm_access();
-			vm->run();
-			session->frames_run.fetch_add(1);
+			// bfm_session::speed_shiftのコメント参照。kRepeatDrive
+			// モード（検証用）だけ、1tickにつき`vm->run()`を
+			// `1 << speed_shift`回呼ぶ。既定のkCpuPowerモードでは
+			// repeatは常に1で、config.cpu_powerが1回のdrive()内の
+			// CPUクロック予算を決める。
+			const int repeat = session->speed_mode == SpeedMultiplierMode::kRepeatDrive
+			    ? (1 << session->speed_shift.load())
+			    : 1;
+			for (int i = 0; i < repeat; ++i) {
+				session->note_vm_access();
+				vm->run();
+				session->frames_run.fetch_add(1);
 
-			publish_frame_if_changed(session, vm);
-			publish_led_if_changed(session, vm);
-			accumulate_media_access(session, vm);
-			publish_audio_if_ready(session, vm);
+				publish_frame_if_changed(session, vm);
+				publish_led_if_changed(session, vm);
+				accumulate_media_access(session, vm);
+				publish_audio_if_ready(session, vm);
+			}
 
+			// SYS-03の「無制限」。壁時計の待機を省き、次のtickへ即座に
+			//進む（bfm_session::full_speedのコメント）。停止要求と
+			// コマンドの取込みはループ先頭で毎回行われるため、この間も
+			// 応答性は保たれる。deadlineは無制限を止めたときに大きな
+			// 遅れとして扱われないよう、その都度いま基準へ置き直す。
+			if (session->full_speed.load()) {
+				deadline = clock::now() + frame_period;
+				continue;
+			}
 
 			// 単調増加時計で次回期限を決める。遅れたら取り戻さず基準へ戻す。
 			const auto now = clock::now();

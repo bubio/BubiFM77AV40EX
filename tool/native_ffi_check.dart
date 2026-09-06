@@ -229,6 +229,22 @@ Future<void> _checkEmulatorSession(
   final bootCommandId = await session.setBootMode(BootMode.dos);
   check(bootCommandId > 0, 'ブートモードの変更を投入できる');
 
+  final speedCommandId = await session.setSpeedMultiplier(SpeedMultiplier.x4);
+  check(speedCommandId > 0, 'CPU速度倍率の変更を投入できる（SYS-03）');
+
+  final fullSpeedOnId = await session.setFullSpeed(true);
+  check(fullSpeedOnId > 0, 'Full Speedを有効化できる（SYS-03の無制限）');
+  final fullSpeedOffId = await session.setFullSpeed(false);
+  check(fullSpeedOffId > 0, 'Full Speedを無効化できる');
+
+  final cpuTypeCommandId = await session.setCpuType(CpuType.slow);
+  check(cpuTypeCommandId > 0, 'CPU種別の変更を投入できる（SYS-05）');
+
+  final optionSwitchCommandId = await session.setRunOptionSwitches(
+    const RunOptionSwitches(cycleSteal: true, syncToHsync: true),
+  );
+  check(optionSwitchCommandId > 0, 'オプションスイッチの変更を投入できる（SYS-06）');
+
   final commandId = await session.reset(ResetKind.special);
   check(commandId > 0, '特殊リセットの連番IDが返る');
 

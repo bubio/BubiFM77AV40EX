@@ -18,6 +18,10 @@ class EmulatorViewState {
     this.fddMedia = const {},
     this.fddLastAccessed = const {},
     this.bootMode = BootMode.basic,
+    this.cpuType = CpuType.fast,
+    this.speedMultiplier = SpeedMultiplier.x1,
+    this.fullSpeed = false,
+    this.optionSwitches = const RunOptionSwitches(),
     this.viewFps = 0,
     this.coreFps = 0,
   });
@@ -57,6 +61,20 @@ class EmulatorViewState {
   /// リセットまたは再起動からのため、両者は一時的に食い違いうる。
   final BootMode bootMode;
 
+  /// 現在のCPU種別（SYS-05）。コアの`update_config()`経由で即時反映
+  /// されるため、選択値と実際の値は常に一致する（design.md 12.4）。
+  final CpuType cpuType;
+
+  /// 現在のCPU速度倍率（SYS-03）。[SpeedMultiplier]の値。
+  final int speedMultiplier;
+
+  /// 無制限速度（Full Speed、SYS-03の「無制限」）が有効かどうか。
+  final bool fullSpeed;
+
+  /// サイクルスチール・拡張RAM・HSYNC同期の現在値（SYS-06）。
+  /// 拡張RAMだけは次のリセットまで実際の挙動に反映されない。
+  final RunOptionSwitches optionSwitches;
+
   /// 直近1秒間に描画側へ公開したフレーム数（design.md 12.4 View FPS）。
   final double viewFps;
 
@@ -80,6 +98,10 @@ class EmulatorViewState {
     Map<int, String>? fddMedia,
     Map<int, DateTime>? fddLastAccessed,
     BootMode? bootMode,
+    CpuType? cpuType,
+    int? speedMultiplier,
+    bool? fullSpeed,
+    RunOptionSwitches? optionSwitches,
     double? viewFps,
     double? coreFps,
   }) {
@@ -96,6 +118,10 @@ class EmulatorViewState {
       fddMedia: fddMedia ?? this.fddMedia,
       fddLastAccessed: fddLastAccessed ?? this.fddLastAccessed,
       bootMode: bootMode ?? this.bootMode,
+      cpuType: cpuType ?? this.cpuType,
+      speedMultiplier: speedMultiplier ?? this.speedMultiplier,
+      fullSpeed: fullSpeed ?? this.fullSpeed,
+      optionSwitches: optionSwitches ?? this.optionSwitches,
       viewFps: viewFps ?? this.viewFps,
       coreFps: coreFps ?? this.coreFps,
     );
