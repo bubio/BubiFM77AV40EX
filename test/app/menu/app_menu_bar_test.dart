@@ -74,6 +74,8 @@ void main() {
       onFullscreenChanged: (_) {},
       onCaptureScreen: () {},
       onOpenSoundVolume: () {},
+      fddMechanicalSoundEnabled: true,
+      onFddMechanicalSoundEnabledChanged: (_) {},
       localeMode: AppLocaleMode.system,
       onLocaleModeChanged: onLocaleModeChanged ?? (_) {},
     );

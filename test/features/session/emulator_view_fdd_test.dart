@@ -89,6 +89,8 @@ class _LaunchingHomeState extends ConsumerState<_LaunchingHome> {
       onFullscreenChanged: (_) {},
       onCaptureScreen: () {},
       onOpenSoundVolume: () {},
+      fddMechanicalSoundEnabled: true,
+      onFddMechanicalSoundEnabledChanged: (_) {},
       localeMode: settings.localeMode,
       onLocaleModeChanged: settingsController.setLocaleMode,
     );

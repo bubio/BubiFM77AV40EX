@@ -25,6 +25,7 @@ class FfiEmulatorSession implements EmulatorSession {
     this._pollInterval,
     this._textures,
     this._audio,
+    this._fddMechanicalSound,
   );
 
   /// セッションを生成する。
@@ -44,6 +45,11 @@ class FfiEmulatorSession implements EmulatorSession {
   /// （design.md 7 は必須要件だが、`package:flutter`に依存しないここでは
   /// 既定値を持てないため、アプリ側の組み立て（`lib/app/bootstrap.dart`）が
   /// 渡す）。
+  /// [fddMechanicalSound] はFDD内部機構音（AUD-04）の制御先。[audio]と
+  /// 同じインスタンス（`FddMechanicalAudioSink`）を渡すのが通常の使い方
+  /// （`lib/app/bootstrap.dart`）。渡さなければ
+  /// [setFddMechanicalSoundEnabled]／[setFddMechanicalSoundVolume]は
+  /// 何もしない。
   factory FfiEmulatorSession.create({
     required String homeDir,
     String? romDir,
@@ -54,6 +60,7 @@ class FfiEmulatorSession implements EmulatorSession {
     Duration pollInterval = const Duration(milliseconds: 16),
     VideoTextureAttacher? textures,
     AudioSink? audio,
+    FddMechanicalSoundSink? fddMechanicalSound,
   }) {
     if (homeDir.isEmpty) {
       throw const EmulatorException(
@@ -89,6 +96,7 @@ class FfiEmulatorSession implements EmulatorSession {
         pollInterval,
         textures,
         audio,
+        fddMechanicalSound,
       );
     } finally {
       // C境界を跨いだメモリは確保側が解放する。パスはネイティブ側が
@@ -107,6 +115,7 @@ class FfiEmulatorSession implements EmulatorSession {
   int? _textureId;
   final Duration _pollInterval;
   final AudioSink? _audio;
+  final FddMechanicalSoundSink? _fddMechanicalSound;
 
   Pointer<BfmSession> _handle;
   Timer? _pollTimer;
@@ -591,6 +600,16 @@ class FfiEmulatorSession implements EmulatorSession {
   }
 
   @override
+  void setFddMechanicalSoundEnabled(bool enabled) {
+    _fddMechanicalSound?.setFddSoundEnabled(enabled);
+  }
+
+  @override
+  void setFddMechanicalSoundVolume(double volume) {
+    _fddMechanicalSound?.setFddSoundVolume(volume);
+  }
+
+  @override
   Future<int> attachVideoTexture() async {
     _ensureUsable();
     final existing = _textureId;
@@ -681,10 +700,16 @@ class FfiEmulatorSession implements EmulatorSession {
         return;
       }
       final bits = out.value;
-      if (bits == 0 || _events.isClosed) {
+      if (bits == 0) {
         return;
       }
-      _events.add(MediaAccessChanged(driveSetFromBits(bits)));
+      final drives = driveSetFromBits(bits);
+      // FDD内部機構音（AUD-04、readWriteのみ）。既存のアクセス検知を
+      // そのまま流用し、新しいポーリングやブリッジコマンドは追加しない。
+      _fddMechanicalSound?.notifyDriveAccess(drives);
+      if (!_events.isClosed) {
+        _events.add(MediaAccessChanged(drives));
+      }
     } finally {
       calloc.free(out);
     }

@@ -190,6 +190,8 @@ class FakeEmulatorSession implements EmulatorSession {
   final List<RunOptionSwitches> setRunOptionSwitchesCalls = [];
   final List<(SoundChannel channel, double volume)> setSoundChannelVolumeCalls =
       [];
+  final List<bool> setFddMechanicalSoundEnabledCalls = [];
+  final List<double> setFddMechanicalSoundVolumeCalls = [];
   final List<(int drive, bool enabled)> setFddWriteProtectCalls = [];
   final List<(int drive, bool enabled)> setFddTimingCalls = [];
   final List<(int drive, bool ignore)> setFddCrcCheckCalls = [];
@@ -361,6 +363,16 @@ class FakeEmulatorSession implements EmulatorSession {
   @override
   void setVolume(double volume) {
     lastVolume = volume;
+  }
+
+  @override
+  void setFddMechanicalSoundEnabled(bool enabled) {
+    setFddMechanicalSoundEnabledCalls.add(enabled);
+  }
+
+  @override
+  void setFddMechanicalSoundVolume(double volume) {
+    setFddMechanicalSoundVolumeCalls.add(volume);
   }
 
   @override

@@ -116,7 +116,7 @@ void main() {
     await controller().setCpuType(CpuType.slow);
     const switches = RunOptionSwitches(syncToHsync: true);
     await controller().setRunOptionSwitches(switches);
-    await controller().setSoundChannelVolume(SoundChannel.fddMechanism, 0.25);
+    await controller().setSoundChannelVolume(SoundChannel.keyboardBeep, 0.25);
 
     await controller().shutdown();
     // createSessionはsetUpのクロージャーが参照する`session`変数を
@@ -128,10 +128,54 @@ void main() {
     expect(session.setFullSpeedCalls, [true]);
     expect(session.setCpuTypeCalls, [CpuType.slow]);
     expect(session.setRunOptionSwitchesCalls, [switches]);
-    // 既定と異なるチャンネル（fddMechanism）だけを再送する。
+    // 既定と異なるチャンネル（keyboardBeep）だけを再送する。
     expect(session.setSoundChannelVolumeCalls, [
-      (SoundChannel.fddMechanism, 0.25),
+      (SoundChannel.keyboardBeep, 0.25),
     ]);
+  });
+
+  test('AUD-04 fddMechanismチャンネルの音量はコアへ送らずホスト側合成器へ送る', () async {
+    await controller().setSoundChannelVolume(SoundChannel.fddMechanism, 0.3);
+
+    expect(session.setFddMechanicalSoundVolumeCalls, [0.3]);
+    expect(session.setSoundChannelVolumeCalls, isEmpty);
+    expect(state().soundVolumes.fddMechanism, 0.3);
+  });
+
+  test('AUD-04 fddMechanismの音量も次回launch時にホスト側合成器へ再適用される', () async {
+    await controller().setSoundChannelVolume(SoundChannel.fddMechanism, 0.4);
+
+    await controller().shutdown();
+    session = FakeEmulatorSession();
+    await controller().launch();
+
+    expect(session.setFddMechanicalSoundVolumeCalls, [0.4]);
+    expect(session.setSoundChannelVolumeCalls, isEmpty);
+  });
+
+  test('AUD-04 機構音の有効・無効は起動中ならホスト側へ即時に送り、状態も更新する', () async {
+    controller().setFddMechanicalSoundEnabled(false);
+
+    expect(session.setFddMechanicalSoundEnabledCalls, [false]);
+    expect(state().fddMechanicalSoundEnabled, isFalse);
+  });
+
+  test('AUD-04 機構音の無効設定は次回launch時に再適用される', () async {
+    controller().setFddMechanicalSoundEnabled(false);
+
+    await controller().shutdown();
+    session = FakeEmulatorSession();
+    await controller().launch();
+
+    expect(session.setFddMechanicalSoundEnabledCalls, [false]);
+  });
+
+  test('AUD-04 launch直後は既定値（有効）どおりなら送らない', () async {
+    await controller().shutdown();
+    session = FakeEmulatorSession();
+    await controller().launch();
+
+    expect(session.setFddMechanicalSoundEnabledCalls, isEmpty);
   });
 
   test('launch直後は既定値どおりの実行設定を送らない（無駄な往復を避ける）', () async {

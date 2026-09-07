@@ -131,6 +131,19 @@ abstract class EmulatorSession {
   /// 音声を組み立てていないセッションでは何もしない。
   void setVolume(double volume);
 
+  /// FDD内部機構音（ホスト側合成、AUD-04）の有効・無効を変える。
+  ///
+  /// ブリッジを経由しないホスト側のみの処理で、音声を組み立てていない
+  /// セッションでは何もしない。
+  void setFddMechanicalSoundEnabled(bool enabled);
+
+  /// FDD内部機構音の音量を変える（0.0〜1.0、AUD-04）。
+  ///
+  /// [SoundChannel.fddMechanism] の音量つまみが実際に配線される先で、
+  /// コアのch9（design.md 7.1の申し送りのとおり何も鳴らさない）へは
+  /// 送らない。
+  void setFddMechanicalSoundVolume(double volume);
+
   /// 画面を受け取る Texture を用意し、そのIDを返す。
   ///
   /// 呼ぶたびに新しいIDを作るのではなく、すでにあればそれを返す。

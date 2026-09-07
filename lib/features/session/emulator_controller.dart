@@ -88,6 +88,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   /// 変更されても次回[launch]時に適用できるよう覚えておく。
   SoundChannelVolumes _soundVolumes = const SoundChannelVolumes();
 
+  /// FDD内部機構音（ホスト側合成、readWriteのみ、AUD-04）の有効・無効。
+  /// 停止中に変更されても次回[launch]時に適用できるよう覚えておく。
+  bool _fddMechanicalSoundEnabled = true;
+
   /// FD1/FD2ごとの書込み保護・タイミング補正・CRCエラー無視（FDD-06）。
   /// 停止中に変更されても次回[launch]時に適用できるよう覚えておく。
   final Map<int, FddDriveSettings> _fddDriveSettings = {};
@@ -244,12 +248,22 @@ class EmulatorController extends Notifier<EmulatorViewState> {
           const defaults = SoundChannelVolumes();
           for (final channel in SoundChannel.values) {
             if (_soundVolumes[channel] != defaults[channel]) {
-              await session.setSoundChannelVolume(
-                channel,
-                _soundVolumes[channel],
-              );
+              if (channel == SoundChannel.fddMechanism) {
+                // AUD-04: このチャンネルはコアのch9ではなく、ホスト側
+                // 合成器（FddMechanicalAudioSink）の音量へ配線されている
+                // （design.md 7.1）。
+                session.setFddMechanicalSoundVolume(_soundVolumes[channel]);
+              } else {
+                await session.setSoundChannelVolume(
+                  channel,
+                  _soundVolumes[channel],
+                );
+              }
             }
           }
+        }
+        if (!_fddMechanicalSoundEnabled) {
+          session.setFddMechanicalSoundEnabled(_fddMechanicalSoundEnabled);
         }
         // 書込み保護はドライブではなく、マウントされた媒体自身が持つ
         // 状態（コアはDISK::open()のたびにファイル自身のヘッダから
@@ -273,6 +287,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
           cpuType: _cpuType,
           optionSwitches: _optionSwitches,
           soundVolumes: _soundVolumes,
+          fddMechanicalSoundEnabled: _fddMechanicalSoundEnabled,
           fddDriveSettings: {..._fddDriveSettings},
         );
       } on Object {
@@ -308,6 +323,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       cpuType: _cpuType,
       optionSwitches: _optionSwitches,
       soundVolumes: _soundVolumes,
+      fddMechanicalSoundEnabled: _fddMechanicalSoundEnabled,
       fddDriveSettings: {..._fddDriveSettings},
       fddRecentFiles: state.fddRecentFiles,
     );
@@ -397,14 +413,31 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   }
 
   /// 標準OPNのFM・PSG、Beep、キーボード音、FDD機構音のうち[channel]の
-  /// 音量を変える（AUD-03）。起動中ならコアへ即時反映される。
+  /// 音量を変える（AUD-03）。起動中なら即時反映される。
+  ///
+  /// [SoundChannel.fddMechanism]だけはコアのブリッジコマンドではなく、
+  /// ホスト側合成器（`FddMechanicalAudioSink`、AUD-04）の音量へ送る
+  /// （design.md 7.1「配線し直す」の実施）。
   Future<void> setSoundChannelVolume(
     SoundChannel channel,
     double volume,
   ) async {
     _soundVolumes = _soundVolumes.withVolume(channel, volume);
     state = state.copyWith(soundVolumes: _soundVolumes);
+    if (channel == SoundChannel.fddMechanism) {
+      _session?.setFddMechanicalSoundVolume(volume);
+      return;
+    }
     await _session?.setSoundChannelVolume(channel, volume);
+  }
+
+  /// FDD内部機構音（ホスト側合成、readWriteのみ、AUD-04）の有効・無効を
+  /// 変える。起動中なら即座に反映され、停止中でも次回[launch]時に使う
+  /// 値として覚えておく。
+  void setFddMechanicalSoundEnabled(bool enabled) {
+    _fddMechanicalSoundEnabled = enabled;
+    state = state.copyWith(fddMechanicalSoundEnabled: enabled);
+    _session?.setFddMechanicalSoundEnabled(enabled);
   }
 
   FddDriveSettings _driveSettingsOf(int drive) =>

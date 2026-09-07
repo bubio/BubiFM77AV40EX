@@ -35,6 +35,8 @@ void main() {
     bool isFullscreen = false,
     bool fullscreenSupported = false,
     void Function()? onOpenSoundVolume,
+    bool fddMechanicalSoundEnabled = true,
+    void Function(bool enabled)? onFddMechanicalSoundEnabledChanged,
     AppLocaleMode localeMode = AppLocaleMode.system,
   }) {
     return buildMenuCatalog(
@@ -78,6 +80,9 @@ void main() {
       onFullscreenChanged: (_) {},
       onCaptureScreen: () {},
       onOpenSoundVolume: onOpenSoundVolume ?? () {},
+      fddMechanicalSoundEnabled: fddMechanicalSoundEnabled,
+      onFddMechanicalSoundEnabledChanged:
+          onFddMechanicalSoundEnabledChanged ?? (_) {},
       localeMode: localeMode,
       onLocaleModeChanged: (_) {},
     );
@@ -290,11 +295,13 @@ void main() {
     expect(entries, hasLength(2));
     final sound = entries[0] as MenuSubmenu;
     expect(sound.id, 'device.sound');
-    expect(sound.entries, hasLength(3));
+    expect(sound.entries, hasLength(4));
     final radio = sound.entries[0] as MenuRadioGroup<String>;
     expect(radio.options.map((o) => o.label), ['OPN']);
     expect(sound.entries[1], isA<MenuSeparator>());
-    final volume = sound.entries[2] as MenuAction;
+    final fddMechanismEnabled = sound.entries[2] as MenuCheckbox;
+    expect(fddMechanismEnabled.id, 'device.sound.fddMechanismEnabled');
+    final volume = sound.entries[3] as MenuAction;
     expect(volume.id, 'device.sound.volume');
     final display = entries[1] as MenuSubmenu;
     expect(display.id, 'device.display');
@@ -307,10 +314,25 @@ void main() {
                 .firstWhere((g) => g.id == MenuGroupId.device)
                 .entries[0]
             as MenuSubmenu;
-    final volume = sound.entries[2] as MenuAction;
+    final volume = sound.entries[3] as MenuAction;
     expect(volume.enabled, isTrue);
     volume.onSelected();
     expect(called, isTrue);
+  });
+
+  test('Device > Sound > FDD Mechanism Soundはチェック状態に従いonFddMechanicalSoundEnabledChangedを呼ぶ（AUD-04）', () {
+    bool? changed;
+    final sound =
+        catalog(
+              fddMechanicalSoundEnabled: false,
+              onFddMechanicalSoundEnabledChanged: (enabled) =>
+                  changed = enabled,
+            ).firstWhere((g) => g.id == MenuGroupId.device).entries[0]
+            as MenuSubmenu;
+    final checkbox = sound.entries[2] as MenuCheckbox;
+    expect(checkbox.checked, isFalse);
+    checkbox.onChanged(true);
+    expect(changed, isTrue);
   });
 
   test('Device > Displayは走査線チェックボックスを持つ（VID-04）', () {

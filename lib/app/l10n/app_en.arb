@@ -259,6 +259,10 @@
   "@deviceSoundVolume": {
     "description": "Action opening the standard sound channel volume dialog (AUD-03)."
   },
+  "deviceSoundFddMechanismEnabled": "FDD Mechanism Sound",
+  "@deviceSoundFddMechanismEnabled": {
+    "description": "Checkbox toggling the host-synthesized FDD mechanical sound (AUD-04, read/write only)."
+  },
   "soundChannelOpnFm": "FM",
   "@soundChannelOpnFm": {
     "description": "Volume slider label for the standard OPN's FM part (AUD-03)."

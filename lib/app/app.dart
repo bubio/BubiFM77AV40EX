@@ -192,6 +192,9 @@ class _HomeState extends ConsumerState<_Home> {
       onFullscreenChanged: fullscreenController.setFullscreen,
       onCaptureScreen: _captureScreen,
       onOpenSoundVolume: _openSoundVolumeDialog,
+      fddMechanicalSoundEnabled: emulator.fddMechanicalSoundEnabled,
+      onFddMechanicalSoundEnabledChanged:
+          emulatorController.setFddMechanicalSoundEnabled,
       localeMode: settings.localeMode,
       onLocaleModeChanged: settingsController.setLocaleMode,
     );

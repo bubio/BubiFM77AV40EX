@@ -27,3 +27,30 @@ abstract class AudioSink {
   /// 再生を止め、資源を解放する。
   Future<void> stop();
 }
+
+/// FDD内部機構音（ホスト側合成、AUD-04）の制御境界。
+///
+/// `AudioSink`とは別軸（`AudioSink.setVolume`はマスター音量）。
+/// `FfiEmulatorSession`はこの実体を任意で受け取り、渡されなければ
+/// 何もしない（`AudioSink`と同じnull許容パターン）。実装
+/// （`FddMechanicalAudioSink`、`lib/platform/audio/`）は`AudioSink`も
+/// 実装し、同一インスタンスを両方の役割で`FfiEmulatorSession.create`へ
+/// 渡す。
+abstract class FddMechanicalSoundSink {
+  /// 機構音合成の有効・無効を変える。
+  ///
+  /// メソッド名は`setFddSoundEnabled`とし、`AudioSink`の
+  /// メソッドとは名前を分ける（`FddMechanicalAudioSink`は両方の
+  /// interfaceを実装するため、`setVolume(double)`のような同名衝突は
+  /// 避ける必要がある）。
+  void setFddSoundEnabled(bool enabled);
+
+  /// 機構音の音量を変える（0.0〜1.0）。`AudioSink.setVolume`
+  /// （マスター音量）とは別軸。
+  void setFddSoundVolume(double volume);
+
+  /// 直近のポーリング区間でアクセスのあったドライブ集合を通知する
+  /// （`MediaAccessChanged`と同じ`driveSetFromBits`の結果、
+  /// `bits==0`のときは呼ばれない＝実質エッジ的）。
+  void notifyDriveAccess(Set<int> accessedDrives);
+}

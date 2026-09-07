@@ -58,6 +58,8 @@ List<MenuGroup> buildMenuCatalog({
   required void Function(bool enabled) onFullscreenChanged,
   required void Function() onCaptureScreen,
   required void Function() onOpenSoundVolume,
+  required bool fddMechanicalSoundEnabled,
+  required void Function(bool enabled) onFddMechanicalSoundEnabledChanged,
   required AppLocaleMode localeMode,
   required void Function(AppLocaleMode mode) onLocaleModeChanged,
 }) {
@@ -286,6 +288,16 @@ List<MenuGroup> buildMenuCatalog({
               onChanged: _noopStringChanged,
             ),
             const MenuSeparator('device.sound.sep0'),
+            // FDD内部機構音（readWriteのみ、AUD-04）の有効・無効。
+            // ホスト側合成のためコアへは送らない
+            // （`EmulatorController.setFddMechanicalSoundEnabled`）。
+            MenuCheckbox(
+              'device.sound.fddMechanismEnabled',
+              label: l10n.deviceSoundFddMechanismEnabled,
+              enabled: true,
+              checked: fddMechanicalSoundEnabled,
+              onChanged: onFddMechanicalSoundEnabledChanged,
+            ),
             // 標準OPNのFM・PSG、Beep、キーボード音、FDD機構音の個別音量
             // （AUD-03）。これらはコアのゲスト側デバイスそのものの
             // つまみであり、Host（ホスト側の最終ミックス、マスター音量）

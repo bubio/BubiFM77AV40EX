@@ -66,6 +66,7 @@
   "menuDeviceDisplay": "表示",
   "deviceDisplayScanline": "走査線",
   "deviceSoundVolume": "音量…",
+  "deviceSoundFddMechanismEnabled": "FDD機構音",
   "soundChannelOpnFm": "FM",
   "soundChannelOpnPsg": "PSG",
   "soundChannelBeep": "Beep",

@@ -16,6 +16,7 @@ import '../platform/persistence/os_app_data_paths.dart';
 import '../platform/persistence/os_cache_workspace.dart';
 import '../platform/persistence/os_external_file_access.dart';
 import '../platform/persistence/os_window_chrome.dart';
+import '../platform/audio/fdd_mechanical_audio_sink.dart';
 import '../platform/core_ffi/bubi_audio_sink.dart';
 import '../platform/core_ffi/bubi_video_texture_attacher.dart';
 import '../platform/core_ffi/ffi_emulator_session.dart';
@@ -51,13 +52,21 @@ Future<Widget> buildApp({RomManifest? romManifest}) async {
                 required String homeDir,
                 String? romDir,
                 BootMode bootMode = BootMode.basic,
-              }) => FfiEmulatorSession.create(
-                homeDir: homeDir,
-                romDir: romDir,
-                bootMode: bootMode,
-                textures: const BubiVideoTextureAttacher(),
-                audio: BubiAudioSink(),
-              ),
+              }) {
+                // FDD内部機構音（AUD-04）はBubiAudioSinkを包む
+                // デコレーターとして混ぜ込む。同一インスタンスをPCM出力先
+                // （audio）と機構音制御の受け口（fddMechanicalSound）の
+                // 両方として渡す（design.md 7.1）。
+                final fddSink = FddMechanicalAudioSink(BubiAudioSink());
+                return FfiEmulatorSession.create(
+                  homeDir: homeDir,
+                  romDir: romDir,
+                  bootMode: bootMode,
+                  textures: const BubiVideoTextureAttacher(),
+                  audio: fddSink,
+                  fddMechanicalSound: fddSink,
+                );
+              },
         ),
       ),
       romSettingsControllerProvider.overrideWith(

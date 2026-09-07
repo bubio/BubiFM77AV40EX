@@ -31,6 +31,7 @@ class EmulatorViewState {
     this.fullSpeed = false,
     this.optionSwitches = const RunOptionSwitches(),
     this.soundVolumes = const SoundChannelVolumes(),
+    this.fddMechanicalSoundEnabled = true,
     this.viewFps = 0,
     this.coreFps = 0,
   });
@@ -114,6 +115,10 @@ class EmulatorViewState {
   /// AUD-03）の実装方式」）。
   final SoundChannelVolumes soundVolumes;
 
+  /// FDD内部機構音（ホスト側合成、readWriteのみ、AUD-04）の有効・無効。
+  /// 永続化しないセッション内の状態（[soundVolumes]と同じ扱い）。
+  final bool fddMechanicalSoundEnabled;
+
   /// 直近1秒間に描画側へ公開したフレーム数（design.md 12.4 View FPS）。
   final double viewFps;
 
@@ -149,6 +154,7 @@ class EmulatorViewState {
     bool? fullSpeed,
     RunOptionSwitches? optionSwitches,
     SoundChannelVolumes? soundVolumes,
+    bool? fddMechanicalSoundEnabled,
     double? viewFps,
     double? coreFps,
   }) {
@@ -177,6 +183,8 @@ class EmulatorViewState {
       fullSpeed: fullSpeed ?? this.fullSpeed,
       optionSwitches: optionSwitches ?? this.optionSwitches,
       soundVolumes: soundVolumes ?? this.soundVolumes,
+      fddMechanicalSoundEnabled:
+          fddMechanicalSoundEnabled ?? this.fddMechanicalSoundEnabled,
       viewFps: viewFps ?? this.viewFps,
       coreFps: coreFps ?? this.coreFps,
     );
