@@ -19,6 +19,12 @@ abstract final class BfmResult {
   /// rawイメージのサイズがFM7系の2D/2DDジオメトリのどちらとも一致しない、
   /// または変換形式の変換後media_typeが2D/2DD以外だった（M3 FDD-03）。
   static const int unsupportedGeometry = 8;
+
+  /// 状態読込み対象ファイルの先頭バージョンが既知値と一致しない、または
+  /// 読めない（M3 STA-02）。コア内部でさらに深い不一致を検出した場合は
+  /// このコードでは表せず、現在の実行状態が静かに保たれるだけになる
+  /// （design.md「状態保存（M3、STA-01/STA-02）の実装方式」）。
+  static const int stateIncompatible = 9;
 }
 
 /// `bfm_state`

@@ -14,6 +14,7 @@ import '../features/session/widgets/emulator_view.dart';
 import '../features/session/widgets/rom_problem_dialog.dart';
 import '../features/settings/settings_controller.dart';
 import '../features/settings/settings_state.dart';
+import '../features/state/state_slot_dialog.dart';
 import 'l10n/generated/app_localizations.dart';
 import 'l10n/generated/app_localizations_en.dart';
 import 'l10n/generated/app_localizations_ja.dart';
@@ -203,6 +204,8 @@ class _HomeState extends ConsumerState<_Home> {
       onStopAutoKey: emulatorController.stopAutoKey,
       romajiToKana: emulator.romajiToKana,
       onRomajiToKanaChanged: emulatorController.setRomajiToKana,
+      onOpenSaveState: () => _openStateSlotDialog(StateSlotDialogMode.save),
+      onOpenLoadState: () => _openStateSlotDialog(StateSlotDialogMode.load),
       localeMode: settings.localeMode,
       onLocaleModeChanged: settingsController.setLocaleMode,
     );
@@ -256,6 +259,14 @@ class _HomeState extends ConsumerState<_Home> {
           controller.setSoundChannelVolume(channel, volume);
         },
       ),
+    );
+  }
+
+  /// 状態スロットのグリッドダイアログを開く（STA-01/STA-02）。
+  void _openStateSlotDialog(StateSlotDialogMode mode) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => StateSlotDialog(mode: mode),
     );
   }
 

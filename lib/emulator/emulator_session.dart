@@ -112,6 +112,20 @@ abstract class EmulatorSession {
   /// [insertFdd] を呼ぶこと。
   Future<int> createBlankFdd(FddMediaType mediaType, String destinationPath);
 
+  /// 現在の実行状態を[destinationPath]へ保存し、コマンドの連番を返す
+  /// （STA-01）。スロット番号自体は呼び出し側のディレクトリ構成が表し、
+  /// コアへは渡さない。
+  Future<int> saveState(String destinationPath);
+
+  /// [sourcePath]から状態を読み込み、コマンドの連番を返す（STA-02）。
+  ///
+  /// 先頭バージョンが既知値と一致しないファイルはロードされず、
+  /// [EmulatorErrorCode.stateIncompatible]で完了する。コアはこれより
+  /// 深い不一致も検出して現在の実行状態へ内部でロールバックするが、
+  /// その場合は成功で完了する（design.md「状態保存（M3、
+  /// STA-01/STA-02）の実装方式」の既知の制限）。
+  Future<int> loadState(String sourcePath);
+
   /// [drive]に挿入中のD88のバンク情報を返す（FDD-04）。未挿入なら
   /// 両方0。
   ({int bankNum, int curBank}) getFddBankInfo(int drive);

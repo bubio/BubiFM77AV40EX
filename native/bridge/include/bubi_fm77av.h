@@ -51,7 +51,17 @@ typedef enum {
 	 * だった（M3 FDD-03）。design.md 9.1「raw変換は容量だけで汎用geometry
 	 * 表へフォールスルーさせない」を満たすための専用コード。
 	 */
-	BFM_ERR_UNSUPPORTED_GEOMETRY = 8
+	BFM_ERR_UNSUPPORTED_GEOMETRY = 8,
+	/*
+	 * BFM_CMD_LOAD_STATE: 読込み対象ファイルの先頭4バイト（コアの
+	 * STATE_VERSION、emu.cpp内`#define`）がブリッジの既知値と一致しない、
+	 * またはファイルが読めない（M3 STA-02）。コア内部の
+	 * EMU::load_state_tmpはこれより深いデバイス単位の不一致も検出して
+	 * 現在の実行状態へロールバックするが、その結果はvoid APIからは
+	 * 見えないため、ここで検出できるのは先頭バージョンチェックの範囲に限る
+	 * （design.md「状態保存（M3、STA-01/STA-02）の実装方式」参照）。
+	 */
+	BFM_ERR_STATE_INCOMPATIBLE = 9
 } bfm_result;
 
 typedef enum {

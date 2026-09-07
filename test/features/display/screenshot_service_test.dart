@@ -35,6 +35,17 @@ void main() {
     expect(() => service.capture(key), throwsA(isA<ScreenshotException>()));
   });
 
+  testWidgets('captureBytesも境界が見つからなければScreenshotExceptionを投げる'
+      '（STA-01のサムネイル取得と共有する経路）', (tester) async {
+    final key = GlobalKey();
+    await tester.pumpWidget(MaterialApp(home: Container(key: key)));
+
+    expect(
+      () => service.captureBytes(key),
+      throwsA(isA<ScreenshotException>()),
+    );
+  });
+
   testWidgets('保存先が取得できなければScreenshotExceptionを投げる', (tester) async {
     appDataPaths.picturesPath = null;
     final key = GlobalKey();

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:bubi_fm77av40ex/emulator/emulator_error.dart';
 import 'package:bubi_fm77av40ex/emulator/emulator_event.dart';
 import 'package:bubi_fm77av40ex/emulator/emulator_stats.dart';
@@ -807,6 +810,135 @@ void main() {
     expect(cacheWorkspace.handle.exportCalls, hasLength(1));
     expect(cacheWorkspace.handle.disposed, isTrue);
     expect(state().session, SessionState.stopped);
+  });
+
+  test('STA-01 saveStateはサムネイル・state.bin・metadata.jsonを書く', () async {
+    final tempDir = Directory.systemTemp.createTempSync('bubi-state-test');
+    addTearDown(() => tempDir.deleteSync(recursive: true));
+    appDataPaths.statesPath = tempDir.path;
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/GAME.D88',
+      displayName: 'GAME.D88',
+    );
+    await controller().insertFdd(0);
+
+    await controller().saveState(
+      3,
+      thumbnailBytes: Uint8List.fromList([1, 2, 3]),
+    );
+
+    expect(session.saveStateCalls, ['${tempDir.path}/slot-3/state.bin']);
+    expect(File('${tempDir.path}/slot-3/thumbnail.png').readAsBytesSync(), [
+      1,
+      2,
+      3,
+    ]);
+    final metadata = jsonDecode(
+      File('${tempDir.path}/slot-3/metadata.json').readAsStringSync(),
+    ) as Map<String, dynamic>;
+    expect(metadata['diskNames'], ['GAME.D88', null]);
+    expect(DateTime.tryParse(metadata['createdAt'] as String), isNotNull);
+  });
+
+  test('STA-01 saveStateはネイティブ保存が失敗するとmetadata.jsonを書かない'
+      '（途中失敗で壊れたスロットを残さない）', () async {
+    final tempDir = Directory.systemTemp.createTempSync('bubi-state-test');
+    addTearDown(() => tempDir.deleteSync(recursive: true));
+    appDataPaths.statesPath = tempDir.path;
+    session.nextSaveStateError = EmulatorErrorCode.internal;
+
+    await controller().saveState(5, thumbnailBytes: Uint8List.fromList([9]));
+
+    expect(File('${tempDir.path}/slot-5/thumbnail.png').existsSync(), isTrue);
+    expect(File('${tempDir.path}/slot-5/metadata.json').existsSync(), isFalse);
+    expect(state().failureMessage, isNotNull);
+  });
+
+  test('STA-01 セッションが無い間はsaveStateは何もしない', () async {
+    final tempDir = Directory.systemTemp.createTempSync('bubi-state-test');
+    addTearDown(() => tempDir.deleteSync(recursive: true));
+    appDataPaths.statesPath = tempDir.path;
+    await controller().shutdown();
+
+    await controller().saveState(0);
+
+    expect(session.saveStateCalls, isEmpty);
+  });
+
+  test('STA-02 loadStateは押下中のキーを解放してから読み込み、fddMediaをmetadataから復元する', () async {
+    final tempDir = Directory.systemTemp.createTempSync('bubi-state-test');
+    addTearDown(() => tempDir.deleteSync(recursive: true));
+    appDataPaths.statesPath = tempDir.path;
+    final slotDir = Directory('${tempDir.path}/slot-2')
+      ..createSync(recursive: true);
+    File('${slotDir.path}/metadata.json').writeAsStringSync(
+      jsonEncode({
+        'schemaVersion': 1,
+        'createdAt': DateTime(2026, 1, 1).toIso8601String(),
+        'diskNames': ['GAME.D88', null],
+      }),
+    );
+    session.fddBankInfoByDrive[0] = (bankNum: 1, curBank: 0);
+
+    controller().handleKeyDown(
+      PhysicalKeyboardKey.keyA,
+      logicalKey: LogicalKeyboardKey.keyA,
+    );
+    expect(session.keyEvents, hasLength(1));
+
+    final succeeded = await controller().loadState(2);
+
+    expect(succeeded, isTrue);
+    expect(session.loadStateCalls, ['${tempDir.path}/slot-2/state.bin']);
+    // releaseAllKeys()による解放（正のkeyDownに対応する負のkeyUp）。
+    expect(session.keyEvents, hasLength(2));
+    expect(session.keyEvents.last, -session.keyEvents.first);
+    expect(state().fddMedia[0], 'GAME.D88');
+  });
+
+  test('STA-02 非互換/破損状態は拒否され、現在のセッションを変更しない', () async {
+    final tempDir = Directory.systemTemp.createTempSync('bubi-state-test');
+    addTearDown(() => tempDir.deleteSync(recursive: true));
+    appDataPaths.statesPath = tempDir.path;
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/GAME.D88',
+      displayName: 'GAME.D88',
+    );
+    await controller().insertFdd(0);
+    session.nextLoadStateError = EmulatorErrorCode.stateIncompatible;
+
+    final succeeded = await controller().loadState(9);
+
+    expect(succeeded, isFalse);
+    expect(state().failureMessage, isNotNull);
+    expect(state().fddMedia[0], 'GAME.D88');
+  });
+
+  test('STA-01 listStateSlotsはmetadata.jsonの有無・内容・サムネイルを反映する', () async {
+    final tempDir = Directory.systemTemp.createTempSync('bubi-state-test');
+    addTearDown(() => tempDir.deleteSync(recursive: true));
+    appDataPaths.statesPath = tempDir.path;
+    final slot4 = Directory('${tempDir.path}/slot-4')
+      ..createSync(recursive: true);
+    File('${slot4.path}/metadata.json').writeAsStringSync(
+      jsonEncode({
+        'schemaVersion': 1,
+        'createdAt': DateTime(2026, 3, 4, 5, 6).toIso8601String(),
+        'diskNames': ['GAME.D88'],
+      }),
+    );
+    File('${slot4.path}/thumbnail.png').writeAsBytesSync([1, 2, 3]);
+
+    final slots = await controller().listStateSlots();
+
+    expect(slots, hasLength(EmulatorController.stateSlotCount));
+    final slot4Info = slots.firstWhere((info) => info.slot == 4);
+    expect(slot4Info.hasData, isTrue);
+    expect(slot4Info.diskNames, ['GAME.D88']);
+    expect(slot4Info.thumbnailBytes, [1, 2, 3]);
+    expect(slot4Info.savedAt, DateTime(2026, 3, 4, 5, 6));
+    final slot0Info = slots.firstWhere((info) => info.slot == 0);
+    expect(slot0Info.hasData, isFalse);
   });
 
   test('View/Core FPSは1秒間隔の差分から求める（design.md 12.4）', () {

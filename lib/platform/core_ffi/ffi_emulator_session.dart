@@ -492,6 +492,35 @@ class FfiEmulatorSession implements EmulatorSession {
   }
 
   @override
+  Future<int> saveState(String destinationPath) =>
+      _sendPathCommand(BfmCommandKind.saveState, destinationPath);
+
+  @override
+  Future<int> loadState(String sourcePath) =>
+      _sendPathCommand(BfmCommandKind.loadState, sourcePath);
+
+  Future<int> _sendPathCommand(int kind, String path) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    final pathUtf8 = path.toNativeUtf8();
+    try {
+      command.ref.kind = kind;
+      command.ref.text = pathUtf8.cast<Char>();
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(pathUtf8);
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
   ({int bankNum, int curBank}) getFddBankInfo(int drive) {
     _ensureUsable();
     final bankNum = calloc<Int32>();

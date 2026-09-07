@@ -10,6 +10,7 @@ import '../../emulator/emulator_session.dart';
 import '../../emulator/emulator_session_factory.dart';
 import '../../emulator/emulator_stats.dart';
 import '../../emulator/session_state.dart';
+import '../../emulator/state_slot_info.dart';
 import '../../platform/persistence/app_data_paths.dart';
 import '../../platform/persistence/cache_workspace.dart';
 import '../../platform/persistence/external_file_access.dart';
@@ -638,6 +639,161 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     await _autoKeyEngine.cancel();
     _isAutoKeying = false;
     state = state.copyWith(isAutoKeying: false);
+  }
+
+  /// 状態スロットの数（0〜9、STA-01）。
+  static const int stateSlotCount = 10;
+
+  /// 現在の実行状態を[slot]（0〜9）へ保存する（STA-01）。実行中でなければ
+  /// 何もしない（`_captureScreen`と同じ、単発便利機能の既存方針）。
+  ///
+  /// [thumbnailBytes]はUI（widget木にアクセスできる`app`層）が
+  /// `ScreenshotService.captureBytes`で取得したPNGを渡す。取得に失敗した
+  /// 呼び出し側は省略してよく、その場合サムネイル無しで保存を続ける。
+  ///
+  /// 書込み順序はthumbnail → state.bin（ネイティブが直接書く）→
+  /// metadata.jsonの順で、metadata.jsonの存在を「スロットが有効」の
+  /// 判定基準にする（途中で失敗しても読めるが壊れたスロットを残さない）。
+  Future<void> saveState(int slot, {Uint8List? thumbnailBytes}) async {
+    final session = _session;
+    if (session == null) {
+      return;
+    }
+    final location = await appDataPaths.stateSlot(slot);
+    if (thumbnailBytes != null) {
+      try {
+        await location.thumbnail.writeAtomic(thumbnailBytes);
+      } on Object {
+        // サムネイルは単発の便利機能。書けなくても保存自体は続ける。
+      }
+    }
+    final commandId = await session.saveState(location.state.nativePath);
+    final error = await _awaitCommand(commandId);
+    if (error != null) {
+      state = state.copyWith(failureMessage: '$error');
+      return;
+    }
+    final metadata = <String, Object?>{
+      'schemaVersion': 1,
+      'createdAt': DateTime.now().toIso8601String(),
+      'diskNames': [
+        for (var drive = 0; drive < 2; drive++) state.fddMedia[drive],
+      ],
+    };
+    await location.metadata.writeAtomic(utf8.encode(jsonEncode(metadata)));
+  }
+
+  /// [slot]（0〜9）から状態を読み込む（STA-02）。成功なら`true`。
+  ///
+  /// ロード前に自動キー入力の中断・押下中のキーの解放・ローマ字ライブ
+  /// バッファのflushを行う（design.md 8、INP-03）。ホストが「押しっぱなし」
+  /// と思っているキーが復元後のVMに残らないようにするためである。
+  ///
+  /// 非互換・破損状態は[EmulatorErrorCode.stateIncompatible]で拒否され、
+  /// 現在のセッションは変更されない（コアが内部でロールバックする、
+  /// design.md「状態保存（M3、STA-01/STA-02）の実装方式」）。
+  Future<bool> loadState(int slot) async {
+    final session = _session;
+    if (session == null) {
+      return false;
+    }
+    await stopAutoKey();
+    releaseAllKeys();
+    final location = await appDataPaths.stateSlot(slot);
+    List<String?> diskNames = const [null, null];
+    try {
+      final metadata = jsonDecode(
+        utf8.decode(await location.metadata.read()),
+      ) as Map<String, dynamic>;
+      final names = metadata['diskNames'] as List<dynamic>?;
+      if (names != null) {
+        diskNames = [for (final name in names) name as String?];
+      }
+    } on Object {
+      // メタデータが読めなくても状態そのものは読み込みを試みる
+      // （ディスク表示名が復元できないだけ）。
+    }
+    final commandId = await session.loadState(location.state.nativePath);
+    final error = await _awaitCommand(commandId);
+    if (error != null) {
+      state = state.copyWith(failureMessage: '$error');
+      return false;
+    }
+    // MEDIA_CHANGEDネイティブイベントはドライブ番号と挿抜だけを運び、
+    // ファイル名を持たない（コアはホストが挿入したファイルパスを覚える
+    // 概念を持たないため）。挿入有無自体は挿入直後に更新済みの
+    // bank情報（`_refreshMountedDiskState`）から読み直し、表示名は
+    // このアプリ自身が保存時に書いたmetadata.jsonから復元する。
+    final updatedMedia = {...state.fddMedia};
+    for (var drive = 0; drive < 2; drive++) {
+      _refreshMountedDiskState(session, drive);
+      final inserted = session.getFddBankInfo(drive).bankNum > 0;
+      if (!inserted) {
+        updatedMedia.remove(drive);
+        continue;
+      }
+      final name = drive < diskNames.length ? diskNames[drive] : null;
+      if (name != null && name.isNotEmpty) {
+        updatedMedia[drive] = name;
+      } else if (!updatedMedia.containsKey(drive)) {
+        updatedMedia[drive] = '';
+      }
+    }
+    state = state.copyWith(fddMedia: updatedMedia);
+    return true;
+  }
+
+  /// スロット0〜9の一覧をUI表示用に読み出す（STA-01）。ダイアログを開く
+  /// 直前に呼ぶ（design.md 12.3「メニューを開く前に更新する」と同じ方針）。
+  Future<List<StateSlotInfo>> listStateSlots() async {
+    final infos = <StateSlotInfo>[];
+    for (var slot = 0; slot < stateSlotCount; slot++) {
+      final location = await appDataPaths.stateSlot(slot);
+      if (!await location.metadata.exists()) {
+        infos.add(StateSlotInfo(slot: slot, hasData: false));
+        continue;
+      }
+      DateTime? savedAt;
+      var diskNames = const <String>[];
+      try {
+        final metadata = jsonDecode(
+          utf8.decode(await location.metadata.read()),
+        ) as Map<String, dynamic>;
+        final createdAt = metadata['createdAt'] as String?;
+        if (createdAt != null) {
+          savedAt = DateTime.tryParse(createdAt);
+        }
+        final names = metadata['diskNames'] as List<dynamic>?;
+        if (names != null) {
+          diskNames = [
+            for (final name in names)
+              if (name is String && name.isNotEmpty) name,
+          ];
+        }
+      } on Object {
+        // 壊れたmetadata.jsonは「データなし」として扱う。
+        infos.add(StateSlotInfo(slot: slot, hasData: false));
+        continue;
+      }
+      Uint8List? thumbnailBytes;
+      if (await location.thumbnail.exists()) {
+        try {
+          thumbnailBytes = Uint8List.fromList(await location.thumbnail.read());
+        } on Object {
+          thumbnailBytes = null;
+        }
+      }
+      infos.add(
+        StateSlotInfo(
+          slot: slot,
+          hasData: true,
+          savedAt: savedAt,
+          diskNames: diskNames,
+          thumbnailBytes: thumbnailBytes,
+        ),
+      );
+    }
+    return infos;
   }
 
   FddDriveSettings _driveSettingsOf(int drive) =>

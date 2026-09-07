@@ -25,6 +25,12 @@ enum EmulatorErrorCode {
   /// または変換形式の変換後media_typeが2D/2DD以外だった（FDD-03）。
   unsupportedGeometry,
 
+  /// 状態読込み対象ファイルの先頭バージョンが既知値と一致しない、または
+  /// 読めない（STA-02）。コア内部でさらに深い不一致がある場合はこの
+  /// コードでは表せない（design.md「状態保存（M3、STA-01/STA-02）の
+  /// 実装方式」参照）。
+  stateIncompatible,
+
   /// 既知のどれにも当てはまらない値。ヘッダーとの同期漏れを表す。
   unknown,
 }

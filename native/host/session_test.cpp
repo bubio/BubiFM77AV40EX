@@ -1498,6 +1498,141 @@ void test_media()
 	check(bfm_get_stats(session, &stats) == BFM_OK, "統計を取得できる");
 	check(stats.vm_access_violations == 0, "VM操作はCore threadに閉じている");
 
+	// --- M3 STA-01/STA-02: 状態保存・読込み ---
+	//
+	// コアのEMU::save_state/load_stateはvoidを返し、非互換/破損時は内部で
+	// 現在の実行状態へ自動ロールバックする（design.md「状態保存（M3、
+	// STA-01/STA-02）の実装方式」）。ブリッジはロード前に先頭4バイト
+	// （コアのSTATE_VERSION）だけを事前チェックして拒否する。ここでは
+	// (1)保存直後のファイル先頭4バイトがブリッジの既知値と一致すること
+	// （rot検知）、(2)保存→ロードでFD1挿入状態が正しく復元され
+	// MEDIA_CHANGEDが飛ぶこと、(3)壊れたヘッダはBFM_ERR_STATE_INCOMPATIBLE
+	// で拒否されることを検査する。
+	{
+		auto read_u32_le_header = [](const std::string& path) -> int64_t {
+			FILE* f = fopen(path.c_str(), "rb");
+			if (f == nullptr) {
+				return -1;
+			}
+			uint8_t header[4] = {0, 0, 0, 0};
+			const size_t n = fread(header, 1, sizeof(header), f);
+			fclose(f);
+			if (n != sizeof(header)) {
+				return -1;
+			}
+			return static_cast<int64_t>(header[0]) | (static_cast<int64_t>(header[1]) << 8) |
+			       (static_cast<int64_t>(header[2]) << 16) | (static_cast<int64_t>(header[3]) << 24);
+		};
+
+		const std::string state_dir = g_home + "/state-test";
+		mkdir(state_dir.c_str(), 0700);
+		const std::string state_with_disk = state_dir + "/slot-with-disk.bin";
+		const std::string state_empty = state_dir + "/slot-empty.bin";
+		const std::string state_corrupt = state_dir + "/slot-corrupt.bin";
+
+		// FD1に何も挿入していない状態を保存する。
+		bfm_command save_empty{};
+		save_empty.kind = BFM_CMD_SAVE_STATE;
+		save_empty.text = state_empty.c_str();
+		events.clear();
+		check(send_and_collect(save_empty, &events) == BFM_OK, "未挿入状態を保存できる");
+		check(is_regular_file(state_empty), "保存先に実ファイルが残る");
+		check(read_u32_le_header(state_empty) == 3,
+		      "保存直後のファイル先頭4バイトがブリッジの既知STATE_VERSIONと一致する"
+		      "（emu.cppの#defineが変わっていたらここで気づく）");
+
+		// FD1へディスクを挿入してから保存する。
+		events.clear();
+		check(send_and_collect(insert_fd1, &events) == BFM_OK, "状態保存検査用にFD1へ挿入できる");
+		bfm_command save_with_disk{};
+		save_with_disk.kind = BFM_CMD_SAVE_STATE;
+		save_with_disk.text = state_with_disk.c_str();
+		events.clear();
+		check(send_and_collect(save_with_disk, &events) == BFM_OK, "FD1挿入状態を保存できる");
+
+		check(send_and_collect(eject_fd1, &events) == BFM_OK, "後続検査のためFD1を排出できる");
+
+		// 未挿入状態へロードし直す（差分なし、MEDIA_CHANGEDは飛ばない）。
+		bfm_command load_empty{};
+		load_empty.kind = BFM_CMD_LOAD_STATE;
+		load_empty.text = state_empty.c_str();
+		events.clear();
+		check(send_and_collect(load_empty, &events) == BFM_OK, "未挿入状態を読み込める");
+
+		// FD1挿入状態へロードし直す（差分あり、MEDIA_CHANGEDが飛ぶ）。
+		bfm_command load_with_disk{};
+		load_with_disk.kind = BFM_CMD_LOAD_STATE;
+		load_with_disk.text = state_with_disk.c_str();
+		events.clear();
+		check(send_and_collect(load_with_disk, &events) == BFM_OK, "FD1挿入状態を読み込める");
+		bool saw_media_changed = false;
+		for (const auto& event : events) {
+			if (event.kind == BFM_EVENT_MEDIA_CHANGED && event.arg0 == 0 && event.arg1 == 1) {
+				saw_media_changed = true;
+			}
+		}
+		check(saw_media_changed,
+		      "ロードでFD1挿入状態が変わるとMEDIA_CHANGEDが飛ぶ（ポーリングされない"
+		      "イベントのためロード側で明示発行する必要がある）");
+		int32_t bank_num = -1;
+		int32_t cur_bank = -1;
+		check(bfm_get_fdd_bank_info(session, 0, &bank_num, &cur_bank) == BFM_OK && bank_num == 1,
+		      "ロード後、復元されたFD1のバンク情報を読める");
+
+		// 壊れた（先頭バージョンが不一致な）ファイルは拒否され、
+		// 現在のセッション（FD1挿入中のまま）を壊さない。
+		std::vector<uint8_t> corrupt_bytes;
+		{
+			FILE* src = fopen(state_with_disk.c_str(), "rb");
+			check(src != nullptr, "壊すための元ファイルを開ける");
+			fseek(src, 0, SEEK_END);
+			const long size = ftell(src);
+			fseek(src, 0, SEEK_SET);
+			corrupt_bytes.resize(static_cast<size_t>(size));
+			check(fread(corrupt_bytes.data(), 1, corrupt_bytes.size(), src) == corrupt_bytes.size(),
+			      "元ファイルを読める");
+			fclose(src);
+		}
+		check(corrupt_bytes.size() >= 4, "先頭4バイトを壊せる長さがある");
+		corrupt_bytes[0] = static_cast<uint8_t>(corrupt_bytes[0] ^ 0xFF);
+		FILE* dst = fopen(state_corrupt.c_str(), "wb");
+		check(dst != nullptr, "壊れたファイルを書ける");
+		fwrite(corrupt_bytes.data(), 1, corrupt_bytes.size(), dst);
+		fclose(dst);
+
+		bfm_command load_corrupt{};
+		load_corrupt.kind = BFM_CMD_LOAD_STATE;
+		load_corrupt.text = state_corrupt.c_str();
+		events.clear();
+		check(send_and_collect(load_corrupt, &events) == BFM_ERR_STATE_INCOMPATIBLE,
+		      "先頭バージョン不一致のファイルはstateIncompatibleで拒否される");
+		bool saw_media_changed_on_reject = false;
+		for (const auto& event : events) {
+			if (event.kind == BFM_EVENT_MEDIA_CHANGED) {
+				saw_media_changed_on_reject = true;
+			}
+		}
+		check(!saw_media_changed_on_reject, "拒否時はMEDIA_CHANGEDを出さない");
+		bank_num = -1;
+		cur_bank = -1;
+		check(bfm_get_fdd_bank_info(session, 0, &bank_num, &cur_bank) == BFM_OK && bank_num == 1,
+		      "拒否後もFD1挿入状態は壊れたロードの影響を受けない");
+
+		const std::string missing_path = state_dir + "/does-not-exist.bin";
+		bfm_command load_missing{};
+		load_missing.kind = BFM_CMD_LOAD_STATE;
+		load_missing.text = missing_path.c_str();
+		events.clear();
+		check(send_and_collect(load_missing, &events) == BFM_ERR_STATE_INCOMPATIBLE,
+		      "存在しないファイルもstateIncompatibleで拒否される");
+
+		bfm_command save_no_path{};
+		save_no_path.kind = BFM_CMD_SAVE_STATE;
+		events.clear();
+		check(send_and_collect(save_no_path, &events) == BFM_ERR_INVALID_ARGUMENT,
+		      "パス無しの保存はinvalidArgument");
+	}
+
 	bfm_stop(session);
 	bfm_destroy(session);
 }

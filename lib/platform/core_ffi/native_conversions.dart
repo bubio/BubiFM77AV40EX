@@ -24,6 +24,7 @@ EmulatorErrorCode errorCodeFromNative(int value) => switch (value) {
   BfmResult.unsupported => EmulatorErrorCode.unsupported,
   BfmResult.internal => EmulatorErrorCode.internal,
   BfmResult.unsupportedGeometry => EmulatorErrorCode.unsupportedGeometry,
+  BfmResult.stateIncompatible => EmulatorErrorCode.stateIncompatible,
   _ => EmulatorErrorCode.unknown,
 };
 
@@ -138,6 +139,8 @@ String describeErrorCode(EmulatorErrorCode code) => switch (code) {
     'an unexpected exception was contained at the boundary',
   EmulatorErrorCode.unsupportedGeometry =>
     'the media geometry is not 2D/2DD after size check or conversion',
+  EmulatorErrorCode.stateIncompatible =>
+    'the state file is incompatible with this core version or is corrupt',
   EmulatorErrorCode.unknown =>
     'an unknown result code was returned by the core',
 };

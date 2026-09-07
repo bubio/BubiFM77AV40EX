@@ -747,6 +747,73 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 		session->emu->set_sound_device_volume(core_channel, decibel, decibel);
 		break;
 	}
+	case BFM_CMD_SAVE_STATE: {
+		// M3 STA-01。queued.text は呼び出し側（AppDataPaths::stateSlot）が
+		// 決めたstate.binの絶対パス。スロット番号自体はホストのディレクトリ
+		// 構成（states/slot-N/）が表し、コアへは渡さない。
+		if (queued.text.empty()) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		session->emu->save_state(queued.text.c_str());
+		break;
+	}
+	case BFM_CMD_LOAD_STATE: {
+		// M3 STA-02。EMU::load_stateはvoidを返し、非互換/破損時は内部で
+		// 現在の実行状態へ自動ロールバックする（デバイス単位の版チェック、
+		// emu.cpp EMU::load_state_tmp）ため、公開APIだけでは成否が
+		// わからない。ここでは先頭4バイト（コアのSTATE_VERSION）だけを
+		// 事前に読み、既知値と一致しないファイルはロードせず拒否する
+		// （design.md「状態保存（M3、STA-01/STA-02）の実装方式」）。
+		// これより深い不一致はコア内部のロールバックに任せ、ホストからは
+		// 検出できない既知の制限とする。
+		if (queued.text.empty()) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		// emu.cpp: `#define STATE_VERSION 3`、EMU::save_stateが最初に
+		// fio->FputUint32(STATE_VERSION) で書く値。upstream非公開の
+		// #defineのため、ここに転記した値が本物のコアと食い違わないことを
+		// session_test.cppが実際に保存したファイルと突き合わせて検査する。
+		constexpr uint32_t kBridgeStateVersion = 3;
+		FILE* probe = fopen(queued.text.c_str(), "rb");
+		if (probe == nullptr) {
+			code = BFM_ERR_STATE_INCOMPATIBLE;
+			break;
+		}
+		uint8_t header[4] = {0, 0, 0, 0};
+		const size_t read_count = fread(header, 1, sizeof(header), probe);
+		fclose(probe);
+		const uint32_t file_version = static_cast<uint32_t>(header[0]) |
+		                               (static_cast<uint32_t>(header[1]) << 8) |
+		                               (static_cast<uint32_t>(header[2]) << 16) |
+		                               (static_cast<uint32_t>(header[3]) << 24);
+		if (read_count != sizeof(header) || file_version != kBridgeStateVersion) {
+			code = BFM_ERR_STATE_INCOMPATIBLE;
+			break;
+		}
+		const bool had_fd0 = session->emu->is_floppy_disk_inserted(0);
+		const bool had_fd1 = session->emu->is_floppy_disk_inserted(1);
+		session->emu->load_state(queued.text.c_str());
+		for (int drv = 0; drv < kFddDriveCount; ++drv) {
+			const bool has_now = session->emu->is_floppy_disk_inserted(drv);
+			const bool had_before = drv == 0 ? had_fd0 : had_fd1;
+			if (has_now != had_before) {
+				session->fdd_bank_num[drv].store(
+				    has_now ? session->emu->d88_file[drv].bank_num : 0);
+				session->fdd_cur_bank[drv].store(
+				    has_now ? session->emu->d88_file[drv].cur_bank : 0);
+				session->fdd_write_protected[drv].store(
+				    has_now && session->emu->is_floppy_disk_protected(drv));
+				bfm_event event{};
+				event.kind = BFM_EVENT_MEDIA_CHANGED;
+				event.arg0 = drv;
+				event.arg1 = has_now ? 1 : 0;
+				session->push_event(event);
+			}
+		}
+		break;
+	}
 	default:
 		// 型として定義済みだが未実装。担当WPは bubi_fm77av.h を参照。
 		code = BFM_ERR_UNSUPPORTED;
@@ -974,6 +1041,13 @@ void core_thread_main(bfm_session* session)
 				}
 				apply_command(session, vm, queued);
 			}
+			// BFM_CMD_LOAD_STATEがEMU::load_state経由で設定不一致
+			// （cpu_type等）を検知すると、EMU::load_state_tmpが内部で
+			// `delete vm; osd->vm = vm = new VM(this);`しVMインスタンスを
+			// 差し替える（M3 STA-02）。ここでキャッシュを毎ループ取り直さ
+			// ないと、以降のvm->run()等がダングリングポインタを踏む。
+			// 状態保存機能が無くても本来必要だった安全性修正。
+			vm = session->emu->get_vm();
 
 			// bfm_session::speed_shiftのコメント参照。kRepeatDrive
 			// モード（検証用）だけ、1tickにつき`vm->run()`を

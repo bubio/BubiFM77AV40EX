@@ -100,6 +100,8 @@ class _LaunchingHomeState extends ConsumerState<_LaunchingHome> {
       onStopAutoKey: () {},
       romajiToKana: false,
       onRomajiToKanaChanged: (_) {},
+      onOpenSaveState: () {},
+      onOpenLoadState: () {},
       localeMode: settings.localeMode,
       onLocaleModeChanged: settingsController.setLocaleMode,
     );

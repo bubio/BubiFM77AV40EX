@@ -43,6 +43,8 @@ void main() {
     void Function()? onStopAutoKey,
     bool romajiToKana = false,
     void Function(bool enabled)? onRomajiToKanaChanged,
+    void Function()? onOpenSaveState,
+    void Function()? onOpenLoadState,
     AppLocaleMode localeMode = AppLocaleMode.system,
   }) {
     return buildMenuCatalog(
@@ -97,6 +99,8 @@ void main() {
       onStopAutoKey: onStopAutoKey ?? () {},
       romajiToKana: romajiToKana,
       onRomajiToKanaChanged: onRomajiToKanaChanged ?? (_) {},
+      onOpenSaveState: onOpenSaveState ?? () {},
+      onOpenLoadState: onOpenLoadState ?? () {},
       localeMode: localeMode,
       onLocaleModeChanged: (_) {},
     );
@@ -114,11 +118,11 @@ void main() {
 
   test('Control: Reset、Special Reset、区切り、CPU Speed、Full Speed、'
       'CPU Type、Boot Mode、オプションスイッチ3件、区切り、Paste、Stop Paste、'
-      'Romaji to Kanaの順', () {
+      'Romaji to Kana、区切り、Save State、Load Stateの順', () {
     final entries = catalog()
         .firstWhere((g) => g.id == MenuGroupId.control)
         .entries;
-    expect(entries, hasLength(14));
+    expect(entries, hasLength(17));
     expect(
       entries[0],
       isA<MenuAction>().having((e) => e.id, 'id', 'control.reset'),
@@ -177,6 +181,15 @@ void main() {
     expect(
       entries[13],
       isA<MenuCheckbox>().having((e) => e.id, 'id', 'control.romajiToKana'),
+    );
+    expect(entries[14], isA<MenuSeparator>());
+    expect(
+      entries[15],
+      isA<MenuAction>().having((e) => e.id, 'id', 'control.saveState'),
+    );
+    expect(
+      entries[16],
+      isA<MenuAction>().having((e) => e.id, 'id', 'control.loadState'),
     );
   });
 

@@ -84,6 +84,8 @@ void main() {
       onStopAutoKey: () {},
       romajiToKana: false,
       onRomajiToKanaChanged: (_) {},
+      onOpenSaveState: () {},
+      onOpenLoadState: () {},
       localeMode: AppLocaleMode.system,
       onLocaleModeChanged: onLocaleModeChanged ?? (_) {},
     );

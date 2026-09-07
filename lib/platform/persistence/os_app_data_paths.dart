@@ -92,8 +92,11 @@ class OsAppDataPaths implements AppDataPaths {
   Future<String> coreHomeDirectoryPath() async => (await root()).path;
 
   @override
-  Future<AppDataLocation> stateSlot(int slotIndex) =>
-      _location('states/slot-$slotIndex');
+  Future<StateSlotLocation> stateSlot(int slotIndex) async => StateSlotLocation(
+    state: await _location('states/slot-$slotIndex/state.bin'),
+    metadata: await _location('states/slot-$slotIndex/metadata.json'),
+    thumbnail: await _location('states/slot-$slotIndex/thumbnail.png'),
+  );
 
   @override
   Future<AppDataLocation> dictionaryUserData() =>

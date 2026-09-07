@@ -34,8 +34,8 @@ abstract interface class AppDataPaths {
   /// （[romsDirectoryPath]と同じ扱い）。
   Future<String?> musicFilePath(String fileName);
 
-  /// 状態スロット（`states/slot-N/`）を表すハンドル。
-  Future<AppDataLocation> stateSlot(int slotIndex);
+  /// 状態スロット（`states/slot-N/`）を表すハンドル（STA-01）。
+  Future<StateSlotLocation> stateSlot(int slotIndex);
 
   /// 辞書学習データ（`dictionary/USERDIC.DAT`）。
   Future<AppDataLocation> dictionaryUserData();
@@ -45,6 +45,30 @@ abstract interface class AppDataPaths {
 
   /// 履歴（`history.json`）。
   Future<AppDataLocation> history();
+}
+
+/// 1つの状態スロット（design.md 337「`states/slot-N/state.bin`と
+/// `metadata.json`を一組とし…」に`thumbnail.png`を加えた3ファイル構成）を
+/// 束ねるハンドル。
+///
+/// `metadata.json`の存在をスロットが有効かどうかの判定基準にする
+/// （保存は thumbnail → state → metadata の順で書き、途中で失敗しても
+/// 読めるが壊れたスロットを残さないため）。
+class StateSlotLocation {
+  const StateSlotLocation({
+    required this.state,
+    required this.metadata,
+    required this.thumbnail,
+  });
+
+  /// コアの状態バイナリ（`state.bin`）。
+  final AppDataLocation state;
+
+  /// アプリ版・コア識別子・作成日時・ディスク表示名等（`metadata.json`）。
+  final AppDataLocation metadata;
+
+  /// 保存時点の画面のサムネイル（`thumbnail.png`）。省略可能。
+  final AppDataLocation thumbnail;
 }
 
 /// 永続データの位置と原子的な書込み手段。

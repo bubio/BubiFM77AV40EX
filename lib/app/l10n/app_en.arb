@@ -247,6 +247,30 @@
   "@controlRomajiToKana": {
     "description": "Checkbox toggling romaji-to-kana conversion for auto-key input (INP-03)."
   },
+  "controlSaveState": "Save State…",
+  "@controlSaveState": {
+    "description": "Action opening the save-state slot dialog (STA-01)."
+  },
+  "controlLoadState": "Load State…",
+  "@controlLoadState": {
+    "description": "Action opening the load-state slot dialog (STA-02)."
+  },
+  "stateSlotDialogTitleSave": "Save State",
+  "@stateSlotDialogTitleSave": {
+    "description": "Title of the state-slot dialog in save mode (STA-01)."
+  },
+  "stateSlotDialogTitleLoad": "Load State",
+  "@stateSlotDialogTitleLoad": {
+    "description": "Title of the state-slot dialog in load mode (STA-02)."
+  },
+  "stateSlotEmpty": "Empty",
+  "@stateSlotEmpty": {
+    "description": "Placeholder shown on a state slot with no saved data."
+  },
+  "stateSlotDialogCancel": "Cancel",
+  "@stateSlotDialogCancel": {
+    "description": "Button closing the state-slot dialog without acting."
+  },
   "menuDisk": "Disk",
   "@menuDisk": {
     "description": "In-app menu group: floppy disk media."

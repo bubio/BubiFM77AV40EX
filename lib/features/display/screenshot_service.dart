@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
@@ -37,23 +38,37 @@ class ScreenshotService {
 
   /// [key]が指す`RepaintBoundary`の現在の内容をPNGとして保存し、
   /// 保存先のOSパスを返す。
+  ///
+  /// 保存先の解決を`captureBytes`（実ラスタライズ、`RenderRepaintBoundary.
+  /// toImage()`）より先に行う。`toImage()`は`flutter test`のsoftware
+  /// rendererでは安定して完了しない（`captureBytes`のコメント参照）ため、
+  /// 保存先が無いだけの単純な異常系まで毎回ラスタライズへ進んでしまうと、
+  /// テストがハングする（実際に発生し修正した回帰）。
   Future<String> capture(GlobalKey key) async {
-    final renderObject = key.currentContext?.findRenderObject();
-    if (renderObject is! RenderRepaintBoundary) {
-      throw ScreenshotException('画面が見つかりません。');
-    }
     final fileName = 'BubiFM77AV40EX-${_timestamp()}.png';
     final location = await appDataPaths.pictureFile(fileName);
     if (location == null) {
       throw ScreenshotException('保存先を取得できません。');
+    }
+    final bytes = await captureBytes(key);
+    await location.writeAtomic(bytes);
+    return location.nativePath;
+  }
+
+  /// [key]が指す`RepaintBoundary`の現在の内容をPNGバイト列として返す。
+  /// ファイルI/Oは行わない（状態保存のサムネイル取得（STA-01）と
+  /// [capture]の両方から共有する）。
+  Future<Uint8List> captureBytes(GlobalKey key) async {
+    final renderObject = key.currentContext?.findRenderObject();
+    if (renderObject is! RenderRepaintBoundary) {
+      throw ScreenshotException('画面が見つかりません。');
     }
     final image = await renderObject.toImage();
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     if (byteData == null) {
       throw ScreenshotException('画像を書き出せません。');
     }
-    await location.writeAtomic(byteData.buffer.asUint8List());
-    return location.nativePath;
+    return byteData.buffer.asUint8List();
   }
 
   String _timestamp() {

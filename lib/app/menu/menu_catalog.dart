@@ -68,6 +68,8 @@ List<MenuGroup> buildMenuCatalog({
   required void Function() onStopAutoKey,
   required bool romajiToKana,
   required void Function(bool enabled) onRomajiToKanaChanged,
+  required void Function() onOpenSaveState,
+  required void Function() onOpenLoadState,
   required AppLocaleMode localeMode,
   required void Function(AppLocaleMode mode) onLocaleModeChanged,
 }) {
@@ -178,6 +180,19 @@ List<MenuGroup> buildMenuCatalog({
           enabled: true,
           checked: romajiToKana,
           onChanged: onRomajiToKanaChanged,
+        ),
+        const MenuSeparator('control.sep3'),
+        MenuAction(
+          'control.saveState',
+          label: l10n.controlSaveState,
+          enabled: isRunning,
+          onSelected: onOpenSaveState,
+        ),
+        MenuAction(
+          'control.loadState',
+          label: l10n.controlLoadState,
+          enabled: isRunning,
+          onSelected: onOpenLoadState,
         ),
       ],
     ),

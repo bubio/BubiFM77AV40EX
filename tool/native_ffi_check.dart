@@ -278,19 +278,49 @@ Future<void> _checkEmulatorSession(
 
   check(session.getFddWriteProtect(0) == false, '未挿入ドライブの書込み保護はfalse（FDD-06）');
 
+  Future<CommandCompleted?> waitForCompletion(int commandId) async {
+    for (var waited = 0; waited < 500; waited++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final completion = received.whereType<CommandCompleted>().where((event) {
+        return event.commandId == commandId;
+      }).firstOrNull;
+      if (completion != null) {
+        return completion;
+      }
+    }
+    return null;
+  }
+
+  final statePath = '$homeDir/dart-check-state.bin';
+  final saveStateId = await session.saveState(statePath);
+  check(saveStateId > 0, '状態保存を投入できる（STA-01）');
+  final saveCompletion = await waitForCompletion(saveStateId);
+  check(saveCompletion != null, '状態保存の完了通知が届く');
+  check(saveCompletion?.succeeded ?? false, '状態保存は成功で完了する');
+  check(File(statePath).existsSync(), '保存先に実ファイルが残る');
+
+  final loadStateId = await session.loadState(statePath);
+  check(loadStateId > 0, '状態読込みを投入できる（STA-02）');
+  final loadCompletion = await waitForCompletion(loadStateId);
+  check(loadCompletion != null, '状態読込みの完了通知が届く');
+  check(loadCompletion?.succeeded ?? false, '状態読込みは成功で完了する');
+
+  final corruptStatePath = '$homeDir/dart-check-state-corrupt.bin';
+  final corruptBytes = Uint8List.fromList(File(statePath).readAsBytesSync());
+  corruptBytes[0] = corruptBytes[0] ^ 0xFF;
+  File(corruptStatePath).writeAsBytesSync(corruptBytes);
+  final loadCorruptId = await session.loadState(corruptStatePath);
+  final loadCorruptCompletion = await waitForCompletion(loadCorruptId);
+  check(loadCorruptCompletion != null, '壊れた状態読込みの完了通知が届く');
+  check(
+    loadCorruptCompletion?.error == EmulatorErrorCode.stateIncompatible,
+    '壊れた状態読込みはstateIncompatibleで拒否される（STA-02）',
+  );
+
   final commandId = await session.reset(ResetKind.special);
   check(commandId > 0, '特殊リセットの連番IDが返る');
 
-  CommandCompleted? completion;
-  for (var waited = 0; waited < 500; waited++) {
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-    completion = received.whereType<CommandCompleted>().where((event) {
-      return event.commandId == commandId;
-    }).firstOrNull;
-    if (completion != null) {
-      break;
-    }
-  }
+  final completion = await waitForCompletion(commandId);
   check(completion != null, '同じIDの完了通知が Dart まで届く');
   check(completion?.succeeded ?? false, 'リセットは成功で完了する');
 

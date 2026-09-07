@@ -74,6 +74,11 @@ class FakeAppDataPaths implements AppDataPaths {
   String? musicPath = '/data/BubiFM77AV40EX/music';
   int musicFilePathCallCount = 0;
 
+  /// [stateSlot]が組み立てる3ファイルの置き場所。テストが実ファイルの
+  /// 存在を検証したい場合は実在するディレクトリ（一時ディレクトリ等）へ
+  /// 差し替える。
+  String statesPath = '/data/BubiFM77AV40EX/states';
+
   /// 位置の解決そのものが失敗する場合に投げる例外。
   Object? throwOnRomsPath;
 
@@ -112,8 +117,17 @@ class FakeAppDataPaths implements AppDataPaths {
   }
 
   @override
-  Future<AppDataLocation> stateSlot(int slotIndex) =>
-      throw UnimplementedError();
+  Future<StateSlotLocation> stateSlot(int slotIndex) async => StateSlotLocation(
+    state: FakeFileAppDataLocation(
+      File('$statesPath/slot-$slotIndex/state.bin'),
+    ),
+    metadata: FakeFileAppDataLocation(
+      File('$statesPath/slot-$slotIndex/metadata.json'),
+    ),
+    thumbnail: FakeFileAppDataLocation(
+      File('$statesPath/slot-$slotIndex/thumbnail.png'),
+    ),
+  );
 
   @override
   Future<AppDataLocation> dictionaryUserData() => throw UnimplementedError();
@@ -346,6 +360,33 @@ class FakeEmulatorSession implements EmulatorSession {
     final id = _nextCommandId++;
     final error = nextCreateBlankFddError;
     nextCreateBlankFddError = null;
+    scheduleMicrotask(() => emit(CommandCompleted(id, error: error)));
+    return id;
+  }
+
+  final List<String> saveStateCalls = [];
+  final List<String> loadStateCalls = [];
+
+  /// 次に受理する`saveState`/`loadState`の完了結果。nullなら成功。
+  EmulatorErrorCode? nextSaveStateError;
+  EmulatorErrorCode? nextLoadStateError;
+
+  @override
+  Future<int> saveState(String destinationPath) async {
+    saveStateCalls.add(destinationPath);
+    final id = _nextCommandId++;
+    final error = nextSaveStateError;
+    nextSaveStateError = null;
+    scheduleMicrotask(() => emit(CommandCompleted(id, error: error)));
+    return id;
+  }
+
+  @override
+  Future<int> loadState(String sourcePath) async {
+    loadStateCalls.add(sourcePath);
+    final id = _nextCommandId++;
+    final error = nextLoadStateError;
+    nextLoadStateError = null;
     scheduleMicrotask(() => emit(CommandCompleted(id, error: error)));
     return id;
   }
