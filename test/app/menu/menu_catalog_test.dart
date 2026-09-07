@@ -38,6 +38,11 @@ void main() {
     void Function()? onOpenSoundVolume,
     bool fddMechanicalSoundEnabled = true,
     void Function(bool enabled)? onFddMechanicalSoundEnabledChanged,
+    bool isAutoKeying = false,
+    void Function()? onStartAutoKey,
+    void Function()? onStopAutoKey,
+    bool romajiToKana = false,
+    void Function(bool enabled)? onRomajiToKanaChanged,
     AppLocaleMode localeMode = AppLocaleMode.system,
   }) {
     return buildMenuCatalog(
@@ -87,6 +92,11 @@ void main() {
       fddMechanicalSoundEnabled: fddMechanicalSoundEnabled,
       onFddMechanicalSoundEnabledChanged:
           onFddMechanicalSoundEnabledChanged ?? (_) {},
+      isAutoKeying: isAutoKeying,
+      onStartAutoKey: onStartAutoKey ?? () {},
+      onStopAutoKey: onStopAutoKey ?? () {},
+      romajiToKana: romajiToKana,
+      onRomajiToKanaChanged: onRomajiToKanaChanged ?? (_) {},
       localeMode: localeMode,
       onLocaleModeChanged: (_) {},
     );
@@ -103,11 +113,12 @@ void main() {
   });
 
   test('Control: Reset、Special Reset、区切り、CPU Speed、Full Speed、'
-      'CPU Type、Boot Mode、オプションスイッチ3件の順', () {
+      'CPU Type、Boot Mode、オプションスイッチ3件、区切り、Paste、Stop Paste、'
+      'Romaji to Kanaの順', () {
     final entries = catalog()
         .firstWhere((g) => g.id == MenuGroupId.control)
         .entries;
-    expect(entries, hasLength(10));
+    expect(entries, hasLength(14));
     expect(
       entries[0],
       isA<MenuAction>().having((e) => e.id, 'id', 'control.reset'),
@@ -154,7 +165,63 @@ void main() {
       entries[9],
       isA<MenuCheckbox>().having((e) => e.id, 'id', 'control.syncToHsync'),
     );
+    expect(entries[10], isA<MenuSeparator>());
+    expect(
+      entries[11],
+      isA<MenuAction>().having((e) => e.id, 'id', 'control.paste'),
+    );
+    expect(
+      entries[12],
+      isA<MenuAction>().having((e) => e.id, 'id', 'control.stopPaste'),
+    );
+    expect(
+      entries[13],
+      isA<MenuCheckbox>().having((e) => e.id, 'id', 'control.romajiToKana'),
+    );
   });
+
+  test('Control > Paste/Stop Pasteは自動キー入力中かどうかで有効・無効が入れ替わる（INP-03）', () {
+    for (final isRunning in [true, false]) {
+      for (final isAutoKeying in [true, false]) {
+        final entries = catalog(
+          isRunning: isRunning,
+          isAutoKeying: isAutoKeying,
+        ).firstWhere((g) => g.id == MenuGroupId.control).entries;
+        final paste = entries[11] as MenuAction;
+        final stopPaste = entries[12] as MenuAction;
+        expect(paste.enabled, isRunning && !isAutoKeying);
+        expect(stopPaste.enabled, isAutoKeying);
+      }
+    }
+  });
+
+  test('Control > Paste/Stop Pasteはonにより開始・停止コールバックを呼ぶ（INP-03）', () {
+    var started = false;
+    var stopped = false;
+    final entries = catalog(
+      onStartAutoKey: () => started = true,
+      onStopAutoKey: () => stopped = true,
+    ).firstWhere((g) => g.id == MenuGroupId.control).entries;
+    (entries[11] as MenuAction).onSelected();
+    (entries[12] as MenuAction).onSelected();
+    expect(started, isTrue);
+    expect(stopped, isTrue);
+  });
+
+  test(
+    'Control > Romaji to Kanaはチェック状態に従いonRomajiToKanaChangedを呼ぶ（INP-03）',
+    () {
+      bool? changed;
+      final entries = catalog(
+        romajiToKana: true,
+        onRomajiToKanaChanged: (enabled) => changed = enabled,
+      ).firstWhere((g) => g.id == MenuGroupId.control).entries;
+      final checkbox = entries[13] as MenuCheckbox;
+      expect(checkbox.checked, isTrue);
+      checkbox.onChanged(false);
+      expect(changed, isFalse);
+    },
+  );
 
   test('Controlのオプションスイッチのチェック状態は引数に従う', () {
     final entries = catalog(

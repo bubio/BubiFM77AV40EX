@@ -42,6 +42,7 @@ class EmulatorView extends ConsumerWidget {
             controller.handleKeyDown(
               event.physicalKey,
               logicalKey: event.logicalKey,
+              character: event.character,
             );
           case KeyUpEvent():
             controller.handleKeyUp(

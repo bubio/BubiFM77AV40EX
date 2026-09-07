@@ -235,6 +235,18 @@
   "@menuControlSyncToHsync": {
     "description": "Control checkbox: sync-to-HSYNC option switch (SYS-06)."
   },
+  "controlPaste": "Paste",
+  "@controlPaste": {
+    "description": "Action starting auto-key input of the clipboard text (INP-03)."
+  },
+  "controlStopPaste": "Stop Paste",
+  "@controlStopPaste": {
+    "description": "Action stopping the auto-key input started by Paste (INP-03)."
+  },
+  "controlRomajiToKana": "Romaji to Kana",
+  "@controlRomajiToKana": {
+    "description": "Checkbox toggling romaji-to-kana conversion for auto-key input (INP-03)."
+  },
   "menuDisk": "Disk",
   "@menuDisk": {
     "description": "In-app menu group: floppy disk media."

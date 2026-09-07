@@ -357,11 +357,20 @@ class FakeEmulatorSession implements EmulatorSession {
   @override
   bool getFddWriteProtect(int drive) => fddWriteProtectByDrive[drive] ?? false;
 
-  @override
-  Future<void> keyDown(int vkCode) async {}
+  /// `keyDown`/`keyUp`で呼ばれたVKコードの記録（INP-01・INP-03のテスト用）。
+  /// downは`+vk`、upは`-vk`として1本の列に記録する（呼出し順を1つの
+  /// リストで検証できるようにする）。
+  final List<int> keyEvents = [];
 
   @override
-  Future<void> keyUp(int vkCode) async {}
+  Future<void> keyDown(int vkCode) async {
+    keyEvents.add(vkCode);
+  }
+
+  @override
+  Future<void> keyUp(int vkCode) async {
+    keyEvents.add(-vkCode);
+  }
 
   /// `readStats()`が返す値。試験が差し替えて時間経過を模す。
   EmulatorStats stats = const EmulatorStats(

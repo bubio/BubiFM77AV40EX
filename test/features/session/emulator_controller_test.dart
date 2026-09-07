@@ -1,19 +1,36 @@
 import 'package:bubi_fm77av40ex/emulator/emulator_error.dart';
 import 'package:bubi_fm77av40ex/emulator/emulator_event.dart';
 import 'package:bubi_fm77av40ex/emulator/emulator_stats.dart';
+import 'package:bubi_fm77av40ex/emulator/led_state.dart';
 import 'package:bubi_fm77av40ex/emulator/session_state.dart';
 import 'package:bubi_fm77av40ex/features/display/screen_filter.dart';
 import 'package:bubi_fm77av40ex/features/session/emulator_controller.dart';
 import 'package:bubi_fm77av40ex/features/session/emulator_state.dart';
+import 'package:bubi_fm77av40ex/features/session/input/win32_vk.dart';
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fakes.dart';
 
+/// クリップボードの内容をテストから差し替える（INP-03）。`null`で未設定
+/// （`Clipboard.getData`が`null`を返す）に戻す。
+void _setClipboardText(String? text) {
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.getData') {
+          return text == null ? null : {'text': text};
+        }
+        return null;
+      });
+}
+
 /// FDD挿入・排出（design.md 16.1）の検査。原本は複製してからコアへ渡し、
 /// 排出完了を待ってから作業領域を原本へ書き戻すことをFakeで確かめる。
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late FakeEmulatorSession session;
   late FakeExternalFileAccess externalFileAccess;
   late FakeCacheWorkspace cacheWorkspace;
@@ -22,6 +39,7 @@ void main() {
   late NotifierProvider<EmulatorController, EmulatorViewState> provider;
 
   setUp(() async {
+    _setClipboardText(null);
     session = FakeEmulatorSession();
     externalFileAccess = FakeExternalFileAccess();
     cacheWorkspace = FakeCacheWorkspace();
@@ -236,6 +254,208 @@ void main() {
 
     expect(session.stopRecordingCallCount, 1);
     expect(state().isRecording, isFalse);
+  });
+
+  test('INP-03 startAutoKeyはクリップボードを取得し状態を更新する', () async {
+    _setClipboardText('ka');
+
+    await controller().startAutoKey();
+
+    expect(state().isAutoKeying, isTrue);
+    await controller().stopAutoKey();
+  });
+
+  test('INP-03 クリップボードが空/nullなら何もしない', () async {
+    _setClipboardText(null);
+
+    await controller().startAutoKey();
+
+    expect(state().isAutoKeying, isFalse);
+    expect(session.keyEvents, isEmpty);
+  });
+
+  test('INP-03 打てる文字が1つもなければ状態はfalseのまま', () async {
+    _setClipboardText('漢字');
+
+    await controller().startAutoKey();
+
+    expect(state().isAutoKeying, isFalse);
+    expect(session.keyEvents, isEmpty);
+  });
+
+  test('INP-03 既に自動キー入力中ならstartAutoKeyは何もしない', () async {
+    _setClipboardText('ka');
+    await controller().startAutoKey();
+
+    await controller().startAutoKey();
+
+    expect(state().isAutoKeying, isTrue);
+    await controller().stopAutoKey();
+  });
+
+  test('INP-03 stopAutoKeyで止め、状態をfalseへ戻す', () async {
+    _setClipboardText('ka');
+    await controller().startAutoKey();
+
+    await controller().stopAutoKey();
+
+    expect(state().isAutoKeying, isFalse);
+  });
+
+  test('INP-03 自動キー入力中でなければstopAutoKeyは何もしない', () async {
+    await controller().stopAutoKey();
+
+    expect(state().isAutoKeying, isFalse);
+  });
+
+  test('INP-03 setRomajiToKanaは状態を更新する', () {
+    expect(state().romajiToKana, isFalse);
+
+    controller().setRomajiToKana(true);
+
+    expect(state().romajiToKana, isTrue);
+  });
+
+  test('INP-03 shutdownは自動キー入力中ならエンジンを止める', () async {
+    _setClipboardText('ka');
+    await controller().startAutoKey();
+    expect(state().isAutoKeying, isTrue);
+
+    await controller().shutdown();
+
+    expect(state().isAutoKeying, isFalse);
+  });
+
+  test('INP-03 ローマ字かな変換ON中は英字キーの実入力をローマ字→かな変換して打鍵する'
+      '（KANAロックの一時トグルつき、通常経路には乗せない）', () {
+    fakeAsync((async) {
+      final liveSession = FakeEmulatorSession();
+      final liveProvider =
+          NotifierProvider<EmulatorController, EmulatorViewState>(
+            () => EmulatorController(
+              appDataPaths: FakeAppDataPaths(),
+              externalFileAccess: FakeExternalFileAccess(),
+              cacheWorkspace: FakeCacheWorkspace(),
+              preferences: FakePreferencesStore(),
+              createSession: ({
+                required String homeDir,
+                String? romDir,
+                BootMode bootMode = BootMode.basic,
+              }) => liveSession,
+            ),
+          );
+      final liveContainer = ProviderContainer();
+      final liveController = liveContainer.read(liveProvider.notifier);
+      liveController.launch();
+      async.flushMicrotasks();
+
+      liveController.setRomajiToKana(true);
+      // "ka" → カ（清音）。1文字目は確定しないためバッファに保持される。
+      liveController.handleKeyDown(PhysicalKeyboardKey.keyK, character: 'k');
+      async.flushMicrotasks();
+      expect(liveSession.keyEvents, isEmpty);
+
+      liveController.handleKeyDown(PhysicalKeyboardKey.keyA, character: 'a');
+      async.elapse(const Duration(milliseconds: 400));
+
+      expect(liveSession.keyEvents, [
+        Win32Vk.kana,
+        -Win32Vk.kana, // KANAロックON
+        Win32Vk.keyA + 19,
+        -(Win32Vk.keyA + 19), // 「カ」
+        Win32Vk.kana,
+        -Win32Vk.kana, // 開始時（OFF）へ復帰
+      ]);
+
+      // 横取りした物理キーのkeyUpは、対応するkey_downを送っていないため
+      // key_upも送らない（合成した打鍵は上のシーケンスで既に上げている）。
+      liveController.handleKeyUp(PhysicalKeyboardKey.keyK);
+      liveController.handleKeyUp(PhysicalKeyboardKey.keyA);
+      async.flushMicrotasks();
+      expect(liveSession.keyEvents, hasLength(6));
+
+      liveContainer.dispose();
+      async.flushMicrotasks();
+    });
+  });
+
+  test('INP-03 開始時すでにKANAロックがONなら、ライブ変換はトグルせずかな文字だけを打鍵する', () {
+    fakeAsync((async) {
+      final liveSession = FakeEmulatorSession();
+      final liveProvider =
+          NotifierProvider<EmulatorController, EmulatorViewState>(
+            () => EmulatorController(
+              appDataPaths: FakeAppDataPaths(),
+              externalFileAccess: FakeExternalFileAccess(),
+              cacheWorkspace: FakeCacheWorkspace(),
+              preferences: FakePreferencesStore(),
+              createSession: ({
+                required String homeDir,
+                String? romDir,
+                BootMode bootMode = BootMode.basic,
+              }) => liveSession,
+            ),
+          );
+      final liveContainer = ProviderContainer();
+      final liveController = liveContainer.read(liveProvider.notifier);
+      liveController.launch();
+      async.flushMicrotasks();
+      // LEDが実際にKANAロックON（利用者が手動で既にKANAロックしている、
+      // またはLED通知が実状態を正しく反映している場合）を報告している
+      // ものとする。
+      liveSession.emit(const LedStateChanged(LedState(kana: true)));
+      async.flushMicrotasks();
+
+      liveController.setRomajiToKana(true);
+      liveController.handleKeyDown(PhysicalKeyboardKey.keyK, character: 'k');
+      liveController.handleKeyDown(PhysicalKeyboardKey.keyA, character: 'a');
+      async.elapse(const Duration(milliseconds: 400));
+
+      // 開始時からKANAロックONのため、トグルは一切送らない
+      // （`AutoKeyEngine`のKANA区間境界トグルと同じ規則）。
+      expect(liveSession.keyEvents, [
+        Win32Vk.keyA + 19,
+        -(Win32Vk.keyA + 19), // 「カ」
+      ]);
+
+      liveContainer.dispose();
+      async.flushMicrotasks();
+    });
+  });
+
+  test('INP-03 ローマ字かな変換OFF中は英字キーを通常どおりそのまま打鍵する（回帰確認）', () {
+    fakeAsync((async) {
+      final liveSession = FakeEmulatorSession();
+      final liveProvider =
+          NotifierProvider<EmulatorController, EmulatorViewState>(
+            () => EmulatorController(
+              appDataPaths: FakeAppDataPaths(),
+              externalFileAccess: FakeExternalFileAccess(),
+              cacheWorkspace: FakeCacheWorkspace(),
+              preferences: FakePreferencesStore(),
+              createSession: ({
+                required String homeDir,
+                String? romDir,
+                BootMode bootMode = BootMode.basic,
+              }) => liveSession,
+            ),
+          );
+      final liveContainer = ProviderContainer();
+      final liveController = liveContainer.read(liveProvider.notifier);
+      liveController.launch();
+      async.flushMicrotasks();
+
+      liveController.handleKeyDown(PhysicalKeyboardKey.keyK, character: 'k');
+      async.flushMicrotasks();
+      liveController.handleKeyUp(PhysicalKeyboardKey.keyK);
+      async.flushMicrotasks();
+
+      expect(liveSession.keyEvents, isNotEmpty);
+      expect(liveSession.keyEvents.first, isPositive); // keyDownがすぐ届く
+
+      liveContainer.dispose();
+      async.flushMicrotasks();
+    });
   });
 
   test('launch直後は既定値どおりの実行設定を送らない（無駄な往復を避ける）', () async {

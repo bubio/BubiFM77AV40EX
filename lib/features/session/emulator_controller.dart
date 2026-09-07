@@ -17,7 +17,9 @@ import '../../platform/persistence/preferences_store.dart';
 import '../display/screen_filter.dart';
 import '../display/screen_fit.dart';
 import 'emulator_state.dart';
+import 'input/auto_key_engine.dart';
 import 'input/keyboard_key_map.dart';
+import 'input/romaji_to_kana.dart';
 
 /// native container（D88/D77/D8E/1DD）。同一コンテナへ書き戻せる
 /// （design.md 9.1）。
@@ -97,6 +99,39 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   /// Riverpodにより禁止されているため、`state.isRecording`ではなく
   /// この独立フィールドで判定する。
   bool _isRecording = false;
+
+  /// ローマ字かな変換（INP-03）の有効・無効。既定OFF、永続化しない
+  /// （`fddMechanicalSoundEnabled`と同じセッション限りの設定）。
+  bool _romajiToKana = false;
+
+  /// 自動キー入力中かどうか（INP-03）。`_isRecording`と同じ理由で
+  /// `state`ではなくこの独立フィールドで判定する。
+  bool _isAutoKeying = false;
+  final AutoKeyEngine _autoKeyEngine = AutoKeyEngine();
+
+  /// ローマ字かな変換（INP-03）のライブ入力（通常のキー入力自体を
+  /// リアルタイムに変換する側）が使う、未確定ローマ字断片のバッファ。
+  ///
+  /// `_romajiToKana`ON中、ASCII英字キーだけをこのバッファへ横取りする
+  /// （`handleKeyDown`参照）。数字・記号・矢印等は変換ON中でも常に通常
+  /// 経路のまま（KANAロックは`kana_key`/`kana_shift_key`経由で数字・記号
+  /// 行の出力も変えてしまうため、対象を英字キーだけに絞ることで、この
+  /// ハザードに触れる経路を作らない）。
+  final LiveRomajiBuffer _liveRomajiBuffer = LiveRomajiBuffer();
+
+  /// ライブ変換で確定した断片を、実際にkey_down/upへ変換して送るエンジン。
+  /// `_autoKeyEngine`（Paste専用）とは独立させ、同時に動いても競合しない
+  /// ようにする（優先順位ルールにより通常キー入力はPasteを中断するが、
+  /// ライブ変換自体は通常キー入力そのものであり中断対象ではない）。
+  final AutoKeyEngine _liveTypeEngine = AutoKeyEngine();
+  final List<String> _liveTypeQueue = [];
+  bool _liveTypeDraining = false;
+
+  /// ライブ変換のため横取りした物理キー（英字）の集合。対応する
+  /// `keyUp`をここで判定し、通常経路（`session.keyUp`）へ回さない
+  /// （合成した打鍵の上げ下げは`_liveTypeEngine`が独自のタイミングで
+  /// 行うため、物理キーの上げ下げとは対応しない）。
+  final Set<PhysicalKeyboardKey> _liveInterceptedKeys = {};
 
   /// FD1/FD2ごとの書込み保護・タイミング補正・CRCエラー無視（FDD-06）。
   /// 停止中に変更されても次回[launch]時に適用できるよう覚えておく。
@@ -487,6 +522,124 @@ class EmulatorController extends Notifier<EmulatorViewState> {
         '${pad(now.hour)}${pad(now.minute)}${pad(now.second)}';
   }
 
+  /// ローマ字かな変換（INP-03）の有効・無効を変える。
+  ///
+  /// このチェックボックスは、通常のキー入力自体をリアルタイムに変換する
+  /// 「ライブ入力」（`handleKeyDown`参照）と、Pasteがクリップボード文字列を
+  /// 変換するかどうかの両方を1つのフラグで兼ねる（片方だけを別に切り替える
+  /// 要望は出ていない）。OFFへ切り替えた時点でライブ変換の未確定断片が
+  /// 残っていれば、待たずにASCII文字として確定させる。
+  void setRomajiToKana(bool value) {
+    _romajiToKana = value;
+    state = state.copyWith(romajiToKana: value);
+    if (!value && !_liveRomajiBuffer.isEmpty) {
+      _enqueueLiveType(_liveRomajiBuffer.flush());
+    }
+  }
+
+  bool _isAsciiLetterChar(String? ch) {
+    if (ch == null || ch.length != 1) {
+      return false;
+    }
+    final code = ch.codeUnitAt(0);
+    return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a);
+  }
+
+  void _enqueueLiveType(String text) {
+    if (text.isEmpty) {
+      return;
+    }
+    _liveTypeQueue.add(text);
+    unawaited(_drainLiveTypeQueue());
+  }
+
+  /// キューに積んだ確定済み断片を、`_liveTypeEngine`が空くたび1つずつ
+  /// 打鍵させる。ライブ入力は物理キーの速さで断片を作れるため、
+  /// `_liveTypeEngine`が前の断片をまだ打っている間に次が確定することが
+  /// あり、単純に`run()`し直すと後着ちが無視される（`isRunning`中は
+  /// 何もしないため）。ここでキュー化して直列に流す。
+  Future<void> _drainLiveTypeQueue() async {
+    if (_liveTypeDraining) {
+      return;
+    }
+    _liveTypeDraining = true;
+    try {
+      while (_liveTypeQueue.isNotEmpty) {
+        final session = _session;
+        if (session == null) {
+          _liveTypeQueue.clear();
+          break;
+        }
+        final next = _liveTypeQueue.removeAt(0);
+        // `romajiToKana: false`で渡す。断片はすでにローマ字→カタカナ変換
+        // 済み（`LiveRomajiBuffer`）か、素通しASCIIのどちらかであり、
+        // ここで`convertRomajiToKana`をもう一度通すべきではない
+        // （`normalizeKanaText`は既に分解済みのカタカナ・ASCIIをそのまま
+        // 通す恒等変換になるため、この経路として正しい）。
+        await _liveTypeEngine.run(
+          session,
+          next,
+          romajiToKana: false,
+          initialKanaLock: state.ledState.kana,
+          initialCapsLock: state.ledState.caps,
+        );
+      }
+    } finally {
+      _liveTypeDraining = false;
+    }
+  }
+
+  /// クリップボードの文字列を自動キー入力する（INP-03）。
+  ///
+  /// 未起動、既に自動キー入力中、クリップボードが空／取得できない、
+  /// 打てる文字が1つもない場合は何もしない（`_captureScreen`と同じく、
+  /// 単発便利機能の失敗に利用者向けエラーダイアログは出さない）。
+  Future<void> startAutoKey() async {
+    final session = _session;
+    if (session == null || _isAutoKeying) {
+      return;
+    }
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text;
+    if (text == null || text.isEmpty) {
+      return;
+    }
+    final future = _autoKeyEngine.run(
+      session,
+      text,
+      romajiToKana: _romajiToKana,
+      initialKanaLock: state.ledState.kana,
+      initialCapsLock: state.ledState.caps,
+    );
+    // `run()`はTimerを作るまで（打てる文字がなければ即return）を同期的に
+    // 実行してからFutureを返すため、ここで`isRunning`を見れば
+    // 実際に始まったかどうかを待たずに判定できる。打てる文字が1つも
+    // なければここで抜け、状態を変えない。
+    if (!_autoKeyEngine.isRunning) {
+      return;
+    }
+    _isAutoKeying = true;
+    state = state.copyWith(isAutoKeying: true);
+    unawaited(future);
+    // 完了（自然終了）はここでは待たず、`_isRecording`と同じく
+    // `_pollStats()`の定期ポーリングが`_autoKeyEngine.isRunning`を見て
+    // 状態を同期する。`stopAutoKey`（利用者操作・物理キー入力による中断）
+    // は即座にここで状態を更新する。
+  }
+
+  /// 自動キー入力を止める（INP-03）。実行中でなければ何もしない。
+  ///
+  /// **優先順位ルール（design.md 8）**: 通常のキー入力は常に自動キー入力を
+  /// 中断させる。この関数自体はメニューの`Stop Paste`からも呼ばれる。
+  Future<void> stopAutoKey() async {
+    if (!_isAutoKeying) {
+      return;
+    }
+    await _autoKeyEngine.cancel();
+    _isAutoKeying = false;
+    state = state.copyWith(isAutoKeying: false);
+  }
+
   FddDriveSettings _driveSettingsOf(int drive) =>
       _fddDriveSettings[drive] ?? const FddDriveSettings();
 
@@ -536,10 +689,31 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   void handleKeyDown(
     PhysicalKeyboardKey physicalKey, {
     LogicalKeyboardKey? logicalKey,
+    String? character,
   }) {
     final session = _session;
     if (session == null || !_pressedKeys.add(physicalKey)) {
       return;
+    }
+    // 通常のキー入力は常に自動キー入力を中断させる（design.md 8、INP-03）。
+    if (_isAutoKeying) {
+      unawaited(stopAutoKey());
+    }
+    // ローマ字かな変換（INP-03）のライブ入力: 変換ON中はASCII英字キーだけを
+    // 横取りしてローマ字断片としてバッファへ積む。確定した出力（かな断片、
+    // またはどの規則にも当たらない孤立文字のASCII素通し）があれば、通常の
+    // `session.keyDown`ではなく`_liveTypeEngine`経由で打鍵する。英字以外の
+    // キーは変換ON中でも常に通常経路のまま（KANAロックは`kana_key`/
+    // `kana_shift_key`経由で数字・記号行の出力も変えてしまうため、対象を
+    // 英字キーだけに絞り、このハザードに触れる経路自体を作らない）。
+    if (_romajiToKana && _isAsciiLetterChar(character)) {
+      _liveInterceptedKeys.add(physicalKey);
+      _enqueueLiveType(_liveRomajiBuffer.push(character!));
+      return;
+    }
+    if (!_liveRomajiBuffer.isEmpty) {
+      // 変換途中の断片が残ったまま英字以外のキーが来た＝そこで確定させる。
+      _enqueueLiveType(_liveRomajiBuffer.flush());
     }
     final vk = vkFromKeyEvent(physicalKey: physicalKey, logicalKey: logicalKey);
     if (vk != null) {
@@ -556,6 +730,13 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     if (session == null || !_pressedKeys.remove(physicalKey)) {
       return;
     }
+    if (_liveInterceptedKeys.remove(physicalKey)) {
+      // ローマ字ライブ変換へ横取りしたキーの物理up。合成した打鍵は
+      // `_liveTypeEngine`が独自のタイミングで下げ上げするため、ここでは
+      // 何もしない（対応するkey_downを送っていないため、対応するkey_upも
+      // 送ってはならない）。
+      return;
+    }
     final vk = vkFromKeyEvent(physicalKey: physicalKey, logicalKey: logicalKey);
     if (vk != null) {
       unawaited(session.keyUp(vk));
@@ -570,10 +751,20 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     final session = _session;
     final keys = _pressedKeys.toList();
     _pressedKeys.clear();
+    final interceptedKeys = _liveInterceptedKeys.toSet();
+    _liveInterceptedKeys.clear();
+    if (!_liveRomajiBuffer.isEmpty) {
+      _enqueueLiveType(_liveRomajiBuffer.flush());
+    }
     if (session == null) {
       return;
     }
     for (final key in keys) {
+      if (interceptedKeys.contains(key)) {
+        // 横取りしたキー（対応するkey_downを送っていない）にはkey_upも
+        // 送らない。
+        continue;
+      }
       final vk = vkFromKeyEvent(physicalKey: key);
       if (vk != null) {
         unawaited(session.keyUp(vk));
@@ -839,6 +1030,14 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       _isRecording = isRecordingActive;
       state = state.copyWith(isRecording: isRecordingActive);
     }
+    // 自動キー入力の自然終了（全文字を打ち終えた場合、INP-03）をここで
+    // 拾う。利用者操作による中断（`stopAutoKey`）は呼出し元で即座に
+    // 状態を更新するため、ここでは食い違ったときだけ同期する。
+    final isAutoKeyingActive = _autoKeyEngine.isRunning;
+    if (isAutoKeyingActive != _isAutoKeying) {
+      _isAutoKeying = isAutoKeyingActive;
+      state = state.copyWith(isAutoKeying: isAutoKeyingActive);
+    }
     final stats = session.readStats();
     final last = _lastStats;
     _lastStats = stats;
@@ -888,8 +1087,18 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     // Timerの取消しは同期的に真っ先に行う。`ref.onDispose`はこの関数を
     // 待たないため、最初のawaitより後ろに置くとdispose直後にまだ
     // 生き残ってしまう（試験のFlutter testはpending timerを許さない）。
+    // `AutoKeyEngine`内部の`Timer`も同じ理由で`disposeNow()`（同期）で
+    // 即座に止める。保留中キーのupやKANAロック復元は行わない
+    // （セッションはこの直後に手放すため、コア自体が止まればキー状態は
+    // 無意味になる）。利用者操作による`Stop Paste`は`stopAutoKey()`の
+    // 非同期`cancel()`を使う。
     _statsTimer?.cancel();
     _statsTimer = null;
+    _autoKeyEngine.disposeNow();
+    _liveTypeEngine.disposeNow();
+    _liveTypeQueue.clear();
+    _liveInterceptedKeys.clear();
+    _isAutoKeying = false;
     _lastStats = null;
     final session = _session;
     _session = null;

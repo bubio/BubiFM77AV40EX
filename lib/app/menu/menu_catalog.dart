@@ -63,6 +63,11 @@ List<MenuGroup> buildMenuCatalog({
   required void Function() onOpenSoundVolume,
   required bool fddMechanicalSoundEnabled,
   required void Function(bool enabled) onFddMechanicalSoundEnabledChanged,
+  required bool isAutoKeying,
+  required void Function() onStartAutoKey,
+  required void Function() onStopAutoKey,
+  required bool romajiToKana,
+  required void Function(bool enabled) onRomajiToKanaChanged,
   required AppLocaleMode localeMode,
   required void Function(AppLocaleMode mode) onLocaleModeChanged,
 }) {
@@ -153,6 +158,26 @@ List<MenuGroup> buildMenuCatalog({
           onChanged: (value) => onOptionSwitchesChanged(
             optionSwitches.copyWith(syncToHsync: value),
           ),
+        ),
+        const MenuSeparator('control.sep2'),
+        MenuAction(
+          'control.paste',
+          label: l10n.controlPaste,
+          enabled: isRunning && !isAutoKeying,
+          onSelected: onStartAutoKey,
+        ),
+        MenuAction(
+          'control.stopPaste',
+          label: l10n.controlStopPaste,
+          enabled: isAutoKeying,
+          onSelected: onStopAutoKey,
+        ),
+        MenuCheckbox(
+          'control.romajiToKana',
+          label: l10n.controlRomajiToKana,
+          enabled: true,
+          checked: romajiToKana,
+          onChanged: onRomajiToKanaChanged,
         ),
       ],
     ),

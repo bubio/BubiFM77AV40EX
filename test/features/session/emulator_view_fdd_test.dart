@@ -8,6 +8,7 @@ import 'package:bubi_fm77av40ex/features/session/session_providers.dart';
 import 'package:bubi_fm77av40ex/features/session/widgets/emulator_view.dart';
 import 'package:bubi_fm77av40ex/features/settings/settings_controller.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -94,6 +95,11 @@ class _LaunchingHomeState extends ConsumerState<_LaunchingHome> {
       onOpenSoundVolume: () {},
       fddMechanicalSoundEnabled: true,
       onFddMechanicalSoundEnabledChanged: (_) {},
+      isAutoKeying: false,
+      onStartAutoKey: () {},
+      onStopAutoKey: () {},
+      romajiToKana: false,
+      onRomajiToKanaChanged: (_) {},
       localeMode: settings.localeMode,
       onLocaleModeChanged: settingsController.setLocaleMode,
     );
@@ -269,6 +275,49 @@ void main() {
     expect(cacheWorkspace.handle.exportCalls, [
       ('fd0-GAME.D88', '/Volumes/USB/GAME.D88'),
     ]);
+    container.dispose();
+  });
+
+  testWidgets('INP-03 自動キー入力の途中でcontainerがdisposeされてもTimerが残らない', (
+    tester,
+  ) async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.getData') {
+            return {'text': 'kakikukeko'};
+          }
+          return null;
+        });
+    final container = await wrap(tester);
+    await tester.pumpAndSettle();
+
+    await container.read(emulatorControllerProvider.notifier).startAutoKey();
+    await tester.pump();
+    expect(container.read(emulatorControllerProvider).isAutoKeying, isTrue);
+
+    // Flutter testのpending timer検査はこのtestWidgetsの本体が
+    // 戻った直後に走る。ここでdisposeした時点でAutoKeyEngineの
+    // Timerが同期的に止まっていなければ検査に引っかかる。
+    container.dispose();
+  });
+
+  testWidgets('INP-03 ローマ字かな変換のライブ入力途中でcontainerがdisposeされてもTimerが残らない', (
+    tester,
+  ) async {
+    final container = await wrap(tester);
+    await tester.pumpAndSettle();
+
+    final controller = container.read(emulatorControllerProvider.notifier);
+    controller.setRomajiToKana(true);
+    controller.handleKeyDown(PhysicalKeyboardKey.keyK, character: 'k');
+    // "ka"の2文字目。確定した「カ」がライブ変換キューへ積まれ、
+    // `_liveTypeEngine`のTimerが動き出した状態でdisposeする。
+    controller.handleKeyDown(PhysicalKeyboardKey.keyA, character: 'a');
+    await tester.pump();
+
+    // Flutter testのpending timer検査はこのtestWidgetsの本体が戻った
+    // 直後に走る。`_liveTypeEngine`のTimerが同期的に止まっていなければ
+    // 検査に引っかかる。
     container.dispose();
   });
 }

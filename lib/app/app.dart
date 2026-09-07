@@ -198,6 +198,11 @@ class _HomeState extends ConsumerState<_Home> {
       fddMechanicalSoundEnabled: emulator.fddMechanicalSoundEnabled,
       onFddMechanicalSoundEnabledChanged:
           emulatorController.setFddMechanicalSoundEnabled,
+      isAutoKeying: emulator.isAutoKeying,
+      onStartAutoKey: emulatorController.startAutoKey,
+      onStopAutoKey: emulatorController.stopAutoKey,
+      romajiToKana: emulator.romajiToKana,
+      onRomajiToKanaChanged: emulatorController.setRomajiToKana,
       localeMode: settings.localeMode,
       onLocaleModeChanged: settingsController.setLocaleMode,
     );

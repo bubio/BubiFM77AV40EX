@@ -33,6 +33,8 @@ class EmulatorViewState {
     this.soundVolumes = const SoundChannelVolumes(),
     this.fddMechanicalSoundEnabled = true,
     this.isRecording = false,
+    this.isAutoKeying = false,
+    this.romajiToKana = false,
     this.viewFps = 0,
     this.coreFps = 0,
   });
@@ -123,6 +125,14 @@ class EmulatorViewState {
   /// 音声録音中かどうか（AUD-06）。永続化しないセッション内の状態。
   final bool isRecording;
 
+  /// クリップボード文字列の自動キー入力中かどうか（INP-03）。永続化しない
+  /// セッション内の状態。
+  final bool isAutoKeying;
+
+  /// ローマ字かな変換の有効・無効（INP-03）。永続化しないセッション内の
+  /// 状態（[fddMechanicalSoundEnabled]と同じ扱い）。
+  final bool romajiToKana;
+
   /// 直近1秒間に描画側へ公開したフレーム数（design.md 12.4 View FPS）。
   final double viewFps;
 
@@ -160,6 +170,8 @@ class EmulatorViewState {
     SoundChannelVolumes? soundVolumes,
     bool? fddMechanicalSoundEnabled,
     bool? isRecording,
+    bool? isAutoKeying,
+    bool? romajiToKana,
     double? viewFps,
     double? coreFps,
   }) {
@@ -191,6 +203,8 @@ class EmulatorViewState {
       fddMechanicalSoundEnabled:
           fddMechanicalSoundEnabled ?? this.fddMechanicalSoundEnabled,
       isRecording: isRecording ?? this.isRecording,
+      isAutoKeying: isAutoKeying ?? this.isAutoKeying,
+      romajiToKana: romajiToKana ?? this.romajiToKana,
       viewFps: viewFps ?? this.viewFps,
       coreFps: coreFps ?? this.coreFps,
     );

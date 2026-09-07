@@ -79,6 +79,11 @@ void main() {
       onOpenSoundVolume: () {},
       fddMechanicalSoundEnabled: true,
       onFddMechanicalSoundEnabledChanged: (_) {},
+      isAutoKeying: false,
+      onStartAutoKey: () {},
+      onStopAutoKey: () {},
+      romajiToKana: false,
+      onRomajiToKanaChanged: (_) {},
       localeMode: AppLocaleMode.system,
       onLocaleModeChanged: onLocaleModeChanged ?? (_) {},
     );
