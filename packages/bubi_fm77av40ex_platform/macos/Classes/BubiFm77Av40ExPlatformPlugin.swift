@@ -104,6 +104,16 @@ public class BubiFm77Av40ExPlatformPlugin: NSObject, FlutterPlugin {
       }
       result(path)
 
+    case "musicDirectoryPath":
+      let musicPaths = FileManager.default.urls(for: .musicDirectory, in: .userDomainMask)
+      guard let musicPath = musicPaths.first?.path else {
+        result(
+          FlutterError(
+            code: "notFound", message: "Music directory is not available.", details: nil))
+        return
+      }
+      result(musicPath)
+
     default:
       result(FlutterMethodNotImplemented)
     }

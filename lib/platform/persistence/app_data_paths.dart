@@ -25,6 +25,15 @@ abstract interface class AppDataPaths {
   /// なく[AppDataLocation]を返す（design.md 3.1）。
   Future<AppDataLocation?> pictureFile(String fileName);
 
+  /// 音声録音の保存先パス（design.md 11.4、AUD-06）。
+  ///
+  /// デスクトップではOSのMusicディレクトリ配下にアプリ名のフォルダーを
+  /// 作る。対応していないOSでは`null`。ストリーミング書込み
+  /// （`WavRecorder`）が`dart:io`で直接開くため、[pictureFile]と異なり
+  /// [AppDataLocation]ではなく生のOSパス文字列を返す
+  /// （[romsDirectoryPath]と同じ扱い）。
+  Future<String?> musicFilePath(String fileName);
+
   /// 状態スロット（`states/slot-N/`）を表すハンドル。
   Future<AppDataLocation> stateSlot(int slotIndex);
 

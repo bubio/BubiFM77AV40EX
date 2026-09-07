@@ -92,6 +92,12 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   /// 停止中に変更されても次回[launch]時に適用できるよう覚えておく。
   bool _fddMechanicalSoundEnabled = true;
 
+  /// 録音中かどうか（AUD-06）。`_teardown()`はdispose経路
+  /// （`ref.onDispose`）からも呼ばれ、そこでは`state`の読み書きが
+  /// Riverpodにより禁止されているため、`state.isRecording`ではなく
+  /// この独立フィールドで判定する。
+  bool _isRecording = false;
+
   /// FD1/FD2ごとの書込み保護・タイミング補正・CRCエラー無視（FDD-06）。
   /// 停止中に変更されても次回[launch]時に適用できるよう覚えておく。
   final Map<int, FddDriveSettings> _fddDriveSettings = {};
@@ -440,6 +446,47 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     _session?.setFddMechanicalSoundEnabled(enabled);
   }
 
+  /// 最終ミキサー直後のPCMをWAVへ録音開始する（AUD-06、design.md 7.2）。
+  ///
+  /// 未起動、既に録音中、保存先が取得できない、またはセッション側で
+  /// ファイルを開けない場合は何もしない（`_captureScreen`と同じく、単発
+  /// 便利機能の失敗に利用者向けエラーダイアログは出さない）。
+  Future<void> startRecording() async {
+    final session = _session;
+    if (session == null || _isRecording) {
+      return;
+    }
+    final path = await appDataPaths.musicFilePath(
+      'BubiFM77AV40EX-${_recordingTimestamp()}.wav',
+    );
+    if (path == null) {
+      return;
+    }
+    final started = await session.startRecording(path);
+    if (started) {
+      _isRecording = true;
+      state = state.copyWith(isRecording: true);
+    }
+  }
+
+  /// 録音を止める（AUD-06）。録音中でなければ何もしない。
+  Future<void> stopRecording() async {
+    if (!_isRecording) {
+      return;
+    }
+    await _session?.stopRecording();
+    _isRecording = false;
+    state = state.copyWith(isRecording: false);
+  }
+
+  String _recordingTimestamp() {
+    final now = DateTime.now();
+    String pad(int value, [int width = 2]) =>
+        value.toString().padLeft(width, '0');
+    return '${now.year}${pad(now.month)}${pad(now.day)}-'
+        '${pad(now.hour)}${pad(now.minute)}${pad(now.second)}';
+  }
+
   FddDriveSettings _driveSettingsOf(int drive) =>
       _fddDriveSettings[drive] ?? const FddDriveSettings();
 
@@ -785,6 +832,13 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     if (session == null) {
       return;
     }
+    // 録音キュー飽和（design.md 7.2）でホスト側が自発的に録音を止めた
+    // 場合をここで拾い、UIへ反映する。
+    final isRecordingActive = session.isRecordingActive;
+    if (isRecordingActive != _isRecording) {
+      _isRecording = isRecordingActive;
+      state = state.copyWith(isRecording: isRecordingActive);
+    }
     final stats = session.readStats();
     final last = _lastStats;
     _lastStats = stats;
@@ -839,6 +893,13 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     _lastStats = null;
     final session = _session;
     _session = null;
+    // design.md 5.1の終了順序（コア停止→録画停止→音声停止）のとおり、
+    // セッションを手放す前に録音を確実にファイナライズする。中途半端な
+    // （プレースホルダーサイズのままの）WAVファイルを残さない。
+    if (session != null && _isRecording) {
+      await session.stopRecording();
+    }
+    _isRecording = false;
     await _events?.cancel();
     _events = null;
     _pressedKeys.clear();

@@ -34,6 +34,7 @@ void main() {
     HostScreenFilter hostFilter = HostScreenFilter.none,
     bool isFullscreen = false,
     bool fullscreenSupported = false,
+    bool isRecording = false,
     void Function()? onOpenSoundVolume,
     bool fddMechanicalSoundEnabled = true,
     void Function(bool enabled)? onFddMechanicalSoundEnabledChanged,
@@ -79,6 +80,9 @@ void main() {
       fullscreenSupported: fullscreenSupported,
       onFullscreenChanged: (_) {},
       onCaptureScreen: () {},
+      isRecording: isRecording,
+      onStartRecording: () {},
+      onStopRecording: () {},
       onOpenSoundVolume: onOpenSoundVolume ?? () {},
       fddMechanicalSoundEnabled: fddMechanicalSoundEnabled,
       onFddMechanicalSoundEnabledChanged:
@@ -350,41 +354,79 @@ void main() {
     final stopped =
         catalog(isRunning: false)
                 .firstWhere((g) => g.id == MenuGroupId.host)
-                .entries[0]
+                .entries[2]
             as MenuAction;
     expect(stopped.enabled, isFalse);
     final running =
         catalog(isRunning: true)
                 .firstWhere((g) => g.id == MenuGroupId.host)
-                .entries[0]
+                .entries[2]
             as MenuAction;
     expect(running.enabled, isTrue);
   });
 
-  test('Host: Capture Screen、区切り、Screen、区切り、Languageの順', () {
+  test('Host > Rec Sound/Stopは録音中かどうかで有効・無効が入れ替わる', () {
+    final stoppedNotRecording = catalog(
+      isRunning: false,
+      isRecording: false,
+    ).firstWhere((g) => g.id == MenuGroupId.host).entries;
+    final recSoundWhenStopped = stoppedNotRecording[0] as MenuAction;
+    final stopWhenStopped = stoppedNotRecording[1] as MenuAction;
+    expect(recSoundWhenStopped.enabled, isFalse);
+    expect(stopWhenStopped.enabled, isFalse);
+
+    final runningNotRecording = catalog(
+      isRunning: true,
+      isRecording: false,
+    ).firstWhere((g) => g.id == MenuGroupId.host).entries;
+    final recSoundWhenRunning = runningNotRecording[0] as MenuAction;
+    final stopWhenRunning = runningNotRecording[1] as MenuAction;
+    expect(recSoundWhenRunning.enabled, isTrue);
+    expect(stopWhenRunning.enabled, isFalse);
+
+    final runningRecording = catalog(
+      isRunning: true,
+      isRecording: true,
+    ).firstWhere((g) => g.id == MenuGroupId.host).entries;
+    final recSoundWhileRecording = runningRecording[0] as MenuAction;
+    final stopWhileRecording = runningRecording[1] as MenuAction;
+    expect(recSoundWhileRecording.enabled, isFalse);
+    expect(stopWhileRecording.enabled, isTrue);
+  });
+
+  test('Host: Rec Sound、Stop、Capture Screen、区切り、Screen、区切り、'
+      'Languageの順', () {
     final entries = catalog()
         .firstWhere((g) => g.id == MenuGroupId.host)
         .entries;
-    expect(entries, hasLength(5));
+    expect(entries, hasLength(7));
     expect(
       entries[0],
-      isA<MenuAction>().having((e) => e.id, 'id', 'host.captureScreen'),
+      isA<MenuAction>().having((e) => e.id, 'id', 'host.recSound'),
     );
-    expect(entries[1], isA<MenuSeparator>());
+    expect(
+      entries[1],
+      isA<MenuAction>().having((e) => e.id, 'id', 'host.stopRecSound'),
+    );
     expect(
       entries[2],
-      isA<MenuSubmenu>().having((e) => e.id, 'id', 'host.screen'),
+      isA<MenuAction>().having((e) => e.id, 'id', 'host.captureScreen'),
     );
     expect(entries[3], isA<MenuSeparator>());
     expect(
       entries[4],
+      isA<MenuSubmenu>().having((e) => e.id, 'id', 'host.screen'),
+    );
+    expect(entries[5], isA<MenuSeparator>());
+    expect(
+      entries[6],
       isA<MenuSubmenu>().having((e) => e.id, 'id', 'host.language'),
     );
   });
 
   test('Host > Screenはfullscreen、fit、filterの順', () {
     final host = catalog().firstWhere((g) => g.id == MenuGroupId.host).entries;
-    final screen = host[2] as MenuSubmenu;
+    final screen = host[4] as MenuSubmenu;
     expect(screen.entries, hasLength(3));
     expect(
       screen.entries[0],
@@ -407,14 +449,14 @@ void main() {
     final host = catalog(fullscreenSupported: false)
         .firstWhere((g) => g.id == MenuGroupId.host)
         .entries;
-    final screen = host[2] as MenuSubmenu;
+    final screen = host[4] as MenuSubmenu;
     final fullscreen = screen.entries[0] as MenuCheckbox;
     expect(fullscreen.enabled, isFalse);
   });
 
   test('Host > Languageのラジオはsystem/english/japaneseの順', () {
     final host = catalog().firstWhere((g) => g.id == MenuGroupId.host).entries;
-    final language = host[4] as MenuSubmenu;
+    final language = host[6] as MenuSubmenu;
     final mode = language.entries.single as MenuRadioGroup<AppLocaleMode>;
     expect(mode.options.map((o) => o.value), [
       AppLocaleMode.system,

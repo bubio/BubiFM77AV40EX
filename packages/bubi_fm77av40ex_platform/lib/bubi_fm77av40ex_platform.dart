@@ -6,5 +6,6 @@
 library;
 
 export 'src/full_screen_channel.dart';
+export 'src/music_directory.dart';
 export 'src/pictures_directory.dart';
 export 'src/security_scoped_bookmarks.dart';

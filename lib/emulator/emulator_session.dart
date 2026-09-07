@@ -144,6 +144,20 @@ abstract class EmulatorSession {
   /// 送らない。
   void setFddMechanicalSoundVolume(double volume);
 
+  /// 最終ミキサー直後のPCMを[filePath]へWAV録音開始する（AUD-06）。
+  ///
+  /// 既に録音中、またはファイルを開けない場合は`false`を返す。音声を
+  /// 組み立てていないセッションでは常に`false`を返す。
+  Future<bool> startRecording(String filePath);
+
+  /// 録音を止め、WAVヘッダーを確定してファイルを閉じる（AUD-06）。
+  /// 録音中でなければ何もしない。
+  Future<void> stopRecording();
+
+  /// 現在録音中かどうか（AUD-06）。キュー飽和で録音側が自発的に止めた
+  /// 場合もここへ反映される。
+  bool get isRecordingActive;
+
   /// 画面を受け取る Texture を用意し、そのIDを返す。
   ///
   /// 呼ぶたびに新しいIDを作るのではなく、すでにあればそれを返す。

@@ -287,6 +287,14 @@
   "@menuHost": {
     "description": "In-app menu group: host-side screen, sound, and UI settings."
   },
+  "hostRecSound": "Rec Sound",
+  "@hostRecSound": {
+    "description": "Action starting WAV recording of the final mixed audio (AUD-06)."
+  },
+  "hostStopRecSound": "Stop",
+  "@hostStopRecSound": {
+    "description": "Action stopping the WAV audio recording started by Rec Sound (AUD-06)."
+  },
   "hostCaptureScreen": "Capture Screen",
   "@hostCaptureScreen": {
     "description": "Action saving a screenshot of the emulator screen (VID-05)."

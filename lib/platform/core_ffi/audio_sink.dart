@@ -54,3 +54,24 @@ abstract class FddMechanicalSoundSink {
   /// `bits==0`のときは呼ばれない＝実質エッジ的）。
   void notifyDriveAccess(Set<int> accessedDrives);
 }
+
+/// 音声録音（AUD-06）の制御境界。
+///
+/// 録音点は最終ミキサーの直後（design.md 7.2）。`FfiEmulatorSession`は
+/// この実体を任意で受け取り、渡されなければ何もしない（`AudioSink`と
+/// 同じnull許容パターン）。実装（`RecordingAudioSink`、
+/// `lib/platform/audio/`）は`AudioSink`も実装し、同一インスタンスを
+/// 両方の役割で`FfiEmulatorSession.create`へ渡す。
+abstract class RecordingControl {
+  /// [filePath]へ録音を開始する。既に録音中、またはファイルを開けなければ
+  /// `false`を返し、既存の録音（あれば）には影響しない。
+  Future<bool> startRecording(String filePath);
+
+  /// 録音を止め、WAVヘッダーを確定してファイルを閉じる。録音中でなければ
+  /// 何もしない。
+  Future<void> stopRecording();
+
+  /// 現在録音中かどうか。キュー飽和（design.md 7.2）で録音側が自発的に
+  /// 止めた場合もここへ反映される。
+  bool get isRecording;
+}

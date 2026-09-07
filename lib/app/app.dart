@@ -191,6 +191,9 @@ class _HomeState extends ConsumerState<_Home> {
       fullscreenSupported: fullscreen.supported,
       onFullscreenChanged: fullscreenController.setFullscreen,
       onCaptureScreen: _captureScreen,
+      isRecording: emulator.isRecording,
+      onStartRecording: emulatorController.startRecording,
+      onStopRecording: emulatorController.stopRecording,
       onOpenSoundVolume: _openSoundVolumeDialog,
       fddMechanicalSoundEnabled: emulator.fddMechanicalSoundEnabled,
       onFddMechanicalSoundEnabledChanged:

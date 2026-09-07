@@ -57,6 +57,9 @@ List<MenuGroup> buildMenuCatalog({
   required bool fullscreenSupported,
   required void Function(bool enabled) onFullscreenChanged,
   required void Function() onCaptureScreen,
+  required bool isRecording,
+  required void Function() onStartRecording,
+  required void Function() onStopRecording,
   required void Function() onOpenSoundVolume,
   required bool fddMechanicalSoundEnabled,
   required void Function(bool enabled) onFddMechanicalSoundEnabledChanged,
@@ -330,6 +333,18 @@ List<MenuGroup> buildMenuCatalog({
       id: MenuGroupId.host,
       label: l10n.menuHost,
       entries: [
+        MenuAction(
+          'host.recSound',
+          label: l10n.hostRecSound,
+          enabled: isRunning && !isRecording,
+          onSelected: onStartRecording,
+        ),
+        MenuAction(
+          'host.stopRecSound',
+          label: l10n.hostStopRecSound,
+          enabled: isRecording,
+          onSelected: onStopRecording,
+        ),
         MenuAction(
           'host.captureScreen',
           label: l10n.hostCaptureScreen,

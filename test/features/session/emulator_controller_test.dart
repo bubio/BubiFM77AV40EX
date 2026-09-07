@@ -17,6 +17,7 @@ void main() {
   late FakeEmulatorSession session;
   late FakeExternalFileAccess externalFileAccess;
   late FakeCacheWorkspace cacheWorkspace;
+  late FakeAppDataPaths appDataPaths;
   late ProviderContainer container;
   late NotifierProvider<EmulatorController, EmulatorViewState> provider;
 
@@ -24,9 +25,10 @@ void main() {
     session = FakeEmulatorSession();
     externalFileAccess = FakeExternalFileAccess();
     cacheWorkspace = FakeCacheWorkspace();
+    appDataPaths = FakeAppDataPaths();
     provider = NotifierProvider<EmulatorController, EmulatorViewState>(
       () => EmulatorController(
-        appDataPaths: FakeAppDataPaths(),
+        appDataPaths: appDataPaths,
         externalFileAccess: externalFileAccess,
         cacheWorkspace: cacheWorkspace,
         preferences: FakePreferencesStore(),
@@ -176,6 +178,64 @@ void main() {
     await controller().launch();
 
     expect(session.setFddMechanicalSoundEnabledCalls, isEmpty);
+  });
+
+  test('AUD-06 startRecordingは保存先を取得してセッションへ渡し、状態を更新する', () async {
+    await controller().startRecording();
+
+    expect(appDataPaths.musicFilePathCallCount, 1);
+    expect(session.startRecordingCalls, hasLength(1));
+    expect(session.startRecordingCalls.single, contains('.wav'));
+    expect(state().isRecording, isTrue);
+  });
+
+  test('AUD-06 保存先が取得できなければ何もしない', () async {
+    appDataPaths.musicPath = null;
+
+    await controller().startRecording();
+
+    expect(session.startRecordingCalls, isEmpty);
+    expect(state().isRecording, isFalse);
+  });
+
+  test('AUD-06 セッション側が開けなければ状態を変えない', () async {
+    session.startRecordingResult = false;
+
+    await controller().startRecording();
+
+    expect(session.startRecordingCalls, hasLength(1));
+    expect(state().isRecording, isFalse);
+  });
+
+  test('AUD-06 既に録音中ならstartRecordingは何もしない', () async {
+    await controller().startRecording();
+    await controller().startRecording();
+
+    expect(session.startRecordingCalls, hasLength(1));
+  });
+
+  test('AUD-06 stopRecordingでセッションを止め、状態をfalseへ戻す', () async {
+    await controller().startRecording();
+
+    await controller().stopRecording();
+
+    expect(session.stopRecordingCallCount, 1);
+    expect(state().isRecording, isFalse);
+  });
+
+  test('AUD-06 録音中でなければstopRecordingは何もしない', () async {
+    await controller().stopRecording();
+
+    expect(session.stopRecordingCallCount, 0);
+  });
+
+  test('AUD-06 shutdownは録音中ならセッションのstopRecordingを呼ぶ', () async {
+    await controller().startRecording();
+
+    await controller().shutdown();
+
+    expect(session.stopRecordingCallCount, 1);
+    expect(state().isRecording, isFalse);
   });
 
   test('launch直後は既定値どおりの実行設定を送らない（無駄な往復を避ける）', () async {

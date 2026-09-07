@@ -13,10 +13,12 @@ class OsAppDataPaths implements AppDataPaths {
   OsAppDataPaths({
     this.applicationName = 'BubiFM77AV40EX',
     this.picturesDirectory = const PicturesDirectory(),
+    this.musicDirectory = const MusicDirectory(),
   });
 
   final String applicationName;
   final PicturesDirectory picturesDirectory;
+  final MusicDirectory musicDirectory;
   Directory? _root;
 
   /// アプリケーションデータの基準ディレクトリ。
@@ -73,6 +75,17 @@ class OsAppDataPaths implements AppDataPaths {
     final directory = Directory('$base/$applicationName');
     await directory.create(recursive: true);
     return _FileAppDataLocation(File('${directory.path}/$fileName'));
+  }
+
+  @override
+  Future<String?> musicFilePath(String fileName) async {
+    final base = await musicDirectory.path();
+    if (base == null) {
+      return null;
+    }
+    final directory = Directory('$base/$applicationName');
+    await directory.create(recursive: true);
+    return '${directory.path}/$fileName';
   }
 
   @override

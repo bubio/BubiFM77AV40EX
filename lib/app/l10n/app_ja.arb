@@ -73,6 +73,8 @@
   "soundChannelKeyboardBeep": "キーボード音",
   "soundChannelFddMechanism": "FDD機構音",
   "menuHost": "Host",
+  "hostRecSound": "録音開始",
+  "hostStopRecSound": "録音停止",
   "hostCaptureScreen": "画面を保存",
   "menuHostScreen": "画面",
   "hostScreenFullscreen": "フルスクリーン",

@@ -71,6 +71,8 @@ class FakeAppDataPaths implements AppDataPaths {
   String romsPath;
   String homePath;
   String? picturesPath = '/data/BubiFM77AV40EX/pictures';
+  String? musicPath = '/data/BubiFM77AV40EX/music';
+  int musicFilePathCallCount = 0;
 
   /// 位置の解決そのものが失敗する場合に投げる例外。
   Object? throwOnRomsPath;
@@ -97,6 +99,16 @@ class FakeAppDataPaths implements AppDataPaths {
       return null;
     }
     return FakeFileAppDataLocation(File('$base/$fileName'));
+  }
+
+  @override
+  Future<String?> musicFilePath(String fileName) async {
+    musicFilePathCallCount++;
+    final base = musicPath;
+    if (base == null) {
+      return null;
+    }
+    return '$base/$fileName';
   }
 
   @override
@@ -192,6 +204,16 @@ class FakeEmulatorSession implements EmulatorSession {
       [];
   final List<bool> setFddMechanicalSoundEnabledCalls = [];
   final List<double> setFddMechanicalSoundVolumeCalls = [];
+  final List<String> startRecordingCalls = [];
+  int stopRecordingCallCount = 0;
+
+  /// [startRecording]が返す値。テストから差し替える。
+  bool startRecordingResult = true;
+
+  /// [isRecordingActive]が返す値。テストから差し替える
+  /// （録音キュー飽和による自発停止の再現用）。
+  @override
+  bool isRecordingActive = false;
   final List<(int drive, bool enabled)> setFddWriteProtectCalls = [];
   final List<(int drive, bool enabled)> setFddTimingCalls = [];
   final List<(int drive, bool ignore)> setFddCrcCheckCalls = [];
@@ -373,6 +395,21 @@ class FakeEmulatorSession implements EmulatorSession {
   @override
   void setFddMechanicalSoundVolume(double volume) {
     setFddMechanicalSoundVolumeCalls.add(volume);
+  }
+
+  @override
+  Future<bool> startRecording(String filePath) async {
+    startRecordingCalls.add(filePath);
+    if (startRecordingResult) {
+      isRecordingActive = true;
+    }
+    return startRecordingResult;
+  }
+
+  @override
+  Future<void> stopRecording() async {
+    stopRecordingCallCount++;
+    isRecordingActive = false;
   }
 
   @override

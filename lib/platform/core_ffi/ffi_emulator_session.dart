@@ -26,6 +26,7 @@ class FfiEmulatorSession implements EmulatorSession {
     this._textures,
     this._audio,
     this._fddMechanicalSound,
+    this._recording,
   );
 
   /// セッションを生成する。
@@ -50,6 +51,10 @@ class FfiEmulatorSession implements EmulatorSession {
   /// （`lib/app/bootstrap.dart`）。渡さなければ
   /// [setFddMechanicalSoundEnabled]／[setFddMechanicalSoundVolume]は
   /// 何もしない。
+  /// [recording] は音声録音（AUD-06）の制御先。[audio]と同じチェーンの
+  /// 一番外側（`RecordingAudioSink`）を渡すのが通常の使い方
+  /// （`lib/app/bootstrap.dart`）。渡さなければ [startRecording] は常に
+  /// `false`を返す。
   factory FfiEmulatorSession.create({
     required String homeDir,
     String? romDir,
@@ -61,6 +66,7 @@ class FfiEmulatorSession implements EmulatorSession {
     VideoTextureAttacher? textures,
     AudioSink? audio,
     FddMechanicalSoundSink? fddMechanicalSound,
+    RecordingControl? recording,
   }) {
     if (homeDir.isEmpty) {
       throw const EmulatorException(
@@ -97,6 +103,7 @@ class FfiEmulatorSession implements EmulatorSession {
         textures,
         audio,
         fddMechanicalSound,
+        recording,
       );
     } finally {
       // C境界を跨いだメモリは確保側が解放する。パスはネイティブ側が
@@ -116,6 +123,7 @@ class FfiEmulatorSession implements EmulatorSession {
   final Duration _pollInterval;
   final AudioSink? _audio;
   final FddMechanicalSoundSink? _fddMechanicalSound;
+  final RecordingControl? _recording;
 
   Pointer<BfmSession> _handle;
   Timer? _pollTimer;
@@ -608,6 +616,23 @@ class FfiEmulatorSession implements EmulatorSession {
   void setFddMechanicalSoundVolume(double volume) {
     _fddMechanicalSound?.setFddSoundVolume(volume);
   }
+
+  @override
+  Future<bool> startRecording(String filePath) async {
+    final recording = _recording;
+    if (recording == null) {
+      return false;
+    }
+    return recording.startRecording(filePath);
+  }
+
+  @override
+  Future<void> stopRecording() async {
+    await _recording?.stopRecording();
+  }
+
+  @override
+  bool get isRecordingActive => _recording?.isRecording ?? false;
 
   @override
   Future<int> attachVideoTexture() async {

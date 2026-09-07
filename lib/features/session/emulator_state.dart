@@ -32,6 +32,7 @@ class EmulatorViewState {
     this.optionSwitches = const RunOptionSwitches(),
     this.soundVolumes = const SoundChannelVolumes(),
     this.fddMechanicalSoundEnabled = true,
+    this.isRecording = false,
     this.viewFps = 0,
     this.coreFps = 0,
   });
@@ -119,6 +120,9 @@ class EmulatorViewState {
   /// 永続化しないセッション内の状態（[soundVolumes]と同じ扱い）。
   final bool fddMechanicalSoundEnabled;
 
+  /// 音声録音中かどうか（AUD-06）。永続化しないセッション内の状態。
+  final bool isRecording;
+
   /// 直近1秒間に描画側へ公開したフレーム数（design.md 12.4 View FPS）。
   final double viewFps;
 
@@ -155,6 +159,7 @@ class EmulatorViewState {
     RunOptionSwitches? optionSwitches,
     SoundChannelVolumes? soundVolumes,
     bool? fddMechanicalSoundEnabled,
+    bool? isRecording,
     double? viewFps,
     double? coreFps,
   }) {
@@ -185,6 +190,7 @@ class EmulatorViewState {
       soundVolumes: soundVolumes ?? this.soundVolumes,
       fddMechanicalSoundEnabled:
           fddMechanicalSoundEnabled ?? this.fddMechanicalSoundEnabled,
+      isRecording: isRecording ?? this.isRecording,
       viewFps: viewFps ?? this.viewFps,
       coreFps: coreFps ?? this.coreFps,
     );
