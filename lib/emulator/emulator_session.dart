@@ -65,6 +65,11 @@ abstract class EmulatorSession {
   /// 反映されない。
   Future<int> setRunOptionSwitches(RunOptionSwitches switches);
 
+  /// 標準OPNのFM・PSG、Beep、キーボード音、FDD機構音のうち[channel]の
+  /// 音量を設定し、コマンドの連番を返す（AUD-03）。[volume]は0.0〜1.0
+  /// （0.0〜1.0の範囲外はクランプする）。
+  Future<int> setSoundChannelVolume(SoundChannel channel, double volume);
+
   /// キーを押す。[vkCode] は win32 の仮想キーコード（INP-01）。
   ///
   /// リピートの抑止と重複押下の除去は呼び出し側（Controller）の責務で、

@@ -97,6 +97,21 @@ typedef enum {
 } bfm_fdd_media_type;
 
 /*
+ * BFM_CMD_SET_SOUND_VOLUME の arg0 に渡す論理チャンネル
+ * （specification.md AUD-03）。VMのチャンネル番号（upstream
+ * VM::set_sound_device_volume の引数）へは design.md「標準音声設定
+ * （M3、AUD-03）の実装方式」に記録した対応表で変換する。OPN1/OPN2
+ * （WHG/THG拡張、AUD-02、P2）とCMT関連チャンネルはここに含めない。
+ */
+typedef enum {
+	BFM_SOUND_CHANNEL_OPN_FM = 0,
+	BFM_SOUND_CHANNEL_OPN_PSG = 1,
+	BFM_SOUND_CHANNEL_BEEP = 2,
+	BFM_SOUND_CHANNEL_KEYBOARD_BEEP = 3,
+	BFM_SOUND_CHANNEL_FDD_MECHANISM = 4
+} bfm_sound_channel;
+
+/*
  * BFM_CMD_SET_OPTION_SWITCH の arg0 に渡すビット（specification.md
  * SYS-06）。この3ビットの組だけを毎回丸ごと置き換える（マージしない）。
  * サイクルスチールとHSYNC同期はコアの update_config() で即時反映されるが、
@@ -235,10 +250,24 @@ typedef enum {
 	 * （bubi_fm77av.h 前掲）。サイクルスチール／HSYNC同期は即時、
 	 * 拡張RAMは次のリセットまで反映されない（design.md 16.1）。
 	 */
-	BFM_CMD_SET_SOUND_TYPE = 0x0500,         /* M3 AUD-03 */
+	BFM_CMD_SET_SOUND_TYPE = 0x0500,         /* M3 AUD-02（P2、未実装） */
 	BFM_CMD_SET_OPTION_SWITCH = 0x0501,      /* M3 SYS-06 */
 	BFM_CMD_SET_VOLUME = 0x0502,             /* M3 AUD-05 */
 	BFM_CMD_SET_FRAME_RATE = 0x0503,         /* M3 VID-05 */
+	/*
+	 * BFM_CMD_SET_SOUND_VOLUME: 標準OPNのFM・PSG、Beep、キーボード音、
+	 * FDD機構音の音量を個別に調整する（specification.md AUD-03）。
+	 * arg0 は bfm_sound_channel、arg1 はデシベル（0.5dB刻み、0=最大、
+	 * [-192, 0]の範囲外は BFM_ERR_INVALID_ARGUMENT）。L/Rは同値で送る
+	 * （このAPIにステレオ定位の要求はない）。
+	 *
+	 * upstream の VM::set_sound_device_volume(ch, decibel_l, decibel_r)
+	 * （native/core/upstream/src/vm/fm7/fm7.cpp）を
+	 * EMU::set_sound_device_volume() 経由で直接呼ぶ。design.md
+	 * 「標準音声設定（M3、AUD-03）の実装方式」に論理チャンネルと
+	 * VMチャンネル番号の対応表を記録する。
+	 */
+	BFM_CMD_SET_SOUND_VOLUME = 0x0504,       /* M3 AUD-03 */
 
 	/* 状態 */
 	BFM_CMD_SAVE_STATE = 0x0600,             /* M3 STA-01 */

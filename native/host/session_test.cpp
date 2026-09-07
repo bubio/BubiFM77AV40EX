@@ -883,6 +883,85 @@ void test_run_settings()
 	bfm_destroy(session);
 }
 
+void test_sound_volume()
+{
+	group("標準音声チャンネルの音量（AUD-03）");
+
+	bfm_session* session = make_session();
+	if (session == nullptr) {
+		check(false, "生成できる");
+		return;
+	}
+
+	bfm_command command{};
+	command.kind = BFM_CMD_SET_SOUND_VOLUME;
+	command.arg0 = BFM_SOUND_CHANNEL_BEEP;
+	command.arg1 = 0;
+	check(bfm_send_command(session, &command, nullptr) == BFM_ERR_INVALID_STATE,
+	      "未起動では invalidState");
+
+	bfm_start(session);
+	check(wait_for_state(session, BFM_STATE_RUNNING, 5000), "running へ遷移する");
+
+	uint64_t id = 0;
+	int32_t code = -1;
+
+	// 5チャンネルそれぞれ、最大(0)・中間(-96)・実質無音(-192)が成功する。
+	const int64_t channels[] = {
+	    BFM_SOUND_CHANNEL_OPN_FM,
+	    BFM_SOUND_CHANNEL_OPN_PSG,
+	    BFM_SOUND_CHANNEL_BEEP,
+	    BFM_SOUND_CHANNEL_KEYBOARD_BEEP,
+	    BFM_SOUND_CHANNEL_FDD_MECHANISM,
+	};
+	for (int64_t channel : channels) {
+		for (int64_t decibel : {0, -96, -192}) {
+			command = bfm_command{};
+			command.kind = BFM_CMD_SET_SOUND_VOLUME;
+			command.arg0 = channel;
+			command.arg1 = decibel;
+			check(bfm_send_command(session, &command, &id) == BFM_OK,
+			      "投入できる");
+			code = -1;
+			check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+			check(code == BFM_OK, "有効なチャンネル・デシベルは成功で完了する");
+		}
+	}
+
+	// チャンネル番号の範囲外。
+	command = bfm_command{};
+	command.kind = BFM_CMD_SET_SOUND_VOLUME;
+	command.arg0 = -1;
+	command.arg1 = 0;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "不正値も受理はする");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_ERR_INVALID_ARGUMENT, "負のチャンネル番号はinvalidArgument");
+
+	command.arg0 = 5;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "不正値も受理はする");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_ERR_INVALID_ARGUMENT, "範囲外のチャンネル番号はinvalidArgument");
+
+	// デシベルの範囲外。
+	command.arg0 = BFM_SOUND_CHANNEL_BEEP;
+	command.arg1 = 1;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "不正値も受理はする");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_ERR_INVALID_ARGUMENT, "0より大きいデシベルはinvalidArgument");
+
+	command.arg1 = -193;
+	check(bfm_send_command(session, &command, &id) == BFM_OK, "不正値も受理はする");
+	code = -1;
+	check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+	check(code == BFM_ERR_INVALID_ARGUMENT, "-192未満のデシベルはinvalidArgument");
+
+	bfm_stop(session);
+	bfm_destroy(session);
+}
+
 // --- 別プロセスで行う検査 ---
 //
 // home_dir はプロセス全体で1つに固定されるため、書込み不能な home_dir を
@@ -1451,6 +1530,7 @@ int main(int argc, char** argv)
 	test_rom_wiring();
 	test_boot_mode();
 	test_run_settings();
+	test_sound_volume();
 	test_video();
 	test_input();
 	test_audio();

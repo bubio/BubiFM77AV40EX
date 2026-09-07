@@ -84,6 +84,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   CpuType _cpuType = CpuType.fast;
   RunOptionSwitches _optionSwitches = const RunOptionSwitches();
 
+  /// 直近に指定された標準音声チャンネル音量（AUD-03）。停止中に
+  /// 変更されても次回[launch]時に適用できるよう覚えておく。
+  SoundChannelVolumes _soundVolumes = const SoundChannelVolumes();
+
   /// FD1/FD2ごとの書込み保護・タイミング補正・CRCエラー無視（FDD-06）。
   /// 停止中に変更されても次回[launch]時に適用できるよう覚えておく。
   final Map<int, FddDriveSettings> _fddDriveSettings = {};
@@ -236,6 +240,17 @@ class EmulatorController extends Notifier<EmulatorViewState> {
         if (_optionSwitches != const RunOptionSwitches()) {
           await session.setRunOptionSwitches(_optionSwitches);
         }
+        if (_soundVolumes != const SoundChannelVolumes()) {
+          const defaults = SoundChannelVolumes();
+          for (final channel in SoundChannel.values) {
+            if (_soundVolumes[channel] != defaults[channel]) {
+              await session.setSoundChannelVolume(
+                channel,
+                _soundVolumes[channel],
+              );
+            }
+          }
+        }
         // 書込み保護はドライブではなく、マウントされた媒体自身が持つ
         // 状態（コアはDISK::open()のたびにファイル自身のヘッダから
         // 決め直す）。起動直後は何も挿入されていないため、ここでは
@@ -257,6 +272,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
           fullSpeed: _fullSpeed,
           cpuType: _cpuType,
           optionSwitches: _optionSwitches,
+          soundVolumes: _soundVolumes,
           fddDriveSettings: {..._fddDriveSettings},
         );
       } on Object {
@@ -291,6 +307,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       fullSpeed: _fullSpeed,
       cpuType: _cpuType,
       optionSwitches: _optionSwitches,
+      soundVolumes: _soundVolumes,
       fddDriveSettings: {..._fddDriveSettings},
       fddRecentFiles: state.fddRecentFiles,
     );
@@ -377,6 +394,17 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     _optionSwitches = switches;
     state = state.copyWith(optionSwitches: switches);
     await _session?.setRunOptionSwitches(switches);
+  }
+
+  /// 標準OPNのFM・PSG、Beep、キーボード音、FDD機構音のうち[channel]の
+  /// 音量を変える（AUD-03）。起動中ならコアへ即時反映される。
+  Future<void> setSoundChannelVolume(
+    SoundChannel channel,
+    double volume,
+  ) async {
+    _soundVolumes = _soundVolumes.withVolume(channel, volume);
+    state = state.copyWith(soundVolumes: _soundVolumes);
+    await _session?.setSoundChannelVolume(channel, volume);
   }
 
   FddDriveSettings _driveSettingsOf(int drive) =>

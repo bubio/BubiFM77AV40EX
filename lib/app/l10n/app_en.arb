@@ -255,6 +255,30 @@
   "@deviceDisplayScanline": {
     "description": "Checkbox toggling the scanline effect (VID-04)."
   },
+  "deviceSoundVolume": "Volume…",
+  "@deviceSoundVolume": {
+    "description": "Action opening the standard sound channel volume dialog (AUD-03)."
+  },
+  "soundChannelOpnFm": "FM",
+  "@soundChannelOpnFm": {
+    "description": "Volume slider label for the standard OPN's FM part (AUD-03)."
+  },
+  "soundChannelOpnPsg": "PSG",
+  "@soundChannelOpnPsg": {
+    "description": "Volume slider label for the standard OPN's PSG part (AUD-03)."
+  },
+  "soundChannelBeep": "Beep",
+  "@soundChannelBeep": {
+    "description": "Volume slider label for the beep channel (AUD-03)."
+  },
+  "soundChannelKeyboardBeep": "Keyboard",
+  "@soundChannelKeyboardBeep": {
+    "description": "Volume slider label for the keyboard operation sound (AUD-03)."
+  },
+  "soundChannelFddMechanism": "FDD Mechanism",
+  "@soundChannelFddMechanism": {
+    "description": "Volume slider label for the FDD seek/head noise (AUD-03)."
+  },
   "menuHost": "Host",
   "@menuHost": {
     "description": "In-app menu group: host-side screen, sound, and UI settings."

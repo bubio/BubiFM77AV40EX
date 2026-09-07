@@ -21,6 +21,7 @@ import 'menu/app_menu_bar.dart';
 import 'menu/menu_catalog.dart';
 import 'menu/platform_application_menu.dart';
 import 'menu/settings_dialog.dart';
+import 'menu/sound_volume_dialog.dart';
 
 /// アプリケーションのルート。
 ///
@@ -190,6 +191,7 @@ class _HomeState extends ConsumerState<_Home> {
       fullscreenSupported: fullscreen.supported,
       onFullscreenChanged: fullscreenController.setFullscreen,
       onCaptureScreen: _captureScreen,
+      onOpenSoundVolume: _openSoundVolumeDialog,
       localeMode: settings.localeMode,
       onLocaleModeChanged: settingsController.setLocaleMode,
     );
@@ -224,6 +226,26 @@ class _HomeState extends ConsumerState<_Home> {
     } on ScreenshotException catch (error) {
       debugPrint('Screenshot failed: $error');
     }
+  }
+
+  /// 標準音声チャンネルの音量ダイアログを開く（AUD-03）。
+  ///
+  /// [SettingsDialog]（マスター音量）と同じく、開いた時点の値を渡すだけの
+  /// `StatelessWidget`にする。スライダーを動かすたびに`_HomeState`が
+  /// 再構築されても、すでに開いているダイアログ自体は作り直さない
+  /// （design.md 12.3、既存のマスター音量ダイアログと同じ制約）。
+  void _openSoundVolumeDialog() {
+    final controller = ref.read(emulatorControllerProvider.notifier);
+    showDialog<void>(
+      context: context,
+      builder: (context) => SoundVolumeDialog(
+        l10n: AppLocalizations.of(context),
+        volumes: ref.read(emulatorControllerProvider).soundVolumes,
+        onChanged: (channel, volume) {
+          controller.setSoundChannelVolume(channel, volume);
+        },
+      ),
+    );
   }
 
   void _showRomProblemDialog() {

@@ -188,6 +188,8 @@ class FakeEmulatorSession implements EmulatorSession {
   final List<bool> setFullSpeedCalls = [];
   final List<CpuType> setCpuTypeCalls = [];
   final List<RunOptionSwitches> setRunOptionSwitchesCalls = [];
+  final List<(SoundChannel channel, double volume)> setSoundChannelVolumeCalls =
+      [];
   final List<(int drive, bool enabled)> setFddWriteProtectCalls = [];
   final List<(int drive, bool enabled)> setFddTimingCalls = [];
   final List<(int drive, bool ignore)> setFddCrcCheckCalls = [];
@@ -280,6 +282,12 @@ class FakeEmulatorSession implements EmulatorSession {
   @override
   Future<int> setRunOptionSwitches(RunOptionSwitches switches) async {
     setRunOptionSwitchesCalls.add(switches);
+    return _nextCommandId++;
+  }
+
+  @override
+  Future<int> setSoundChannelVolume(SoundChannel channel, double volume) async {
+    setSoundChannelVolumeCalls.add((channel, volume));
     return _nextCommandId++;
   }
 

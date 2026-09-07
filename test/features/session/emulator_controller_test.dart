@@ -101,12 +101,22 @@ void main() {
     expect(state().optionSwitches, switches);
   });
 
+  test('AUD-03 チャンネル音量は起動中ならコアへ即時に送り、状態も更新する', () async {
+    await controller().setSoundChannelVolume(SoundChannel.beep, 0.5);
+
+    expect(session.setSoundChannelVolumeCalls.last, (SoundChannel.beep, 0.5));
+    expect(state().soundVolumes.beep, 0.5);
+    // 他チャンネルは既定のまま。
+    expect(state().soundVolumes.opnFm, 1.0);
+  });
+
   test('実行設定は次回launch時に新しいセッションへ再適用される', () async {
     await controller().setSpeedMultiplier(SpeedMultiplier.x2);
     await controller().setFullSpeed(true);
     await controller().setCpuType(CpuType.slow);
     const switches = RunOptionSwitches(syncToHsync: true);
     await controller().setRunOptionSwitches(switches);
+    await controller().setSoundChannelVolume(SoundChannel.fddMechanism, 0.25);
 
     await controller().shutdown();
     // createSessionはsetUpのクロージャーが参照する`session`変数を
@@ -118,6 +128,10 @@ void main() {
     expect(session.setFullSpeedCalls, [true]);
     expect(session.setCpuTypeCalls, [CpuType.slow]);
     expect(session.setRunOptionSwitchesCalls, [switches]);
+    // 既定と異なるチャンネル（fddMechanism）だけを再送する。
+    expect(session.setSoundChannelVolumeCalls, [
+      (SoundChannel.fddMechanism, 0.25),
+    ]);
   });
 
   test('launch直後は既定値どおりの実行設定を送らない（無駄な往復を避ける）', () async {
@@ -129,18 +143,21 @@ void main() {
     expect(session.setFullSpeedCalls, isEmpty);
     expect(session.setCpuTypeCalls, isEmpty);
     expect(session.setRunOptionSwitchesCalls, isEmpty);
+    expect(session.setSoundChannelVolumeCalls, isEmpty);
   });
 
   test('停止後も実行設定の選択はstateに残る（メニュー表示とのずれを防ぐ）', () async {
     await controller().setSpeedMultiplier(SpeedMultiplier.x4);
     await controller().setFullSpeed(true);
     await controller().setCpuType(CpuType.slow);
+    await controller().setSoundChannelVolume(SoundChannel.opnPsg, 0.75);
 
     await controller().shutdown();
 
     expect(state().speedMultiplier, SpeedMultiplier.x4);
     expect(state().fullSpeed, isTrue);
     expect(state().cpuType, CpuType.slow);
+    expect(state().soundVolumes.opnPsg, 0.75);
     expect(state().isRunning, isFalse);
   });
 

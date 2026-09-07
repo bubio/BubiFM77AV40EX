@@ -87,6 +87,97 @@ class RunOptionSwitches {
   int get hashCode => Object.hash(cycleSteal, extendedRam, syncToHsync);
 }
 
+/// 標準音声の個別音量チャンネル（specification.md AUD-03）。
+///
+/// OPN1/OPN2（WHG/THG拡張、AUD-02、P2）とCMT関連チャンネルは含まない。
+enum SoundChannel {
+  /// 標準OPNのFM部。
+  opnFm,
+
+  /// 標準OPNのPSG部（YM2203内蔵SSG）。
+  opnPsg,
+
+  /// Beep（1bit PCM）。
+  beep,
+
+  /// キーボード操作音（AV系専用）。
+  keyboardBeep,
+
+  /// FDDのシーク・ヘッドロード／アンロード機構音。
+  fddMechanism,
+}
+
+/// 標準音声チャンネルごとの音量（specification.md AUD-03）。
+///
+/// 各値は0.0〜1.0。マスター音量（design.md 12.4、`SettingsController`）
+/// とは別物で、`PreferencesStore`へは永続化しない
+/// （`EmulatorController`がセッション内で記憶し、次回`launch()`で
+/// 再適用する。[CpuType]/[RunOptionSwitches]と同じ扱い）。
+class SoundChannelVolumes {
+  const SoundChannelVolumes({
+    this.opnFm = 1.0,
+    this.opnPsg = 1.0,
+    this.beep = 1.0,
+    this.keyboardBeep = 1.0,
+    this.fddMechanism = 1.0,
+  });
+
+  final double opnFm;
+  final double opnPsg;
+  final double beep;
+  final double keyboardBeep;
+  final double fddMechanism;
+
+  double operator [](SoundChannel channel) {
+    return switch (channel) {
+      SoundChannel.opnFm => opnFm,
+      SoundChannel.opnPsg => opnPsg,
+      SoundChannel.beep => beep,
+      SoundChannel.keyboardBeep => keyboardBeep,
+      SoundChannel.fddMechanism => fddMechanism,
+    };
+  }
+
+  SoundChannelVolumes withVolume(SoundChannel channel, double volume) {
+    return switch (channel) {
+      SoundChannel.opnFm => copyWith(opnFm: volume),
+      SoundChannel.opnPsg => copyWith(opnPsg: volume),
+      SoundChannel.beep => copyWith(beep: volume),
+      SoundChannel.keyboardBeep => copyWith(keyboardBeep: volume),
+      SoundChannel.fddMechanism => copyWith(fddMechanism: volume),
+    };
+  }
+
+  SoundChannelVolumes copyWith({
+    double? opnFm,
+    double? opnPsg,
+    double? beep,
+    double? keyboardBeep,
+    double? fddMechanism,
+  }) {
+    return SoundChannelVolumes(
+      opnFm: opnFm ?? this.opnFm,
+      opnPsg: opnPsg ?? this.opnPsg,
+      beep: beep ?? this.beep,
+      keyboardBeep: keyboardBeep ?? this.keyboardBeep,
+      fddMechanism: fddMechanism ?? this.fddMechanism,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is SoundChannelVolumes &&
+      other.opnFm == opnFm &&
+      other.opnPsg == opnPsg &&
+      other.beep == beep &&
+      other.keyboardBeep == keyboardBeep &&
+      other.fddMechanism == fddMechanism;
+
+  @override
+  int get hashCode =>
+      Object.hash(opnFm, opnPsg, beep, keyboardBeep, fddMechanism);
+}
+
 /// CPU速度倍率（specification.md SYS-03）。指数0=x1〜4=x16。
 /// 「無制限」（Full Speed）は音声方針が未決のため未実装
 /// （development_plan.md 14、design.md 16.1）。

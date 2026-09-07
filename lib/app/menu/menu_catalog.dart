@@ -57,6 +57,7 @@ List<MenuGroup> buildMenuCatalog({
   required bool fullscreenSupported,
   required void Function(bool enabled) onFullscreenChanged,
   required void Function() onCaptureScreen,
+  required void Function() onOpenSoundVolume,
   required AppLocaleMode localeMode,
   required void Function(AppLocaleMode mode) onLocaleModeChanged,
 }) {
@@ -274,15 +275,27 @@ List<MenuGroup> buildMenuCatalog({
         MenuSubmenu(
           'device.sound',
           label: l10n.menuDeviceSound,
-          entries: const [
+          entries: [
             // OPNしか選べないため、選択済みで無効の単一ラジオとして出す
             // （design.md 12.2の`Sound > OPN [P0]`）。
-            MenuRadioGroup<String>(
+            const MenuRadioGroup<String>(
               'device.sound.chip',
               label: '',
               groupValue: 'opn',
               options: [MenuRadioOption(value: 'opn', label: 'OPN')],
               onChanged: _noopStringChanged,
+            ),
+            const MenuSeparator('device.sound.sep0'),
+            // 標準OPNのFM・PSG、Beep、キーボード音、FDD機構音の個別音量
+            // （AUD-03）。これらはコアのゲスト側デバイスそのものの
+            // つまみであり、Host（ホスト側の最終ミックス、マスター音量）
+            // とは別物のためDeviceへ置く（design.md「標準音声設定
+            // （M3、AUD-03）の実装方式」）。
+            MenuAction(
+              'device.sound.volume',
+              label: l10n.deviceSoundVolume,
+              enabled: true,
+              onSelected: onOpenSoundVolume,
             ),
           ],
         ),

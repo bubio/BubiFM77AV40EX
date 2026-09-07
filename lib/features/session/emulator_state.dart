@@ -30,6 +30,7 @@ class EmulatorViewState {
     this.speedMultiplier = SpeedMultiplier.x1,
     this.fullSpeed = false,
     this.optionSwitches = const RunOptionSwitches(),
+    this.soundVolumes = const SoundChannelVolumes(),
     this.viewFps = 0,
     this.coreFps = 0,
   });
@@ -107,6 +108,12 @@ class EmulatorViewState {
   /// 拡張RAMだけは次のリセットまで実際の挙動に反映されない。
   final RunOptionSwitches optionSwitches;
 
+  /// 標準OPNのFM・PSG、Beep、キーボード音、FDD機構音の個別音量
+  /// （AUD-03）。永続化しないセッション内の状態
+  /// （[optionSwitches]と同じ扱い、design.md「標準音声設定（M3、
+  /// AUD-03）の実装方式」）。
+  final SoundChannelVolumes soundVolumes;
+
   /// 直近1秒間に描画側へ公開したフレーム数（design.md 12.4 View FPS）。
   final double viewFps;
 
@@ -141,6 +148,7 @@ class EmulatorViewState {
     int? speedMultiplier,
     bool? fullSpeed,
     RunOptionSwitches? optionSwitches,
+    SoundChannelVolumes? soundVolumes,
     double? viewFps,
     double? coreFps,
   }) {
@@ -168,6 +176,7 @@ class EmulatorViewState {
       speedMultiplier: speedMultiplier ?? this.speedMultiplier,
       fullSpeed: fullSpeed ?? this.fullSpeed,
       optionSwitches: optionSwitches ?? this.optionSwitches,
+      soundVolumes: soundVolumes ?? this.soundVolumes,
       viewFps: viewFps ?? this.viewFps,
       coreFps: coreFps ?? this.coreFps,
     );

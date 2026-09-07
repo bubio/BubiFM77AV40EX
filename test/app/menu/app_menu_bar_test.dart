@@ -73,6 +73,7 @@ void main() {
       fullscreenSupported: false,
       onFullscreenChanged: (_) {},
       onCaptureScreen: () {},
+      onOpenSoundVolume: () {},
       localeMode: AppLocaleMode.system,
       onLocaleModeChanged: onLocaleModeChanged ?? (_) {},
     );

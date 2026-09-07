@@ -56,6 +56,15 @@ abstract final class BfmFddMediaType {
   static const int media2DD = 1;
 }
 
+/// `bfm_sound_channel`。`BFM_CMD_SET_SOUND_VOLUME`（M3 AUD-03）のarg0。
+abstract final class BfmSoundChannel {
+  static const int opnFm = 0;
+  static const int opnPsg = 1;
+  static const int beep = 2;
+  static const int keyboardBeep = 3;
+  static const int fddMechanism = 4;
+}
+
 /// `BFM_CMD_SET_OPTION_SWITCH` の arg0 に渡すビット。
 ///
 /// この3ビットの組だけを毎回丸ごと置き換える（マージしない）。
@@ -101,6 +110,7 @@ abstract final class BfmCommandKind {
   static const int setOptionSwitch = 0x0501;
   static const int setVolume = 0x0502;
   static const int setFrameRate = 0x0503;
+  static const int setSoundVolume = 0x0504;
 
   static const int saveState = 0x0600;
   static const int loadState = 0x0601;

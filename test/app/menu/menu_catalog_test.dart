@@ -34,6 +34,7 @@ void main() {
     HostScreenFilter hostFilter = HostScreenFilter.none,
     bool isFullscreen = false,
     bool fullscreenSupported = false,
+    void Function()? onOpenSoundVolume,
     AppLocaleMode localeMode = AppLocaleMode.system,
   }) {
     return buildMenuCatalog(
@@ -76,6 +77,7 @@ void main() {
       fullscreenSupported: fullscreenSupported,
       onFullscreenChanged: (_) {},
       onCaptureScreen: () {},
+      onOpenSoundVolume: onOpenSoundVolume ?? () {},
       localeMode: localeMode,
       onLocaleModeChanged: (_) {},
     );
@@ -288,10 +290,27 @@ void main() {
     expect(entries, hasLength(2));
     final sound = entries[0] as MenuSubmenu;
     expect(sound.id, 'device.sound');
-    final radio = sound.entries.single as MenuRadioGroup<String>;
+    expect(sound.entries, hasLength(3));
+    final radio = sound.entries[0] as MenuRadioGroup<String>;
     expect(radio.options.map((o) => o.label), ['OPN']);
+    expect(sound.entries[1], isA<MenuSeparator>());
+    final volume = sound.entries[2] as MenuAction;
+    expect(volume.id, 'device.sound.volume');
     final display = entries[1] as MenuSubmenu;
     expect(display.id, 'device.display');
+  });
+
+  test('Device > Sound > VolumeはonOpenSoundVolumeを呼ぶ（AUD-03）', () {
+    var called = false;
+    final sound =
+        catalog(onOpenSoundVolume: () => called = true)
+                .firstWhere((g) => g.id == MenuGroupId.device)
+                .entries[0]
+            as MenuSubmenu;
+    final volume = sound.entries[2] as MenuAction;
+    expect(volume.enabled, isTrue);
+    volume.onSelected();
+    expect(called, isTrue);
   });
 
   test('Device > Displayは走査線チェックボックスを持つ（VID-04）', () {

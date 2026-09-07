@@ -245,6 +245,12 @@ Future<void> _checkEmulatorSession(
   );
   check(optionSwitchCommandId > 0, 'オプションスイッチの変更を投入できる（SYS-06）');
 
+  final soundVolumeCommandId = await session.setSoundChannelVolume(
+    SoundChannel.beep,
+    0.5,
+  );
+  check(soundVolumeCommandId > 0, '標準音声チャンネルの音量変更を投入できる（AUD-03）');
+
   final writeProtectId = await session.setFddWriteProtect(0, true);
   check(writeProtectId > 0, 'FDDの書込み保護を投入できる（FDD-06）');
   final timingId = await session.setFddTiming(0, true);

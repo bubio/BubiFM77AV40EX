@@ -352,6 +352,27 @@ class FfiEmulatorSession implements EmulatorSession {
   }
 
   @override
+  Future<int> setSoundChannelVolume(SoundChannel channel, double volume) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = BfmCommandKind.setSoundVolume;
+      command.ref.arg0 = soundChannelToNative(channel);
+      command.ref.arg1 = soundVolumeToDecibel(volume);
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
   Future<int> insertFdd(int drive, String imagePath, {int bank = 0}) async {
     _ensureUsable();
     final command = calloc<BfmCommand>();

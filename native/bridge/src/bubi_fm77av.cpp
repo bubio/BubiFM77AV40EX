@@ -730,6 +730,23 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 		vm->update_config();
 		break;
 	}
+	case BFM_CMD_SET_SOUND_VOLUME: {
+		// AUD-03。論理チャンネル(bfm_sound_channel)をVMのチャンネル番号へ
+		// 変換して EMU::set_sound_device_volume() を直接呼ぶ（design.md
+		// 「標準音声設定（M3、AUD-03）の実装方式」に対応表を記録）。
+		static constexpr int64_t kCoreChannel[] = {0, 1, 6, 8, 9};
+		constexpr int64_t kChannelCount =
+		    static_cast<int64_t>(sizeof(kCoreChannel) / sizeof(kCoreChannel[0]));
+		if (queued.arg0 < 0 || queued.arg0 >= kChannelCount ||
+		    queued.arg1 < -192 || queued.arg1 > 0) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		const int core_channel = static_cast<int>(kCoreChannel[queued.arg0]);
+		const int decibel = static_cast<int>(queued.arg1);
+		session->emu->set_sound_device_volume(core_channel, decibel, decibel);
+		break;
+	}
 	default:
 		// 型として定義済みだが未実装。担当WPは bubi_fm77av.h を参照。
 		code = BFM_ERR_UNSUPPORTED;

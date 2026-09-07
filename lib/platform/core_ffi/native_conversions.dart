@@ -70,6 +70,25 @@ int runOptionSwitchesToNative(RunOptionSwitches switches) =>
     (switches.extendedRam ? BfmOptionSwitch.extendedRam : 0) |
     (switches.syncToHsync ? BfmOptionSwitch.syncToHsync : 0);
 
+/// [SoundChannel] を `bfm_sound_channel` へ変換する（M3 AUD-03）。
+int soundChannelToNative(SoundChannel channel) => switch (channel) {
+  SoundChannel.opnFm => BfmSoundChannel.opnFm,
+  SoundChannel.opnPsg => BfmSoundChannel.opnPsg,
+  SoundChannel.beep => BfmSoundChannel.beep,
+  SoundChannel.keyboardBeep => BfmSoundChannel.keyboardBeep,
+  SoundChannel.fddMechanism => BfmSoundChannel.fddMechanism,
+};
+
+/// 0.0〜1.0の音量を`BFM_CMD_SET_SOUND_VOLUME`のarg1（デシベル、0.5dB刻み、
+/// 0=最大）へ変換する（M3 AUD-03）。範囲外はクランプする。
+///
+/// コアが受理する範囲は[-192, 0]（-96dB相当まで）だが、そのまま線形に
+/// 割り当てるとdB自体が対数のため、スライダー後半のごく一部（0.9〜1.0）
+/// にしか実用域が乗らない。実用的な操作幅にするため、UIの0.0〜1.0は
+/// -60dB（実質無音）〜0dB（最大）へ線形に割り当てる（unit=-120〜0）。
+int soundVolumeToDecibel(double volume) =>
+    (volume.clamp(0.0, 1.0) * 120).round() - 120;
+
 /// `bfm_event` の各フィールドから [EmulatorEvent] を組み立てる。
 EmulatorEvent emulatorEventFromNative({
   required int kind,
