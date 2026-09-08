@@ -219,22 +219,6 @@
   "@menuControlFullSpeed": {
     "description": "Control checkbox: unlimited speed, no wall-clock throttle (SYS-03)."
   },
-  "menuControlCpuType": "CPU Type",
-  "@menuControlCpuType": {
-    "description": "Control submenu: CPU clock type radio group (SYS-05)."
-  },
-  "menuControlCycleSteal": "Cycle Steal",
-  "@menuControlCycleSteal": {
-    "description": "Control checkbox: cycle steal option switch (SYS-06)."
-  },
-  "menuControlExtendedRam": "Extended RAM",
-  "@menuControlExtendedRam": {
-    "description": "Control checkbox: extended RAM option switch (SYS-06)."
-  },
-  "menuControlSyncToHsync": "HSYNC Sync",
-  "@menuControlSyncToHsync": {
-    "description": "Control checkbox: sync-to-HSYNC option switch (SYS-06)."
-  },
   "controlPaste": "Paste",
   "@controlPaste": {
     "description": "Action starting auto-key input of the clipboard text (INP-03)."
@@ -291,17 +275,25 @@
   "@deviceDisplayScanline": {
     "description": "Checkbox toggling the scanline effect (VID-04)."
   },
-  "deviceSoundVolume": "Volume…",
-  "@deviceSoundVolume": {
-    "description": "Action opening the standard sound channel volume dialog (AUD-03)."
+  "deviceCpuType": "CPU Type",
+  "@deviceCpuType": {
+    "description": "Device submenu: CPU clock type radio group (SYS-05)."
   },
-  "deviceSoundFddMechanismEnabled": "FDD Mechanism Sound",
-  "@deviceSoundFddMechanismEnabled": {
-    "description": "Checkbox toggling the host-synthesized FDD mechanical sound (AUD-04, read/write only)."
+  "deviceBootMode": "Boot Mode",
+  "@deviceBootMode": {
+    "description": "Device submenu label for the boot mode radio group; reuses romBootMode's option labels."
   },
-  "deviceJoystick": "Joystick…",
-  "@deviceJoystick": {
-    "description": "Action opening the joystick assignment dialog (INP-04)."
+  "deviceCycleSteal": "Cycle Steal",
+  "@deviceCycleSteal": {
+    "description": "Device checkbox: cycle steal option switch (SYS-06)."
+  },
+  "deviceExtendedRam": "Extended RAM",
+  "@deviceExtendedRam": {
+    "description": "Device checkbox: extended RAM option switch (SYS-06)."
+  },
+  "deviceSyncToHsync": "HSYNC Sync",
+  "@deviceSyncToHsync": {
+    "description": "Device checkbox: sync-to-HSYNC option switch (SYS-06)."
   },
   "deviceJoystickSlot1": "Joystick 1",
   "@deviceJoystickSlot1": {
@@ -370,6 +362,30 @@
   "hostScreenFilterRgb": "RGB Filter",
   "@hostScreenFilterRgb": {
     "description": "CRT-style RGB subpixel filter."
+  },
+  "hostShowStatusBar": "Show Status Bar",
+  "@hostShowStatusBar": {
+    "description": "Checkbox toggling the emulator status bar (design.md 12.2, 12.4)."
+  },
+  "menuHostSound": "Sound",
+  "@menuHostSound": {
+    "description": "Host submenu for standard sound channel volume and FDD mechanical sound."
+  },
+  "hostSoundVolume": "Volume…",
+  "@hostSoundVolume": {
+    "description": "Action opening the standard sound channel volume dialog (AUD-03)."
+  },
+  "hostSoundFddMechanismEnabled": "FDD Mechanism Sound",
+  "@hostSoundFddMechanismEnabled": {
+    "description": "Checkbox toggling the host-synthesized FDD mechanical sound (AUD-04, read/write only)."
+  },
+  "menuHostInput": "Input",
+  "@menuHostInput": {
+    "description": "Host submenu for joystick assignment and other input options."
+  },
+  "hostInputJoystick": "Joystick…",
+  "@hostInputJoystick": {
+    "description": "Action opening the joystick assignment dialog (INP-04)."
   },
   "menuHostLanguage": "Language",
   "@menuHostLanguage": {

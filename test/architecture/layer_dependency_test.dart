@@ -23,6 +23,7 @@ void main() {
         'platform/persistence/cache_workspace.dart',
         'platform/persistence/external_file_access.dart',
         'platform/persistence/window_chrome.dart',
+        'platform/persistence/window_scale.dart',
         // design.md 3.1 はローカライズを`app`に置く。生成物は他へ依存せず
         // 循環を作らないため、文言の参照だけを許す。
         'app/l10n/generated/app_localizations.dart',

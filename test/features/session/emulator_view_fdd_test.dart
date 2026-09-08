@@ -6,6 +6,7 @@ import 'package:bubi_fm77av40ex/features/session/emulator_controller.dart';
 import 'package:bubi_fm77av40ex/features/session/rom_settings_controller.dart';
 import 'package:bubi_fm77av40ex/features/session/session_providers.dart';
 import 'package:bubi_fm77av40ex/features/session/widgets/emulator_view.dart';
+import 'package:bubi_fm77av40ex/features/session/widgets/status_bar.dart';
 import 'package:bubi_fm77av40ex/features/settings/settings_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -85,6 +86,10 @@ class _LaunchingHomeState extends ConsumerState<_LaunchingHome> {
       onScanlineChanged: emulatorController.setScanlineEnabled,
       hostFilter: emulator.hostFilter,
       onHostFilterChanged: emulatorController.setHostFilter,
+      windowScaleSupported: false,
+      windowScaleMultipliers: const [],
+      windowScaleCurrentMultiplier: null,
+      onWindowScaleChanged: (_) {},
       isFullscreen: false,
       fullscreenSupported: false,
       onFullscreenChanged: (_) {},
@@ -103,6 +108,8 @@ class _LaunchingHomeState extends ConsumerState<_LaunchingHome> {
       onRomajiToKanaChanged: (_) {},
       onOpenSaveState: () {},
       onOpenLoadState: () {},
+      showStatusBar: settings.showStatusBar,
+      onShowStatusBarChanged: settingsController.setShowStatusBar,
       localeMode: settings.localeMode,
       onLocaleModeChanged: settingsController.setLocaleMode,
     );
@@ -321,6 +328,21 @@ void main() {
     // Flutter testのpending timer検査はこのtestWidgetsの本体が戻った
     // 直後に走る。`_liveTypeEngine`のTimerが同期的に止まっていなければ
     // 検査に引っかかる。
+    container.dispose();
+  });
+
+  testWidgets('Host > Show Status Barでステータスバーの表示を切り替えられる', (tester) async {
+    final container = await wrap(tester);
+    await tester.pumpAndSettle();
+    expect(find.byType(StatusBar), findsOneWidget);
+
+    await tester.tap(find.text('Host'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ステータスバーを表示'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(StatusBar), findsNothing);
+
     container.dispose();
   });
 }

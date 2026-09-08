@@ -55,6 +55,10 @@ List<MenuGroup> buildMenuCatalog({
   required void Function(HostScreenFilter filter) onHostFilterChanged,
   required bool isFullscreen,
   required bool fullscreenSupported,
+  required bool windowScaleSupported,
+  required List<int> windowScaleMultipliers,
+  required int? windowScaleCurrentMultiplier,
+  required void Function(int multiplier) onWindowScaleChanged,
   required void Function(bool enabled) onFullscreenChanged,
   required void Function() onCaptureScreen,
   required bool isRecording,
@@ -71,6 +75,8 @@ List<MenuGroup> buildMenuCatalog({
   required void Function(bool enabled) onRomajiToKanaChanged,
   required void Function() onOpenSaveState,
   required void Function() onOpenLoadState,
+  required bool showStatusBar,
+  required void Function(bool visible) onShowStatusBarChanged,
   required AppLocaleMode localeMode,
   required void Function(AppLocaleMode mode) onLocaleModeChanged,
 }) {
@@ -111,56 +117,6 @@ List<MenuGroup> buildMenuCatalog({
           enabled: true,
           checked: fullSpeed,
           onChanged: onFullSpeedChanged,
-        ),
-        MenuRadioGroup<CpuType>(
-          'control.cpuType',
-          label: l10n.menuControlCpuType,
-          groupValue: cpuType,
-          options: const [
-            MenuRadioOption(value: CpuType.fast, label: '2.0MHz'),
-            MenuRadioOption(value: CpuType.slow, label: '1.2MHz'),
-          ],
-          onChanged: onCpuTypeChanged,
-        ),
-        MenuRadioGroup<BootMode>(
-          'control.bootMode',
-          label: l10n.romBootMode,
-          groupValue: bootMode,
-          options: [
-            MenuRadioOption(
-              value: BootMode.basic,
-              label: l10n.romBootModeBasic,
-            ),
-            MenuRadioOption(value: BootMode.dos, label: l10n.romBootModeDos),
-          ],
-          onChanged: onBootModeChanged,
-        ),
-        MenuCheckbox(
-          'control.cycleSteal',
-          label: l10n.menuControlCycleSteal,
-          enabled: true,
-          checked: optionSwitches.cycleSteal,
-          onChanged: (value) => onOptionSwitchesChanged(
-            optionSwitches.copyWith(cycleSteal: value),
-          ),
-        ),
-        MenuCheckbox(
-          'control.extendedRam',
-          label: l10n.menuControlExtendedRam,
-          enabled: true,
-          checked: optionSwitches.extendedRam,
-          onChanged: (value) => onOptionSwitchesChanged(
-            optionSwitches.copyWith(extendedRam: value),
-          ),
-        ),
-        MenuCheckbox(
-          'control.syncToHsync',
-          label: l10n.menuControlSyncToHsync,
-          enabled: true,
-          checked: optionSwitches.syncToHsync,
-          onChanged: (value) => onOptionSwitchesChanged(
-            optionSwitches.copyWith(syncToHsync: value),
-          ),
         ),
         const MenuSeparator('control.sep2'),
         MenuAction(
@@ -318,40 +274,21 @@ List<MenuGroup> buildMenuCatalog({
       id: MenuGroupId.device,
       label: l10n.menuDevice,
       entries: [
+        // OPNしか選べないため、選択済みで無効の単一ラジオとして出す
+        // （design.md 12.2の`Sound > OPN [P0]`）。標準OPNの個別チャンネル
+        // 音量とFDD機構音の有効・無効はHost>Soundにある
+        // （design.md「メニュー整理（Control/Device/Host、Bubilator88
+        // 準拠）」）。
         MenuSubmenu(
           'device.sound',
           label: l10n.menuDeviceSound,
-          entries: [
-            // OPNしか選べないため、選択済みで無効の単一ラジオとして出す
-            // （design.md 12.2の`Sound > OPN [P0]`）。
-            const MenuRadioGroup<String>(
+          entries: const [
+            MenuRadioGroup<String>(
               'device.sound.chip',
               label: '',
               groupValue: 'opn',
               options: [MenuRadioOption(value: 'opn', label: 'OPN')],
               onChanged: _noopStringChanged,
-            ),
-            const MenuSeparator('device.sound.sep0'),
-            // FDD内部機構音（readWriteのみ、AUD-04）の有効・無効。
-            // ホスト側合成のためコアへは送らない
-            // （`EmulatorController.setFddMechanicalSoundEnabled`）。
-            MenuCheckbox(
-              'device.sound.fddMechanismEnabled',
-              label: l10n.deviceSoundFddMechanismEnabled,
-              enabled: true,
-              checked: fddMechanicalSoundEnabled,
-              onChanged: onFddMechanicalSoundEnabledChanged,
-            ),
-            // 標準OPNのFM・PSG、Beep、キーボード音、FDD機構音の個別音量
-            // （AUD-03）。これらはコアのゲスト側デバイスそのものの
-            // つまみであり、Host（ホスト側の最終ミックス、マスター音量）
-            // とは別物のためDeviceへ置く（design.md「標準音声設定
-            // （M3、AUD-03）の実装方式」）。
-            MenuAction(
-              'device.sound.volume',
-              label: l10n.deviceSoundVolume,
-              enabled: true,
-              onSelected: onOpenSoundVolume,
             ),
           ],
         ),
@@ -368,14 +305,56 @@ List<MenuGroup> buildMenuCatalog({
             ),
           ],
         ),
-        // 2台の物理ジョイスティック/ゲームパッドをJS1/JS2へ割り当てる
-        // ダイアログを開く（M3 INP-04）。方向・ボタンの割当自体は固定
-        // （INP-05のスコープ外）。
-        MenuAction(
-          'device.joystick',
-          label: l10n.deviceJoystick,
+        const MenuSeparator('device.sep0'),
+        MenuRadioGroup<CpuType>(
+          'device.cpuType',
+          label: l10n.deviceCpuType,
+          groupValue: cpuType,
+          options: const [
+            MenuRadioOption(value: CpuType.fast, label: '2.0MHz'),
+            MenuRadioOption(value: CpuType.slow, label: '1.2MHz'),
+          ],
+          onChanged: onCpuTypeChanged,
+        ),
+        MenuRadioGroup<BootMode>(
+          'device.bootMode',
+          label: l10n.romBootMode,
+          groupValue: bootMode,
+          options: [
+            MenuRadioOption(
+              value: BootMode.basic,
+              label: l10n.romBootModeBasic,
+            ),
+            MenuRadioOption(value: BootMode.dos, label: l10n.romBootModeDos),
+          ],
+          onChanged: onBootModeChanged,
+        ),
+        MenuCheckbox(
+          'device.cycleSteal',
+          label: l10n.deviceCycleSteal,
           enabled: true,
-          onSelected: onOpenJoystickAssignment,
+          checked: optionSwitches.cycleSteal,
+          onChanged: (value) => onOptionSwitchesChanged(
+            optionSwitches.copyWith(cycleSteal: value),
+          ),
+        ),
+        MenuCheckbox(
+          'device.extendedRam',
+          label: l10n.deviceExtendedRam,
+          enabled: true,
+          checked: optionSwitches.extendedRam,
+          onChanged: (value) => onOptionSwitchesChanged(
+            optionSwitches.copyWith(extendedRam: value),
+          ),
+        ),
+        MenuCheckbox(
+          'device.syncToHsync',
+          label: l10n.deviceSyncToHsync,
+          enabled: true,
+          checked: optionSwitches.syncToHsync,
+          onChanged: (value) => onOptionSwitchesChanged(
+            optionSwitches.copyWith(syncToHsync: value),
+          ),
         ),
       ],
     ),
@@ -406,6 +385,21 @@ List<MenuGroup> buildMenuCatalog({
           'host.screen',
           label: l10n.menuHostScreen,
           entries: [
+            if (windowScaleSupported && windowScaleMultipliers.isNotEmpty)
+              MenuRadioGroup<int>(
+                'host.screen.windowScale',
+                label: '',
+                // どの倍率とも一致しない実サイズ（利用者がドラッグで任意
+                // サイズへ変えた直後等）はどれも選択されていない状態で
+                // 表示する（design.md 12.3「ラジオ項目は設定値と常に一つ
+                // だけ一致」の例外、一致する設定値自体が無い）。
+                groupValue: windowScaleCurrentMultiplier ?? -1,
+                options: [
+                  for (final multiplier in windowScaleMultipliers)
+                    MenuRadioOption(value: multiplier, label: 'x$multiplier'),
+                ],
+                onChanged: onWindowScaleChanged,
+              ),
             MenuCheckbox(
               'host.screen.fullscreen',
               label: l10n.hostScreenFullscreen,
@@ -451,7 +445,53 @@ List<MenuGroup> buildMenuCatalog({
             ),
           ],
         ),
+        // 標準OPNのFM・PSG、Beep、キーボード音、FDD機構音の個別音量
+        // （AUD-03）とFDD内部機構音（readWriteのみ、AUD-04）の有効・無効。
+        // 原作（Bubilator88）に合わせHost>Soundへ置く
+        // （design.md「メニュー整理（Control/Device/Host、Bubilator88
+        // 準拠）」）。
+        MenuSubmenu(
+          'host.sound',
+          label: l10n.menuHostSound,
+          entries: [
+            MenuCheckbox(
+              'host.sound.fddMechanismEnabled',
+              label: l10n.hostSoundFddMechanismEnabled,
+              enabled: true,
+              checked: fddMechanicalSoundEnabled,
+              onChanged: onFddMechanicalSoundEnabledChanged,
+            ),
+            MenuAction(
+              'host.sound.volume',
+              label: l10n.hostSoundVolume,
+              enabled: true,
+              onSelected: onOpenSoundVolume,
+            ),
+          ],
+        ),
+        // 2台の物理ジョイスティック/ゲームパッドをJS1/JS2へ割り当てる
+        // ダイアログを開く（M3 INP-04）。方向・ボタンの割当自体は固定
+        // （INP-05のスコープ外）。原作に合わせHost>Inputへ置く。
+        MenuSubmenu(
+          'host.input',
+          label: l10n.menuHostInput,
+          entries: [
+            MenuAction(
+              'host.input.joystick',
+              label: l10n.hostInputJoystick,
+              enabled: true,
+              onSelected: onOpenJoystickAssignment,
+            ),
+          ],
+        ),
         const MenuSeparator('host.sep1'),
+        MenuCheckbox(
+          'host.showStatusBar',
+          label: l10n.hostShowStatusBar,
+          enabled: true,
+          checked: showStatusBar,
+          onChanged: onShowStatusBarChanged,
+        ),
         MenuSubmenu(
           'host.language',
           label: l10n.menuHostLanguage,

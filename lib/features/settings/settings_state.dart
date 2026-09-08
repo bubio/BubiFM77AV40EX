@@ -12,6 +12,7 @@ class SettingsState {
   const SettingsState({
     this.localeMode = AppLocaleMode.system,
     this.masterVolume = 1.0,
+    this.showStatusBar = true,
   });
 
   final AppLocaleMode localeMode;
@@ -19,10 +20,18 @@ class SettingsState {
   /// 0.0（無音）から1.0（最大）。SoLoudの`globalVolume`へそのまま渡す。
   final double masterVolume;
 
-  SettingsState copyWith({AppLocaleMode? localeMode, double? masterVolume}) {
+  /// ステータスバーの表示可否（design.md 12.2 `Host > Show Status Bar`）。
+  final bool showStatusBar;
+
+  SettingsState copyWith({
+    AppLocaleMode? localeMode,
+    double? masterVolume,
+    bool? showStatusBar,
+  }) {
     return SettingsState(
       localeMode: localeMode ?? this.localeMode,
       masterVolume: masterVolume ?? this.masterVolume,
+      showStatusBar: showStatusBar ?? this.showStatusBar,
     );
   }
 }

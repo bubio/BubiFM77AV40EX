@@ -13,6 +13,10 @@ import '../emulator_state.dart';
 /// 音量、INS、KANA、CAPSを置き、右端へ`[BASIC|DOS]`とView/Core FPSを
 /// 右寄せする。CPU速度（`2.0MHz|1.2MHz`）はコアから読める観測値がなく、
 /// bridgeコマンドも予約のみ（M3）のため出さない（design.md 16.1）。
+/// [StatusBar]の高さ（論理px、design.md 12.4）。ウィンドウ倍率計算
+/// （`WindowScaleController`）が内容領域からこの分を差し引く。
+const double statusBarHeight = 24;
+
 class StatusBar extends StatelessWidget {
   const StatusBar({
     super.key,
@@ -32,7 +36,7 @@ class StatusBar extends StatelessWidget {
     final textStyle = Theme.of(context).textTheme.labelSmall
         ?.copyWith(color: Colors.white70);
     return Container(
-      height: 24,
+      height: statusBarHeight,
       color: const Color(0xFF1A1A1A),
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' show PlatformDispatcher;
+import 'dart:ui' show PlatformDispatcher, Size;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/display/fullscreen_controller.dart';
 import '../features/display/screenshot_service.dart';
+import '../features/display/window_scale_controller.dart';
 import '../features/input/joystick_assignment_controller.dart';
 import '../features/input/joystick_assignment_dialog.dart';
 import '../features/session/emulator_controller.dart';
@@ -15,6 +16,7 @@ import '../features/session/rom_boot_decision.dart';
 import '../features/session/rom_settings_state.dart';
 import '../features/session/session_providers.dart';
 import '../features/session/widgets/emulator_view.dart';
+import '../features/session/widgets/status_bar.dart' show statusBarHeight;
 import '../features/session/widgets/rom_problem_dialog.dart';
 import '../features/settings/settings_controller.dart';
 import '../features/settings/settings_state.dart';
@@ -128,6 +130,16 @@ class _HomeState extends ConsumerState<_Home> {
   bool _cliOverridesApplied = false;
   bool _cliMediaApplied = false;
 
+  /// `AppMenuBar`の実測の高さ（論理px）。`WindowScaleController`へ
+  /// ステータスバー分と合わせて伝える（design.md「Window x1/x2/…の
+  /// 実装方式」）。
+  double _menuBarHeight = 0;
+
+  /// [_menuBarHeight]が一度でも実測値へ更新されたか。起動直後の自動x1
+  /// 適用（`applyInitialMultiplierIfNeeded`）を、まだ0のままの
+  /// [_menuBarHeight]で行ってしまわないためのガード。
+  bool _menuBarHeightKnown = false;
+
   @override
   void initState() {
     super.initState();
@@ -153,6 +165,23 @@ class _HomeState extends ConsumerState<_Home> {
     final fullscreenController = ref.read(
       fullscreenControllerProvider.notifier,
     );
+    final windowScale = ref.watch(windowScaleControllerProvider);
+    final windowScaleController = ref.read(
+      windowScaleControllerProvider.notifier,
+    );
+    unawaited(
+      windowScaleController.setBaseSize(
+        Size(emulator.frameWidth.toDouble(), emulator.frameHeight.toDouble()),
+      ),
+    );
+    unawaited(
+      windowScaleController.setChromeHeight(
+        _menuBarHeight + (settings.showStatusBar ? statusBarHeight : 0),
+      ),
+    );
+    if (_menuBarHeightKnown) {
+      unawaited(windowScaleController.applyInitialMultiplierIfNeeded());
+    }
 
     // ROM走査が終わるたびに、自動起動するかROM問題ダイアログを出すかを
     // 判定する（`rom_boot_decision.dart`）。初期画面はエミュレーター表示を
@@ -210,6 +239,10 @@ class _HomeState extends ConsumerState<_Home> {
       onScanlineChanged: emulatorController.setScanlineEnabled,
       hostFilter: emulator.hostFilter,
       onHostFilterChanged: emulatorController.setHostFilter,
+      windowScaleSupported: windowScale.supported,
+      windowScaleMultipliers: windowScale.availableMultipliers,
+      windowScaleCurrentMultiplier: windowScale.currentMultiplier,
+      onWindowScaleChanged: windowScaleController.setMultiplier,
       isFullscreen: fullscreen.isFullscreen,
       fullscreenSupported: fullscreen.supported,
       onFullscreenChanged: fullscreenController.setFullscreen,
@@ -229,11 +262,20 @@ class _HomeState extends ConsumerState<_Home> {
       onRomajiToKanaChanged: emulatorController.setRomajiToKana,
       onOpenSaveState: () => _openStateSlotDialog(StateSlotDialogMode.save),
       onOpenLoadState: () => _openStateSlotDialog(StateSlotDialogMode.load),
+      showStatusBar: settings.showStatusBar,
+      onShowStatusBarChanged: settingsController.setShowStatusBar,
       localeMode: settings.localeMode,
       onLocaleModeChanged: settingsController.setLocaleMode,
     );
 
-    return AppMenuBar(groups: menuGroups, child: const EmulatorView());
+    return AppMenuBar(
+      groups: menuGroups,
+      onHeightChanged: (height) => setState(() {
+        _menuBarHeight = height;
+        _menuBarHeightKnown = true;
+      }),
+      child: const EmulatorView(),
+    );
   }
 
   void _syncWithRomSettings(RomSettingsState next) {

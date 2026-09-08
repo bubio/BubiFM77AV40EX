@@ -32,6 +32,10 @@ void main() {
     ScreenFit screenFit = ScreenFit.aspect,
     bool scanlineEnabled = false,
     HostScreenFilter hostFilter = HostScreenFilter.none,
+    bool windowScaleSupported = false,
+    List<int> windowScaleMultipliers = const [],
+    int? windowScaleCurrentMultiplier,
+    void Function(int multiplier)? onWindowScaleChanged,
     bool isFullscreen = false,
     bool fullscreenSupported = false,
     bool isRecording = false,
@@ -46,6 +50,8 @@ void main() {
     void Function(bool enabled)? onRomajiToKanaChanged,
     void Function()? onOpenSaveState,
     void Function()? onOpenLoadState,
+    bool showStatusBar = true,
+    void Function(bool visible)? onShowStatusBarChanged,
     AppLocaleMode localeMode = AppLocaleMode.system,
   }) {
     return buildMenuCatalog(
@@ -84,6 +90,10 @@ void main() {
       onScanlineChanged: (_) {},
       hostFilter: hostFilter,
       onHostFilterChanged: (_) {},
+      windowScaleSupported: windowScaleSupported,
+      windowScaleMultipliers: windowScaleMultipliers,
+      windowScaleCurrentMultiplier: windowScaleCurrentMultiplier,
+      onWindowScaleChanged: onWindowScaleChanged ?? (_) {},
       isFullscreen: isFullscreen,
       fullscreenSupported: fullscreenSupported,
       onFullscreenChanged: (_) {},
@@ -103,6 +113,8 @@ void main() {
       onRomajiToKanaChanged: onRomajiToKanaChanged ?? (_) {},
       onOpenSaveState: onOpenSaveState ?? () {},
       onOpenLoadState: onOpenLoadState ?? () {},
+      showStatusBar: showStatusBar,
+      onShowStatusBarChanged: onShowStatusBarChanged ?? (_) {},
       localeMode: localeMode,
       onLocaleModeChanged: (_) {},
     );
@@ -119,12 +131,12 @@ void main() {
   });
 
   test('Control: Reset、Special Reset、区切り、CPU Speed、Full Speed、'
-      'CPU Type、Boot Mode、オプションスイッチ3件、区切り、Paste、Stop Paste、'
-      'Romaji to Kana、区切り、Save State、Load Stateの順', () {
+      '区切り、Paste、Stop Paste、Romaji to Kana、区切り、'
+      'Save State、Load Stateの順', () {
     final entries = catalog()
         .firstWhere((g) => g.id == MenuGroupId.control)
         .entries;
-    expect(entries, hasLength(17));
+    expect(entries, hasLength(12));
     expect(
       entries[0],
       isA<MenuAction>().having((e) => e.id, 'id', 'control.reset'),
@@ -147,51 +159,68 @@ void main() {
       entries[4],
       isA<MenuCheckbox>().having((e) => e.id, 'id', 'control.fullSpeed'),
     );
-    final cpuTypeGroup = entries[5] as MenuRadioGroup<CpuType>;
-    expect(cpuTypeGroup.id, 'control.cpuType');
+    expect(entries[5], isA<MenuSeparator>());
+    expect(
+      entries[6],
+      isA<MenuAction>().having((e) => e.id, 'id', 'control.paste'),
+    );
+    expect(
+      entries[7],
+      isA<MenuAction>().having((e) => e.id, 'id', 'control.stopPaste'),
+    );
+    expect(
+      entries[8],
+      isA<MenuCheckbox>().having((e) => e.id, 'id', 'control.romajiToKana'),
+    );
+    expect(entries[9], isA<MenuSeparator>());
+    expect(
+      entries[10],
+      isA<MenuAction>().having((e) => e.id, 'id', 'control.saveState'),
+    );
+    expect(
+      entries[11],
+      isA<MenuAction>().having((e) => e.id, 'id', 'control.loadState'),
+    );
+  });
+
+  test('Device: Sound、Display、区切り、CPU Type、Boot Mode、'
+      'オプションスイッチ3件を持つ（Bubilator88準拠でControlから移動）', () {
+    final entries = catalog()
+        .firstWhere((g) => g.id == MenuGroupId.device)
+        .entries;
+    expect(entries, hasLength(8));
+    expect(
+      entries[0],
+      isA<MenuSubmenu>().having((e) => e.id, 'id', 'device.sound'),
+    );
+    expect(
+      entries[1],
+      isA<MenuSubmenu>().having((e) => e.id, 'id', 'device.display'),
+    );
+    expect(entries[2], isA<MenuSeparator>());
+    final cpuTypeGroup = entries[3] as MenuRadioGroup<CpuType>;
+    expect(cpuTypeGroup.id, 'device.cpuType');
     expect(cpuTypeGroup.options.map((o) => o.value), [
       CpuType.fast,
       CpuType.slow,
     ]);
-    final bootModeGroup = entries[6] as MenuRadioGroup<BootMode>;
-    expect(bootModeGroup.id, 'control.bootMode');
+    final bootModeGroup = entries[4] as MenuRadioGroup<BootMode>;
+    expect(bootModeGroup.id, 'device.bootMode');
     expect(bootModeGroup.options.map((o) => o.value), [
       BootMode.basic,
       BootMode.dos,
     ]);
     expect(
+      entries[5],
+      isA<MenuCheckbox>().having((e) => e.id, 'id', 'device.cycleSteal'),
+    );
+    expect(
+      entries[6],
+      isA<MenuCheckbox>().having((e) => e.id, 'id', 'device.extendedRam'),
+    );
+    expect(
       entries[7],
-      isA<MenuCheckbox>().having((e) => e.id, 'id', 'control.cycleSteal'),
-    );
-    expect(
-      entries[8],
-      isA<MenuCheckbox>().having((e) => e.id, 'id', 'control.extendedRam'),
-    );
-    expect(
-      entries[9],
-      isA<MenuCheckbox>().having((e) => e.id, 'id', 'control.syncToHsync'),
-    );
-    expect(entries[10], isA<MenuSeparator>());
-    expect(
-      entries[11],
-      isA<MenuAction>().having((e) => e.id, 'id', 'control.paste'),
-    );
-    expect(
-      entries[12],
-      isA<MenuAction>().having((e) => e.id, 'id', 'control.stopPaste'),
-    );
-    expect(
-      entries[13],
-      isA<MenuCheckbox>().having((e) => e.id, 'id', 'control.romajiToKana'),
-    );
-    expect(entries[14], isA<MenuSeparator>());
-    expect(
-      entries[15],
-      isA<MenuAction>().having((e) => e.id, 'id', 'control.saveState'),
-    );
-    expect(
-      entries[16],
-      isA<MenuAction>().having((e) => e.id, 'id', 'control.loadState'),
+      isA<MenuCheckbox>().having((e) => e.id, 'id', 'device.syncToHsync'),
     );
   });
 
@@ -202,8 +231,8 @@ void main() {
           isRunning: isRunning,
           isAutoKeying: isAutoKeying,
         ).firstWhere((g) => g.id == MenuGroupId.control).entries;
-        final paste = entries[11] as MenuAction;
-        final stopPaste = entries[12] as MenuAction;
+        final paste = entries[6] as MenuAction;
+        final stopPaste = entries[7] as MenuAction;
         expect(paste.enabled, isRunning && !isAutoKeying);
         expect(stopPaste.enabled, isAutoKeying);
       }
@@ -217,8 +246,8 @@ void main() {
       onStartAutoKey: () => started = true,
       onStopAutoKey: () => stopped = true,
     ).firstWhere((g) => g.id == MenuGroupId.control).entries;
-    (entries[11] as MenuAction).onSelected();
-    (entries[12] as MenuAction).onSelected();
+    (entries[6] as MenuAction).onSelected();
+    (entries[7] as MenuAction).onSelected();
     expect(started, isTrue);
     expect(stopped, isTrue);
   });
@@ -231,24 +260,24 @@ void main() {
         romajiToKana: true,
         onRomajiToKanaChanged: (enabled) => changed = enabled,
       ).firstWhere((g) => g.id == MenuGroupId.control).entries;
-      final checkbox = entries[13] as MenuCheckbox;
+      final checkbox = entries[8] as MenuCheckbox;
       expect(checkbox.checked, isTrue);
       checkbox.onChanged(false);
       expect(changed, isFalse);
     },
   );
 
-  test('Controlのオプションスイッチのチェック状態は引数に従う', () {
+  test('Deviceのオプションスイッチのチェック状態は引数に従う', () {
     final entries = catalog(
       optionSwitches: const RunOptionSwitches(
         cycleSteal: true,
         extendedRam: true,
         syncToHsync: true,
       ),
-    ).firstWhere((g) => g.id == MenuGroupId.control).entries;
+    ).firstWhere((g) => g.id == MenuGroupId.device).entries;
+    expect((entries[5] as MenuCheckbox).checked, isTrue);
+    expect((entries[6] as MenuCheckbox).checked, isTrue);
     expect((entries[7] as MenuCheckbox).checked, isTrue);
-    expect((entries[8] as MenuCheckbox).checked, isTrue);
-    expect((entries[9] as MenuCheckbox).checked, isTrue);
   });
 
   test('Full Speedのチェック状態は引数に従う', () {
@@ -374,65 +403,17 @@ void main() {
     expect(mountedCheckbox.enabled, isTrue);
   });
 
-  test('Device: Sound、Display、Joystickの順で持つ（INP-04）', () {
+  test('Device: Sound、Displayの順で持つ（Bubilator88準拠でSoundはOPNのみ）', () {
     final entries = catalog()
         .firstWhere((g) => g.id == MenuGroupId.device)
         .entries;
-    expect(entries, hasLength(3));
     final sound = entries[0] as MenuSubmenu;
     expect(sound.id, 'device.sound');
-    expect(sound.entries, hasLength(4));
+    expect(sound.entries, hasLength(1));
     final radio = sound.entries[0] as MenuRadioGroup<String>;
     expect(radio.options.map((o) => o.label), ['OPN']);
-    expect(sound.entries[1], isA<MenuSeparator>());
-    final fddMechanismEnabled = sound.entries[2] as MenuCheckbox;
-    expect(fddMechanismEnabled.id, 'device.sound.fddMechanismEnabled');
-    final volume = sound.entries[3] as MenuAction;
-    expect(volume.id, 'device.sound.volume');
     final display = entries[1] as MenuSubmenu;
     expect(display.id, 'device.display');
-    final joystick = entries[2] as MenuAction;
-    expect(joystick.id, 'device.joystick');
-  });
-
-  test('Device > JoystickはonOpenJoystickAssignmentを呼ぶ（INP-04）', () {
-    var called = false;
-    final joystick =
-        catalog(onOpenJoystickAssignment: () => called = true)
-                .firstWhere((g) => g.id == MenuGroupId.device)
-                .entries[2]
-            as MenuAction;
-    expect(joystick.enabled, isTrue);
-    joystick.onSelected();
-    expect(called, isTrue);
-  });
-
-  test('Device > Sound > VolumeはonOpenSoundVolumeを呼ぶ（AUD-03）', () {
-    var called = false;
-    final sound =
-        catalog(onOpenSoundVolume: () => called = true)
-                .firstWhere((g) => g.id == MenuGroupId.device)
-                .entries[0]
-            as MenuSubmenu;
-    final volume = sound.entries[3] as MenuAction;
-    expect(volume.enabled, isTrue);
-    volume.onSelected();
-    expect(called, isTrue);
-  });
-
-  test('Device > Sound > FDD Mechanism Soundはチェック状態に従いonFddMechanicalSoundEnabledChangedを呼ぶ（AUD-04）', () {
-    bool? changed;
-    final sound =
-        catalog(
-              fddMechanicalSoundEnabled: false,
-              onFddMechanicalSoundEnabledChanged: (enabled) =>
-                  changed = enabled,
-            ).firstWhere((g) => g.id == MenuGroupId.device).entries[0]
-            as MenuSubmenu;
-    final checkbox = sound.entries[2] as MenuCheckbox;
-    expect(checkbox.checked, isFalse);
-    checkbox.onChanged(true);
-    expect(changed, isTrue);
   });
 
   test('Device > Displayは走査線チェックボックスを持つ（VID-04）', () {
@@ -490,12 +471,12 @@ void main() {
     expect(stopWhileRecording.enabled, isTrue);
   });
 
-  test('Host: Rec Sound、Stop、Capture Screen、区切り、Screen、区切り、'
-      'Languageの順', () {
+  test('Host: Rec Sound、Stop、Capture Screen、区切り、Screen、Sound、Input、'
+      '区切り、Show Status Bar、Languageの順（Bubilator88準拠）', () {
     final entries = catalog()
         .firstWhere((g) => g.id == MenuGroupId.host)
         .entries;
-    expect(entries, hasLength(7));
+    expect(entries, hasLength(10));
     expect(
       entries[0],
       isA<MenuAction>().having((e) => e.id, 'id', 'host.recSound'),
@@ -513,11 +494,102 @@ void main() {
       entries[4],
       isA<MenuSubmenu>().having((e) => e.id, 'id', 'host.screen'),
     );
-    expect(entries[5], isA<MenuSeparator>());
+    expect(
+      entries[5],
+      isA<MenuSubmenu>().having((e) => e.id, 'id', 'host.sound'),
+    );
     expect(
       entries[6],
+      isA<MenuSubmenu>().having((e) => e.id, 'id', 'host.input'),
+    );
+    expect(entries[7], isA<MenuSeparator>());
+    expect(
+      entries[8],
+      isA<MenuCheckbox>().having((e) => e.id, 'id', 'host.showStatusBar'),
+    );
+    expect(
+      entries[9],
       isA<MenuSubmenu>().having((e) => e.id, 'id', 'host.language'),
     );
+  });
+
+  test('Host > Show Status Barは設定値をそのまま表示する', () {
+    final checked =
+        catalog(showStatusBar: true)
+                .firstWhere((g) => g.id == MenuGroupId.host)
+                .entries[8]
+            as MenuCheckbox;
+    expect(checked.checked, isTrue);
+    final unchecked =
+        catalog(showStatusBar: false)
+                .firstWhere((g) => g.id == MenuGroupId.host)
+                .entries[8]
+            as MenuCheckbox;
+    expect(unchecked.checked, isFalse);
+  });
+
+  test(
+    'Host > Sound: FDD Mechanism Sound、Volumeの順（Bubilator88準拠でDeviceから移動）',
+    () {
+      final sound =
+          catalog().firstWhere((g) => g.id == MenuGroupId.host).entries[5]
+              as MenuSubmenu;
+      expect(sound.entries, hasLength(2));
+      final fddMechanismEnabled = sound.entries[0] as MenuCheckbox;
+      expect(fddMechanismEnabled.id, 'host.sound.fddMechanismEnabled');
+      final volume = sound.entries[1] as MenuAction;
+      expect(volume.id, 'host.sound.volume');
+    },
+  );
+
+  test('Host > Sound > VolumeはonOpenSoundVolumeを呼ぶ（AUD-03）', () {
+    var called = false;
+    final sound =
+        catalog(onOpenSoundVolume: () => called = true)
+                .firstWhere((g) => g.id == MenuGroupId.host)
+                .entries[5]
+            as MenuSubmenu;
+    final volume = sound.entries[1] as MenuAction;
+    expect(volume.enabled, isTrue);
+    volume.onSelected();
+    expect(called, isTrue);
+  });
+
+  test('Host > Sound > FDD Mechanism Soundはチェック状態に従いonFddMechanicalSoundEnabledChangedを呼ぶ（AUD-04）', () {
+    bool? changed;
+    final sound =
+        catalog(
+              fddMechanicalSoundEnabled: false,
+              onFddMechanicalSoundEnabledChanged: (enabled) =>
+                  changed = enabled,
+            ).firstWhere((g) => g.id == MenuGroupId.host).entries[5]
+            as MenuSubmenu;
+    final checkbox = sound.entries[0] as MenuCheckbox;
+    expect(checkbox.checked, isFalse);
+    checkbox.onChanged(true);
+    expect(changed, isTrue);
+  });
+
+  test('Host > Input: Joystickを持つ（INP-04、Bubilator88準拠でDeviceから移動）', () {
+    final input =
+        catalog().firstWhere((g) => g.id == MenuGroupId.host).entries[6]
+            as MenuSubmenu;
+    expect(input.entries, hasLength(1));
+    final joystick = input.entries[0] as MenuAction;
+    expect(joystick.id, 'host.input.joystick');
+  });
+
+  test('Host > Input > JoystickはonOpenJoystickAssignmentを呼ぶ（INP-04）', () {
+    var called = false;
+    final input =
+        catalog(onOpenJoystickAssignment: () => called = true)
+                .firstWhere((g) => g.id == MenuGroupId.host)
+                .entries[6]
+            as MenuSubmenu;
+    final joystick = input.entries[0] as MenuAction;
+    expect(joystick.enabled, isTrue);
+    joystick.onSelected();
+    expect(called, isTrue);
   });
 
   test('Host > Screenはfullscreen、fit、filterの順', () {
@@ -541,6 +613,30 @@ void main() {
     ]);
   });
 
+  test('Host > Screen > Windowは対応OSかつ倍率候補があるときだけラジオを出す', () {
+    final unsupported = catalog(windowScaleSupported: false)
+        .firstWhere((g) => g.id == MenuGroupId.host)
+        .entries;
+    final screenWithoutWindow = unsupported[4] as MenuSubmenu;
+    expect(screenWithoutWindow.entries, hasLength(3));
+
+    final supported = catalog(
+      windowScaleSupported: true,
+      windowScaleMultipliers: const [1, 2, 3],
+      windowScaleCurrentMultiplier: 2,
+    ).firstWhere((g) => g.id == MenuGroupId.host).entries;
+    final screenWithWindow = supported[4] as MenuSubmenu;
+    expect(screenWithWindow.entries, hasLength(4));
+    final windowScale = screenWithWindow.entries[0] as MenuRadioGroup<int>;
+    expect(windowScale.id, 'host.screen.windowScale');
+    expect(windowScale.options.map((o) => o.value), [1, 2, 3]);
+    expect(windowScale.groupValue, 2);
+    expect(
+      screenWithWindow.entries[1],
+      isA<MenuCheckbox>().having((e) => e.id, 'id', 'host.screen.fullscreen'),
+    );
+  });
+
   test('Host > Screen > Fullscreenは未対応OSでは無効', () {
     final host = catalog(fullscreenSupported: false)
         .firstWhere((g) => g.id == MenuGroupId.host)
@@ -552,7 +648,7 @@ void main() {
 
   test('Host > Languageのラジオはsystem/english/japaneseの順', () {
     final host = catalog().firstWhere((g) => g.id == MenuGroupId.host).entries;
-    final language = host[6] as MenuSubmenu;
+    final language = host[9] as MenuSubmenu;
     final mode = language.entries.single as MenuRadioGroup<AppLocaleMode>;
     expect(mode.options.map((o) => o.value), [
       AppLocaleMode.system,

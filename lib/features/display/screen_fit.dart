@@ -14,16 +14,15 @@ enum ScreenFit {
   fill,
 }
 
-/// コアの論理解像度は縦横比が一定ではない。
-///
-/// 320×200と640×400は縦横比が1.6、640×200は3.2になるが、実機の表示は
-/// どれも同じ4:3である。画素の縦横比を補正しないと、640×200の画面だけが
-/// 縦に潰れて見える。
-const double displayAspectRatio = 4 / 3;
-
 /// [available] の中に画面を置いたときの大きさを返す。
 ///
-/// [frame] はコアが返した論理解像度で、縦横比の補正はここで行う。
+/// [frame] はコアが返した論理解像度をそのまま使う（縦横比の補正はしない）。
+/// upstream（`native/core/upstream/src/win32/osd_screen.cpp`の
+/// `window_stretch_type`）のウィンドウモード既定値は無補正表示
+/// （"Window Stretch 1"）で、4:3への引き伸ばし（"Window Stretch 2"、
+/// 640×400を見かけ640×480にする）は利用者が明示的に選ぶ別メニューの
+/// オプションであり既定ではない。ウィンドウモードでは常に前者を使う
+/// （design.md「Window x1/x2/…の実装方式」、利用者からの指摘で訂正）。
 Size fitScreen({
   required Size frame,
   required Size available,
@@ -40,18 +39,16 @@ Size fitScreen({
     return available;
   }
 
-  // 実機の縦横比に合わせた「見かけの大きさ」を基準にする。
-  final double targetHeight = frame.width / displayAspectRatio;
   final double scale = math.min(
     available.width / frame.width,
-    available.height / targetHeight,
+    available.height / frame.height,
   );
 
   if (fit == ScreenFit.integer) {
     // 1未満へは丸めない。丸めると領域より大きいまま残り、はみ出す。
     final double integerScale = scale >= 1 ? scale.floorToDouble() : scale;
-    return Size(frame.width * integerScale, targetHeight * integerScale);
+    return Size(frame.width * integerScale, frame.height * integerScale);
   }
 
-  return Size(frame.width * scale, targetHeight * scale);
+  return Size(frame.width * scale, frame.height * scale);
 }

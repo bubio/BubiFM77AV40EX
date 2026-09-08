@@ -9,14 +9,37 @@ import 'menu_command.dart';
 /// OS標準メニューへ出す。WindowsとLinuxでは`Application`を含めた同じ
 /// カタログをここへ渡す想定（design.md 12.1）だが、対象はM4/M5であり
 /// 現時点ではmacOS向けの分類だけを渡す。
-class AppMenuBar extends StatelessWidget {
-  const AppMenuBar({super.key, required this.groups, required this.child});
+class AppMenuBar extends StatefulWidget {
+  const AppMenuBar({
+    super.key,
+    required this.groups,
+    required this.child,
+    this.onHeightChanged,
+  });
 
   final List<MenuGroup> groups;
   final Widget child;
 
+  /// このメニュー帯の実測の高さ（論理px）が変わるたびに呼ぶ。
+  ///
+  /// `Host > Screen > Window x1/x2/…`（`WindowScaleController`）が
+  /// ウィンドウ倍率を計算する際、ゲスト画面以外が占める高さの一部として
+  /// この値を使う。`MenuBar`（Material）の高さはテーマ・文字サイズに
+  /// 依存し固定値を持たないため、レイアウト後に実測して伝える
+  /// （design.md「Window x1/x2/…の実装方式」）。
+  final void Function(double height)? onHeightChanged;
+
+  @override
+  State<AppMenuBar> createState() => _AppMenuBarState();
+}
+
+class _AppMenuBarState extends State<AppMenuBar> {
+  final _menuBarKey = GlobalKey();
+  double? _lastReportedHeight;
+
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reportHeight());
     final theme = Theme.of(context);
     // 既定の`MenuBar`は角丸・影付きの浮動カードとして描画され、ネイティブの
     // 通し帯のメニューバーには見えない
@@ -26,6 +49,7 @@ class AppMenuBar extends StatelessWidget {
     return Column(
       children: [
         Container(
+          key: _menuBarKey,
           width: double.infinity,
           alignment: Alignment.centerLeft,
           decoration: BoxDecoration(
@@ -44,7 +68,7 @@ class AppMenuBar extends StatelessWidget {
               padding: const WidgetStatePropertyAll(EdgeInsets.zero),
             ),
             children: [
-              for (final group in groups)
+              for (final group in widget.groups)
                 SubmenuButton(
                   menuChildren: [
                     for (final entry in group.entries) _build(entry),
@@ -54,9 +78,18 @@ class AppMenuBar extends StatelessWidget {
             ],
           ),
         ),
-        Expanded(child: child),
+        Expanded(child: widget.child),
       ],
     );
+  }
+
+  void _reportHeight() {
+    final height = _menuBarKey.currentContext?.size?.height;
+    if (height == null || height == _lastReportedHeight) {
+      return;
+    }
+    _lastReportedHeight = height;
+    widget.onHeightChanged?.call(height);
   }
 
   Widget _build(MenuEntry entry) {

@@ -50,7 +50,7 @@ class _JoystickAssignmentDialogState
     final notifier = ref.read(joystickAssignmentControllerProvider.notifier);
 
     return AlertDialog(
-      title: Text(l10n.deviceJoystick),
+      title: Text(l10n.hostInputJoystick),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

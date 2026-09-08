@@ -81,11 +81,12 @@ class EmulatorView extends ConsumerWidget {
                       ),
                     ),
             ),
-            StatusBar(
-              state: state,
-              l10n: l10n,
-              masterVolume: settings.masterVolume,
-            ),
+            if (settings.showStatusBar)
+              StatusBar(
+                state: state,
+                l10n: l10n,
+                masterVolume: settings.masterVolume,
+              ),
           ],
         ),
       ),

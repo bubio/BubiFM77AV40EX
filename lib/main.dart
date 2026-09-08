@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'app/bootstrap.dart';
 import 'app/cli_args.dart';
@@ -22,10 +23,32 @@ Future<void> main(List<String> args) async {
       exit(2);
     case CliParsedOptions(:final options):
       WidgetsFlutterBinding.ensureInitialized();
+      // ウィンドウ倍率変更（design.md 12.2 `Host > Screen > Window x1/x2/…`）
+      // に使うwindow_managerはデスクトップのみ対応。
+      if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
+        await windowManager.ensureInitialized();
+      }
       final resolvedOptions = await _resolveAndValidate(options);
       // platform実装の組み立てはappの責務（design.md 3.1）。
       runApp(await buildApp(cliOptions: resolvedOptions));
+      _scheduleShowWindowFallback();
   }
+}
+
+/// `MainFlutterWindow.swift`が起動直後に隠したウィンドウを、何らかの理由で
+/// `WindowScaleController.applyInitialMultiplierIfNeeded`が呼ばれず
+/// （例外、ROM問題ダイアログの想定外の分岐等）表示されないまま固まる
+/// 事故を防ぐ最終防衛線。数秒待っても隠れたままなら強制的に表示する
+/// （design.md「Window x1/x2/…の実装方式」）。
+void _scheduleShowWindowFallback() {
+  if (!(Platform.isMacOS || Platform.isLinux || Platform.isWindows)) {
+    return;
+  }
+  Future<void>.delayed(const Duration(seconds: 5), () async {
+    if (!await windowManager.isVisible()) {
+      await windowManager.show();
+    }
+  });
 }
 
 /// CLIで指定された媒体パスとROM起動可否をGUI表示前に検証する

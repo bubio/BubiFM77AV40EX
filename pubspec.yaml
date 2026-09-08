@@ -44,6 +44,14 @@ dependencies:
   # GameController.frameworkを使う。自前のSwiftプラットフォームチャンネルは
   # 作らない（design.md「ジョイスティック割当（M3、INP-04）の実装方式」）。
   gamepads: 0.1.11
+  # ウィンドウ倍率変更（design.md 12.2 `Host > Screen > Window x1 / x2 / …`）。
+  # macOS/Windows/Linuxのデスクトップウィンドウ操作を統一APIで扱う既製
+  # パッケージを使い、gamepads採用時と同じ理由で自前のSwift/C++実装は
+  # 増やさない。
+  window_manager: 0.5.2
+  # 上記のウィンドウ倍率の上限を決めるための、現在のディスプレイ作業領域
+  # 取得に使う（window_managerの推移的依存を明示化）。
+  screen_retriever: 0.2.2
 
 dev_dependencies:
   flutter_test:

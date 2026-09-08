@@ -7,6 +7,7 @@ import '../emulator/rom/rom_manifest.dart';
 import '../emulator/session_state.dart';
 import '../features/display/fullscreen_controller.dart';
 import '../features/display/screenshot_service.dart';
+import '../features/display/window_scale_controller.dart';
 import '../features/input/joystick_assignment_controller.dart';
 import '../features/input/joystick_source.dart';
 import '../features/session/emulator_controller.dart';
@@ -18,6 +19,7 @@ import '../platform/persistence/os_app_data_paths.dart';
 import '../platform/persistence/os_cache_workspace.dart';
 import '../platform/persistence/os_external_file_access.dart';
 import '../platform/persistence/os_window_chrome.dart';
+import '../platform/persistence/os_window_scale.dart';
 import '../platform/audio/fdd_mechanical_audio_sink.dart';
 import '../platform/audio/recording_audio_sink.dart';
 import '../platform/core_ffi/bubi_audio_sink.dart';
@@ -94,6 +96,9 @@ Future<Widget> buildApp({
       ),
       fullscreenControllerProvider.overrideWith(
         () => FullscreenController(windowChrome: OsWindowChrome()),
+      ),
+      windowScaleControllerProvider.overrideWith(
+        () => WindowScaleController(windowScale: OsWindowScale()),
       ),
       joystickAssignmentControllerProvider.overrideWith(
         () => JoystickAssignmentController(

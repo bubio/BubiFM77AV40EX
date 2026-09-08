@@ -24,6 +24,7 @@ class SettingsController extends Notifier<SettingsState> {
 
   static const String _localeModeKey = 'settings.localeMode';
   static const String _masterVolumeKey = 'settings.masterVolume';
+  static const String _showStatusBarKey = 'settings.showStatusBar';
 
   @override
   SettingsState build() {
@@ -54,6 +55,7 @@ class SettingsController extends Notifier<SettingsState> {
     return SettingsState(
       localeMode: _readLocaleMode(),
       masterVolume: preferences.getDouble(_masterVolumeKey) ?? 1.0,
+      showStatusBar: preferences.getBool(_showStatusBarKey) ?? true,
     );
   }
 
@@ -82,6 +84,15 @@ class SettingsController extends Notifier<SettingsState> {
     }
     await preferences.setDouble(_masterVolumeKey, clamped);
     state = state.copyWith(masterVolume: clamped);
+  }
+
+  /// ステータスバーの表示可否を変える（design.md 12.2 `Host > Show Status Bar`）。
+  Future<void> setShowStatusBar(bool visible) async {
+    if (state.showStatusBar == visible) {
+      return;
+    }
+    await preferences.setBool(_showStatusBarKey, visible);
+    state = state.copyWith(showStatusBar: visible);
   }
 }
 

@@ -72,6 +72,10 @@ void main() {
       isFullscreen: false,
       fullscreenSupported: false,
       onFullscreenChanged: (_) {},
+      windowScaleSupported: false,
+      windowScaleMultipliers: const [],
+      windowScaleCurrentMultiplier: null,
+      onWindowScaleChanged: (_) {},
       onCaptureScreen: () {},
       isRecording: false,
       onStartRecording: () {},
@@ -87,10 +91,31 @@ void main() {
       onRomajiToKanaChanged: (_) {},
       onOpenSaveState: () {},
       onOpenLoadState: () {},
+      showStatusBar: true,
+      onShowStatusBarChanged: (_) {},
       localeMode: AppLocaleMode.system,
       onLocaleModeChanged: onLocaleModeChanged ?? (_) {},
     );
   }
+
+  testWidgets('メニュー帯の実測の高さをonHeightChangedへ報告する', (tester) async {
+    double? reportedHeight;
+    final groups = buildCatalog();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AppMenuBar(
+          groups: groups,
+          onHeightChanged: (height) => reportedHeight = height,
+          child: const SizedBox(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(reportedHeight, isNotNull);
+    expect(reportedHeight, greaterThan(0));
+  });
 
   testWidgets('Host > Screen > Display > Fill the areaで選択が伝わる', (tester) async {
     ScreenFit? changedTo;
@@ -116,7 +141,7 @@ void main() {
     expect(changedTo, ScreenFit.fill);
   });
 
-  testWidgets('Control > Boot mode > DOSで選択が伝わる', (tester) async {
+  testWidgets('Device > Boot mode > DOSで選択が伝わる', (tester) async {
     BootMode? changedTo;
 
     final groups = buildCatalog(onBootModeChanged: (mode) => changedTo = mode);
@@ -128,7 +153,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Control'));
+    await tester.tap(find.text('Device'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Boot mode'));
     await tester.pumpAndSettle();
@@ -162,7 +187,7 @@ void main() {
     expect(changedTo, SpeedMultiplier.x4);
   });
 
-  testWidgets('Control > CPU Type > 1.2MHzで選択が伝わる', (tester) async {
+  testWidgets('Device > CPU Type > 1.2MHzで選択が伝わる', (tester) async {
     CpuType? changedTo;
 
     final groups = buildCatalog(onCpuTypeChanged: (type) => changedTo = type);
@@ -174,7 +199,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Control'));
+    await tester.tap(find.text('Device'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('CPU Type'));
     await tester.pumpAndSettle();
@@ -184,7 +209,7 @@ void main() {
     expect(changedTo, CpuType.slow);
   });
 
-  testWidgets('Control > Cycle Stealのチェックで選択が伝わる', (tester) async {
+  testWidgets('Device > Cycle Stealのチェックで選択が伝わる', (tester) async {
     RunOptionSwitches? changedTo;
 
     final groups = buildCatalog(
@@ -198,7 +223,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Control'));
+    await tester.tap(find.text('Device'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cycle Steal'));
     await tester.pumpAndSettle();

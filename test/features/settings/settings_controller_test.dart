@@ -28,6 +28,7 @@ void main() {
 
     expect(state.localeMode, AppLocaleMode.system);
     expect(state.masterVolume, 1.0);
+    expect(state.showStatusBar, isTrue);
     expect(
       preferences.values[PreferencesStore.schemaVersionKey],
       SettingsController.currentSchemaVersion,
@@ -72,5 +73,14 @@ void main() {
         .read(settingsControllerProvider.notifier)
         .setMasterVolume(-0.2);
     expect(container.read(settingsControllerProvider).masterVolume, 0.0);
+  });
+
+  test('ステータスバーの表示可否を変えると保存し、次回はその値を読む', () async {
+    await container
+        .read(settingsControllerProvider.notifier)
+        .setShowStatusBar(false);
+
+    expect(container.read(settingsControllerProvider).showStatusBar, isFalse);
+    expect(preferences.values['settings.showStatusBar'], isFalse);
   });
 }

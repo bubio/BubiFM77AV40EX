@@ -39,7 +39,7 @@ class _SoundVolumeDialogState extends State<SoundVolumeDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.l10n.deviceSoundVolume),
+      title: Text(widget.l10n.hostSoundVolume),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
