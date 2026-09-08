@@ -82,6 +82,13 @@ void main() {
     expect(state().scanlineEnabled, isTrue);
   });
 
+  test('INP-04 setJoystickStateはそのままセッションへ転送される', () {
+    controller().setJoystickState(0, 0x0f);
+    controller().setJoystickState(1, 0x30);
+
+    expect(session.joystickStateCalls, [(0, 0x0f), (1, 0x30)]);
+  });
+
   test('VID-04 setHostFilterは即座にstateへ反映される（コアへは送らない）', () {
     expect(state().hostFilter, HostScreenFilter.none);
     controller().setHostFilter(HostScreenFilter.rgb);

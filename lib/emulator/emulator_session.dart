@@ -137,6 +137,12 @@ abstract class EmulatorSession {
   /// マウントされている媒体が実際に持つ値」を返す。未挿入ならfalse。
   bool getFddWriteProtect(int drive);
 
+  /// ジョイスティック[index]（0=JS1、1=JS2）の直接入力を[bits]へ更新する
+  /// （方向・ボタンのビット定義は`JoystickBit`、M3 INP-04）。都度即座に
+  /// 反映される高頻度状態であり、コマンドの連番は持たない
+  /// （getFddBankInfo/getFddWriteProtectと同型の直接アクセサ）。
+  void setJoystickState(int index, int bits);
+
   /// 観測値を読み出す。
   EmulatorStats readStats();
 

@@ -439,6 +439,15 @@ struct bfm_session {
 	 */
 	std::atomic<bool> fdd_write_protected[kFddDriveCount]{};
 
+	/*
+	 * ジョイスティックの直接入力（M3 INP-04）。design.md 8「固定長
+	 * スナップショット領域」の実体。bfm_set_joystick_stateがどのスレッド
+	 * からでも書き、Core threadがcore_thread_mainの毎ループでここを読んで
+	 * EMU::get_joy_buffer()（const_cast、下記コメント参照）へ複製する。
+	 * [0]=JS1、[1]=JS2。ビット意味はbfm_set_joystick_stateのコメント参照。
+	 */
+	std::atomic<uint32_t> joystick_bits[2]{0, 0};
+
 	// --- Core threadだけが触る ---
 	EMU* emu = nullptr;
 
@@ -1049,6 +1058,21 @@ void core_thread_main(bfm_session* session)
 			// 状態保存機能が無くても本来必要だった安全性修正。
 			vm = session->emu->get_vm();
 
+			/*
+			 * ジョイスティックの直接入力（M3 INP-04）。EMU::get_joy_buffer()の
+			 * 返す配列はEMU側では読み取り専用だが、実体はconstではないため
+			 * const_castで書ける。upstreamのEMU::update_joystick()（この配列を
+			 * 埋める本来の経路）はEMU::run()内からしか呼ばれず、本ブリッジは
+			 * EMU::run()を使わないため恒久的に到達不能（development_plan.md
+			 * 既存調査）。ここで直接、bfm_set_joystick_stateが書いた複製を
+			 * 毎フレーム複製し直す。
+			 */
+			{
+				uint32_t* joy = const_cast<uint32_t*>(session->emu->get_joy_buffer());
+				joy[0] = session->joystick_bits[0].load();
+				joy[1] = session->joystick_bits[1].load();
+			}
+
 			// bfm_session::speed_shiftのコメント参照。kRepeatDrive
 			// モード（検証用）だけ、1tickにつき`vm->run()`を
 			// `1 << speed_shift`回呼ぶ。既定のkCpuPowerモードでは
@@ -1405,6 +1429,21 @@ BFM_API bfm_result bfm_get_fdd_write_protect(bfm_session* session, int32_t drive
 		return BFM_ERR_INVALID_ARGUMENT;
 	}
 	*out_value = session->fdd_write_protected[drive].load() ? 1 : 0;
+	return BFM_OK;
+}
+
+/*
+ * ジョイスティックの直接入力（M3 INP-04）。bfm_session::joystick_bitsの
+ * コメントを参照。状態チェックは行わない単純アクセサ（bfm_get_fdd_bank_info
+ * と同じ考え方）——Core threadの起動前後どちらから呼んでも安全。
+ */
+BFM_API bfm_result bfm_set_joystick_state(bfm_session* session, int32_t index,
+                                          uint32_t bits)
+{
+	if (session == nullptr || index < 0 || index >= 2) {
+		return BFM_ERR_INVALID_ARGUMENT;
+	}
+	session->joystick_bits[index].store(bits & 0x3fu);
 	return BFM_OK;
 }
 

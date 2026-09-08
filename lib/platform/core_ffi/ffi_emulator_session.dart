@@ -555,6 +555,16 @@ class FfiEmulatorSession implements EmulatorSession {
   }
 
   @override
+  void setJoystickState(int index, int bits) {
+    _ensureUsable();
+    final result = _bindings.setJoystickState(_handle, index, bits);
+    if (result != BfmResult.ok) {
+      final code = errorCodeFromNative(result);
+      throw EmulatorException(code, describeErrorCode(code));
+    }
+  }
+
+  @override
   Future<void> keyDown(int vkCode) =>
       _sendKeyCommand(BfmCommandKind.keyDown, vkCode);
 

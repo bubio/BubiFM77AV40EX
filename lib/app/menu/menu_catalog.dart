@@ -61,6 +61,7 @@ List<MenuGroup> buildMenuCatalog({
   required void Function() onStartRecording,
   required void Function() onStopRecording,
   required void Function() onOpenSoundVolume,
+  required void Function() onOpenJoystickAssignment,
   required bool fddMechanicalSoundEnabled,
   required void Function(bool enabled) onFddMechanicalSoundEnabledChanged,
   required bool isAutoKeying,
@@ -366,6 +367,15 @@ List<MenuGroup> buildMenuCatalog({
               onChanged: onScanlineChanged,
             ),
           ],
+        ),
+        // 2台の物理ジョイスティック/ゲームパッドをJS1/JS2へ割り当てる
+        // ダイアログを開く（M3 INP-04）。方向・ボタンの割当自体は固定
+        // （INP-05のスコープ外）。
+        MenuAction(
+          'device.joystick',
+          label: l10n.deviceJoystick,
+          enabled: true,
+          onSelected: onOpenJoystickAssignment,
         ),
       ],
     ),

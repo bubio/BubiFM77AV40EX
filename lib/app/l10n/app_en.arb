@@ -299,6 +299,22 @@
   "@deviceSoundFddMechanismEnabled": {
     "description": "Checkbox toggling the host-synthesized FDD mechanical sound (AUD-04, read/write only)."
   },
+  "deviceJoystick": "Joystick…",
+  "@deviceJoystick": {
+    "description": "Action opening the joystick assignment dialog (INP-04)."
+  },
+  "deviceJoystickSlot1": "Joystick 1",
+  "@deviceJoystickSlot1": {
+    "description": "Label for the JS1 slot row in the joystick assignment dialog (INP-04)."
+  },
+  "deviceJoystickSlot2": "Joystick 2",
+  "@deviceJoystickSlot2": {
+    "description": "Label for the JS2 slot row in the joystick assignment dialog (INP-04)."
+  },
+  "deviceJoystickUnassigned": "Unassigned",
+  "@deviceJoystickUnassigned": {
+    "description": "Dropdown item/placeholder meaning no controller is assigned to a joystick slot (INP-04)."
+  },
   "soundChannelOpnFm": "FM",
   "@soundChannelOpnFm": {
     "description": "Volume slider label for the standard OPN's FM part (AUD-03)."

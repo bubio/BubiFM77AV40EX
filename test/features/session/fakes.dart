@@ -244,6 +244,9 @@ class FakeEmulatorSession implements EmulatorSession {
   /// ドライブの記憶ではないことをFakeでも再現する）。
   final Map<int, bool> fddWriteProtectByDrive = {};
 
+  /// [setJoystickState]の呼出しを記録する（index, bits）。
+  final List<(int index, int bits)> joystickStateCalls = [];
+
   /// 次に受理する挿入・排出コマンドの完了結果。nullなら成功。
   ///
   /// 使ったら消費して次回はnullへ戻る。コマンド完了は
@@ -397,6 +400,11 @@ class FakeEmulatorSession implements EmulatorSession {
 
   @override
   bool getFddWriteProtect(int drive) => fddWriteProtectByDrive[drive] ?? false;
+
+  @override
+  void setJoystickState(int index, int bits) {
+    joystickStateCalls.add((index, bits));
+  }
 
   /// `keyDown`/`keyUp`で呼ばれたVKコードの記録（INP-01・INP-03のテスト用）。
   /// downは`+vk`、upは`-vk`として1本の列に記録する（呼出し順を1つの

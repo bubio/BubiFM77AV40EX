@@ -278,6 +278,21 @@ Future<void> _checkEmulatorSession(
 
   check(session.getFddWriteProtect(0) == false, '未挿入ドライブの書込み保護はfalse（FDD-06）');
 
+  session.setJoystickState(0, 0x0f);
+  session.setJoystickState(1, 0x30);
+  check(true, 'ジョイスティックの直接入力を投入できる（INP-04）');
+  var joystickInvalidArgumentRejected = false;
+  try {
+    session.setJoystickState(2, 0);
+  } on EmulatorException catch (error) {
+    joystickInvalidArgumentRejected =
+        error.code == EmulatorErrorCode.invalidArgument;
+  }
+  check(
+    joystickInvalidArgumentRejected,
+    '範囲外のジョイスティックindexはinvalidArgumentで拒否される（INP-04）',
+  );
+
   Future<CommandCompleted?> waitForCompletion(int commandId) async {
     for (var waited = 0; waited < 500; waited++) {
       await Future<void>.delayed(const Duration(milliseconds: 10));

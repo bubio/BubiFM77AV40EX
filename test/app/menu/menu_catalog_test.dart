@@ -36,6 +36,7 @@ void main() {
     bool fullscreenSupported = false,
     bool isRecording = false,
     void Function()? onOpenSoundVolume,
+    void Function()? onOpenJoystickAssignment,
     bool fddMechanicalSoundEnabled = true,
     void Function(bool enabled)? onFddMechanicalSoundEnabledChanged,
     bool isAutoKeying = false,
@@ -91,6 +92,7 @@ void main() {
       onStartRecording: () {},
       onStopRecording: () {},
       onOpenSoundVolume: onOpenSoundVolume ?? () {},
+      onOpenJoystickAssignment: onOpenJoystickAssignment ?? () {},
       fddMechanicalSoundEnabled: fddMechanicalSoundEnabled,
       onFddMechanicalSoundEnabledChanged:
           onFddMechanicalSoundEnabledChanged ?? (_) {},
@@ -372,11 +374,11 @@ void main() {
     expect(mountedCheckbox.enabled, isTrue);
   });
 
-  test('Device: Sound、Displayサブメニューを持つ', () {
+  test('Device: Sound、Display、Joystickの順で持つ（INP-04）', () {
     final entries = catalog()
         .firstWhere((g) => g.id == MenuGroupId.device)
         .entries;
-    expect(entries, hasLength(2));
+    expect(entries, hasLength(3));
     final sound = entries[0] as MenuSubmenu;
     expect(sound.id, 'device.sound');
     expect(sound.entries, hasLength(4));
@@ -389,6 +391,20 @@ void main() {
     expect(volume.id, 'device.sound.volume');
     final display = entries[1] as MenuSubmenu;
     expect(display.id, 'device.display');
+    final joystick = entries[2] as MenuAction;
+    expect(joystick.id, 'device.joystick');
+  });
+
+  test('Device > JoystickはonOpenJoystickAssignmentを呼ぶ（INP-04）', () {
+    var called = false;
+    final joystick =
+        catalog(onOpenJoystickAssignment: () => called = true)
+                .firstWhere((g) => g.id == MenuGroupId.device)
+                .entries[2]
+            as MenuAction;
+    expect(joystick.enabled, isTrue);
+    joystick.onSelected();
+    expect(called, isTrue);
   });
 
   test('Device > Sound > VolumeはonOpenSoundVolumeを呼ぶ（AUD-03）', () {

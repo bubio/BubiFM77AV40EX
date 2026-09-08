@@ -415,6 +415,14 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     _session?.setVolume(volume);
   }
 
+  /// ジョイスティック[index]（0=JS1、1=JS2）の直接入力を更新する
+  /// （方向・ボタンのビット定義は`JoystickBit`、M3 INP-04）。セッションが
+  /// 無ければ何もしない（割当を覚え直す機構は持たない。物理コントローラー
+  /// の状態はエミュレーター停止中は意味を持たないため）。
+  void setJoystickState(int index, int bits) {
+    _session?.setJoystickState(index, bits);
+  }
+
   /// CPU速度倍率を変える（SYS-03）。
   ///
   /// コアの`update_config()`経由で即時反映されるため、起動中なら

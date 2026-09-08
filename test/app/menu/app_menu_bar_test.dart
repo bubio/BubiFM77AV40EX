@@ -77,6 +77,7 @@ void main() {
       onStartRecording: () {},
       onStopRecording: () {},
       onOpenSoundVolume: () {},
+      onOpenJoystickAssignment: () {},
       fddMechanicalSoundEnabled: true,
       onFddMechanicalSoundEnabledChanged: (_) {},
       isAutoKeying: false,

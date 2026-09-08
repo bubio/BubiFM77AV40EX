@@ -93,6 +93,7 @@ class _LaunchingHomeState extends ConsumerState<_LaunchingHome> {
       onStartRecording: () {},
       onStopRecording: () {},
       onOpenSoundVolume: () {},
+      onOpenJoystickAssignment: () {},
       fddMechanicalSoundEnabled: true,
       onFddMechanicalSoundEnabledChanged: (_) {},
       isAutoKeying: false,

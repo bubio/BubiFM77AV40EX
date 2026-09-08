@@ -40,6 +40,10 @@ dependencies:
   # macOSのブックマークAPIを扱う自前のプラグイン。
   bubi_fm77av40ex_platform:
     path: packages/bubi_fm77av40ex_platform
+  # 物理ジョイスティック/ゲームパッド入力（INP-04）。macOS/iOSは内部で
+  # GameController.frameworkを使う。自前のSwiftプラットフォームチャンネルは
+  # 作らない（design.md「ジョイスティック割当（M3、INP-04）の実装方式」）。
+  gamepads: 0.1.11
 
 dev_dependencies:
   flutter_test:

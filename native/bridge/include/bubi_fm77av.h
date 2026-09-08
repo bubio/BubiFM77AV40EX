@@ -251,7 +251,14 @@ typedef enum {
 	BFM_CMD_KEY_DOWN = 0x0400,               /* WP3 INP-01 */
 	BFM_CMD_KEY_UP = 0x0401,                 /* WP3 INP-01 */
 	BFM_CMD_MOUSE = 0x0402,                  /* M7 P2 */
-	BFM_CMD_JOYSTICK = 0x0403,               /* M3 INP-03 */
+	/*
+	 * BFM_CMD_JOYSTICK: 予約のみ・未使用（列挙値の後方互換のため残す）。
+	 * ジョイスティックの直接入力は高頻度の連続状態であり、キーボードのような
+	 * 離散イベントのキュー経由コマンドという性質と合わないため、実際の
+	 * 実装は bfm_set_joystick_state（直接関数、M3 INP-04）で行う
+	 * （design.md 8「固定長スナップショット領域」の方針）。
+	 */
+	BFM_CMD_JOYSTICK = 0x0403,               /* 予約・未使用 */
 	BFM_CMD_AUTO_KEY = 0x0404,               /* M3 INP-05 */
 
 	/* 構成 */
@@ -499,6 +506,18 @@ BFM_API bfm_result bfm_get_fdd_bank_info(bfm_session* session, int32_t drive,
  */
 BFM_API bfm_result bfm_get_fdd_write_protect(bfm_session* session, int32_t drive,
                                              int32_t* out_value);
+
+/*
+ * ジョイスティックの直接入力（design.md 8「固定長スナップショット領域」、
+ * M3 INP-04）。どのスレッドからでも呼べる。index は 0=JS1、1=JS2
+ * （それ以外は BFM_ERR_INVALID_ARGUMENT）。bits はビット0〜3が方向
+ * （Up/Down/Left/Right）、ビット4〜5がボタン1・2、いずれも1が押下状態
+ * （active-high、vm/fm7/joystick.cppの規約）。それ以外のビットは無視する
+ * （下位6ビットへマスクする）。呼ぶたびに即座に複製を更新するだけで、
+ * Core threadがフレームごとに最新値を読み出す（design.md 8）。
+ */
+BFM_API bfm_result bfm_set_joystick_state(bfm_session* session, int32_t index,
+                                          uint32_t bits);
 
 /*
  * 音声（design.md 7、16.1「音声はVMの駆動源にしない」）。

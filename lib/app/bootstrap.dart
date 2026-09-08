@@ -7,6 +7,8 @@ import '../emulator/rom/rom_manifest.dart';
 import '../emulator/session_state.dart';
 import '../features/display/fullscreen_controller.dart';
 import '../features/display/screenshot_service.dart';
+import '../features/input/joystick_assignment_controller.dart';
+import '../features/input/joystick_source.dart';
 import '../features/session/emulator_controller.dart';
 import '../features/session/rom_settings_controller.dart';
 import '../features/session/session_providers.dart';
@@ -88,6 +90,11 @@ Future<Widget> buildApp({RomManifest? romManifest}) async {
       ),
       fullscreenControllerProvider.overrideWith(
         () => FullscreenController(windowChrome: OsWindowChrome()),
+      ),
+      joystickAssignmentControllerProvider.overrideWith(
+        () => JoystickAssignmentController(
+          source: const GamepadsJoystickSource(),
+        ),
       ),
       screenshotServiceProvider.overrideWithValue(
         ScreenshotService(appDataPaths: appDataPaths),

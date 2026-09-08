@@ -1130,6 +1130,25 @@ void test_input()
 	check(wait_for_completion(session, id, 5000, &code), "上限超えの完了通知が届く");
 	check(code == BFM_ERR_INVALID_ARGUMENT, "0xffを超えるキーコードは invalidArgument で完了");
 
+	// M3 INP-04: ジョイスティックの直接入力（bfm_set_joystick_state）。
+	// 公開APIからはコア内部のjoy_statusを読み返せないため、ここではC ABIの
+	// 契約（有効/無効index、VM操作を経由しないこと）だけを検証する。
+	// FM7側への実際の反映はDart側のFakeベースのテストで担保する。
+	check(bfm_set_joystick_state(session, 0, 0x0f) == BFM_OK, "JS1へ書ける");
+	check(bfm_set_joystick_state(session, 1, 0x30) == BFM_OK, "JS2へ書ける");
+	check(bfm_set_joystick_state(session, -1, 0) == BFM_ERR_INVALID_ARGUMENT,
+	    "負のindexはinvalidArgument");
+	check(bfm_set_joystick_state(session, 2, 0) == BFM_ERR_INVALID_ARGUMENT,
+	    "2以上のindexはinvalidArgument");
+	check(bfm_set_joystick_state(nullptr, 0, 0) == BFM_ERR_INVALID_ARGUMENT,
+	    "セッションnullはinvalidArgument");
+	{
+		bfm_stats stats{};
+		check(bfm_get_stats(session, &stats) == BFM_OK, "統計を取得できる");
+		check(stats.vm_access_violations == 0,
+		    "ジョイスティック書込みはVM操作を経由しない");
+	}
+
 	bfm_stop(session);
 	bfm_destroy(session);
 }

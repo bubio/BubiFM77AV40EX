@@ -137,6 +137,13 @@ final class BubiCoreBindings {
               Int32 Function(Pointer<BfmSession>, Int32, Pointer<Int32>)
             >
           >('bfm_get_fdd_write_protect')
+          .asFunction(),
+      setJoystickState = library
+          .lookup<
+            NativeFunction<
+              Int32 Function(Pointer<BfmSession>, Int32, Uint32)
+            >
+          >('bfm_set_joystick_state')
           .asFunction();
 
   /// 既定のライブラリを開いて束縛する。
@@ -173,6 +180,9 @@ final class BubiCoreBindings {
   /// ドライブごとの書込み保護の実際値（bfm_get_fdd_write_protect、M3 FDD-06）。
   final int Function(Pointer<BfmSession>, int, Pointer<Int32>)
   getFddWriteProtect;
+
+  /// ジョイスティックの直接入力（bfm_set_joystick_state、M3 INP-04）。
+  final int Function(Pointer<BfmSession>, int, int) setJoystickState;
 }
 
 /// ネイティブライブラリを開く。

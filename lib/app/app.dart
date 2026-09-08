@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/display/fullscreen_controller.dart';
 import '../features/display/screenshot_service.dart';
+import '../features/input/joystick_assignment_controller.dart';
+import '../features/input/joystick_assignment_dialog.dart';
 import '../features/session/rom_boot_decision.dart';
 import '../features/session/rom_settings_state.dart';
 import '../features/session/session_providers.dart';
@@ -151,6 +153,18 @@ class _HomeState extends ConsumerState<_Home> {
       _syncWithRomSettings(next);
     });
 
+    // ジョイスティック割当（M3 INP-04）の入力状態変化をコアへ転送する。
+    // JoystickAssignmentControllerはコアを知らず、EmulatorControllerも
+    // 物理コントローラーを知らないため、他のcontroller間連携
+    // （_syncWithRomSettings）と同じくここで橋渡しする（design.md 3.1）。
+    ref.listen(joystickAssignmentControllerProvider, (previous, next) {
+      for (final entry in next.bits.entries) {
+        if (previous?.bits[entry.key] != entry.value) {
+          emulatorController.setJoystickState(entry.key, entry.value);
+        }
+      }
+    });
+
     final menuGroups = buildMenuCatalog(
       l10n: l10n,
       isRunning: emulator.isRunning,
@@ -196,6 +210,7 @@ class _HomeState extends ConsumerState<_Home> {
       onStartRecording: emulatorController.startRecording,
       onStopRecording: emulatorController.stopRecording,
       onOpenSoundVolume: _openSoundVolumeDialog,
+      onOpenJoystickAssignment: _openJoystickAssignmentDialog,
       fddMechanicalSoundEnabled: emulator.fddMechanicalSoundEnabled,
       onFddMechanicalSoundEnabledChanged:
           emulatorController.setFddMechanicalSoundEnabled,
@@ -267,6 +282,14 @@ class _HomeState extends ConsumerState<_Home> {
     showDialog<void>(
       context: context,
       builder: (context) => StateSlotDialog(mode: mode),
+    );
+  }
+
+  /// ジョイスティック割当ダイアログを開く（M3 INP-04）。
+  void _openJoystickAssignmentDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => const JoystickAssignmentDialog(),
     );
   }
 
