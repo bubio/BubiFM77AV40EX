@@ -21,6 +21,12 @@ abstract interface class ExternalFileAccess {
 
   /// 保存済みトークンからアクセス権を復元する。失効時はnullを返す。
   Future<ExternalResource?> resolve(String token);
+
+  /// CLI（APP-05）等が指定した絶対パスへ直接アクセス権を作る。
+  ///
+  /// ダイアログは出さない。呼び出し側がパスの存在を確認済みであることを
+  /// 前提とする。
+  Future<ExternalResource?> resourceForPath(String path);
 }
 
 /// アクセス権を伴う外部リソース。

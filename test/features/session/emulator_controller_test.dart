@@ -554,6 +554,46 @@ void main() {
     expect(state().fddMedia, isEmpty);
   });
 
+  test('APP-05 insertFddFromCliPathはbankを0始まりのままコアへ渡す', () async {
+    final ok = await controller().insertFddFromCliPath(
+      0,
+      '/Users/someone/game.d88',
+      bank: 1,
+    );
+
+    expect(ok, isTrue);
+    expect(externalFileAccess.resourceForPathCalls, [
+      '/Users/someone/game.d88',
+    ]);
+    final (drive, imagePath, bank) = session.insertCalls.single;
+    expect(drive, 0);
+    expect(bank, 1);
+    expect(imagePath, contains('fd0-'));
+  });
+
+  test('APP-05 insertFddFromCliPathはコマンド失敗時にfalseを返す', () async {
+    session.nextInsertError = EmulatorErrorCode.invalidArgument;
+
+    final ok = await controller().insertFddFromCliPath(
+      0,
+      '/Users/someone/game.d88',
+    );
+
+    expect(ok, isFalse);
+  });
+
+  test('APP-05 insertFddFromCliPathはセッション未起動ならfalseを返す', () async {
+    await controller().shutdown();
+
+    final ok = await controller().insertFddFromCliPath(
+      0,
+      '/Users/someone/game.d88',
+    );
+
+    expect(ok, isFalse);
+    expect(externalFileAccess.resourceForPathCalls, isEmpty);
+  });
+
   test('FDD-01 排出は完了を待ってから作業領域の複製を原本へ原子的に書き戻す', () async {
     final resource = FakeExternalResource(
       '/Volumes/USB/GAME.D88',

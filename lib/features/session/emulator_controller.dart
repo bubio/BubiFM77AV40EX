@@ -1076,11 +1076,15 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     _refreshMountedDiskState(session, drive);
   }
 
-  Future<void> _insertResource(int drive, ExternalResource resource) async {
+  Future<bool> _insertResource(
+    int drive,
+    ExternalResource resource, {
+    int bank = 0,
+  }) async {
     final session = _session;
     if (session == null) {
       await resource.release();
-      return;
+      return false;
     }
     if (_fddSlots.containsKey(drive)) {
       await ejectFdd(drive);
@@ -1092,12 +1096,16 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       final workspacePath = await resource.withAccess(
         (nativePath) => workspace.importCopy(nativePath, fileName: fileName),
       );
-      final commandId = await session.insertFdd(drive, workspacePath);
+      final commandId = await session.insertFdd(
+        drive,
+        workspacePath,
+        bank: bank,
+      );
       final error = await _awaitCommand(commandId);
       if (error != null) {
         await resource.release();
         state = state.copyWith(failureMessage: '$error');
-        return;
+        return false;
       }
       _fddSlots[drive] = _FddSlot(
         resource: resource,
@@ -1112,10 +1120,33 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       );
       _refreshMountedDiskState(session, drive);
       await _recordRecentFile(drive, resource);
+      return true;
     } on Object catch (error) {
       await resource.release();
       state = state.copyWith(failureMessage: '$error');
+      return false;
     }
+  }
+
+  /// CLI（APP-05）が指定した絶対パスをFD1(0)/FD2(1)へ挿入する。
+  ///
+  /// ファイル選択ダイアログを経由しない薄いラッパー。存在確認は
+  /// 呼び出し側（`main.dart`）がGUI表示前に済ませている前提とする。
+  /// [bank]は0始まり。戻り値は成否（呼び出し側が終了コード3の判定に使う、
+  /// design.md「CLI（APP-05）の実装方式」）。
+  Future<bool> insertFddFromCliPath(
+    int drive,
+    String path, {
+    int bank = 0,
+  }) async {
+    if (_session == null) {
+      return false;
+    }
+    final resource = await externalFileAccess.resourceForPath(path);
+    if (resource == null) {
+      return false;
+    }
+    return _insertResource(drive, resource, bank: bank);
   }
 
   /// 挿入・バンク切替の直後にコアへ問い合わせ、バンク情報と書込み保護の

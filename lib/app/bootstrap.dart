@@ -25,6 +25,7 @@ import '../platform/core_ffi/bubi_video_texture_attacher.dart';
 import '../platform/core_ffi/ffi_emulator_session.dart';
 import '../platform/persistence/os_preferences_store.dart';
 import 'app.dart';
+import 'cli_args.dart';
 
 /// 起動時にplatform実装を組み立て、featureのProviderへ差し込む。
 ///
@@ -33,7 +34,10 @@ import 'app.dart';
 ///
 /// Riverpod 3の`Override`型は公開されていないため、上書き一覧を返さず
 /// 組み立て済みのWidgetを返す。試験は必要な実装を自分で差し込む。
-Future<Widget> buildApp({RomManifest? romManifest}) async {
+Future<Widget> buildApp({
+  RomManifest? romManifest,
+  CliOptions cliOptions = const CliOptions(),
+}) async {
   final preferences = await OsPreferencesStore.open();
   final appDataPaths = OsAppDataPaths();
   const scanner = FileSystemRomScanner();
@@ -99,6 +103,7 @@ Future<Widget> buildApp({RomManifest? romManifest}) async {
       screenshotServiceProvider.overrideWithValue(
         ScreenshotService(appDataPaths: appDataPaths),
       ),
+      cliOptionsProvider.overrideWithValue(cliOptions),
     ],
     child: const BubiFm77Av40ExApp(),
   );

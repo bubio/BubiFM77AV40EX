@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show PlatformDispatcher;
 
@@ -9,6 +10,7 @@ import '../features/display/fullscreen_controller.dart';
 import '../features/display/screenshot_service.dart';
 import '../features/input/joystick_assignment_controller.dart';
 import '../features/input/joystick_assignment_dialog.dart';
+import '../features/session/emulator_controller.dart';
 import '../features/session/rom_boot_decision.dart';
 import '../features/session/rom_settings_state.dart';
 import '../features/session/session_providers.dart';
@@ -17,6 +19,7 @@ import '../features/session/widgets/rom_problem_dialog.dart';
 import '../features/settings/settings_controller.dart';
 import '../features/settings/settings_state.dart';
 import '../features/state/state_slot_dialog.dart';
+import 'cli_args.dart';
 import 'l10n/generated/app_localizations.dart';
 import 'l10n/generated/app_localizations_en.dart';
 import 'l10n/generated/app_localizations_ja.dart';
@@ -119,6 +122,11 @@ class _Home extends ConsumerStatefulWidget {
 class _HomeState extends ConsumerState<_Home> {
   /// 二重に`showDialog`しないためのガード（design.md 301）。
   bool _romDialogShowing = false;
+
+  /// CLI（APP-05）由来の実行設定・媒体挿入を最初の起動時にだけ適用する
+  /// ためのガード。
+  bool _cliOverridesApplied = false;
+  bool _cliMediaApplied = false;
 
   @override
   void initState() {
@@ -235,13 +243,106 @@ class _HomeState extends ConsumerState<_Home> {
     );
     switch (action) {
       case RomBootAction.launch:
-        ref
-            .read(emulatorControllerProvider.notifier)
-            .launch(bootMode: next.bootMode);
+        final cli = ref.read(cliOptionsProvider);
+        final controller = ref.read(emulatorControllerProvider.notifier);
+        if (!_cliOverridesApplied) {
+          _cliOverridesApplied = true;
+          _applyCliRuntimeOverrides(controller, cli);
+        }
+        final bootMode = cli.bootMode ?? next.bootMode;
+        unawaited(
+          controller.launch(bootMode: bootMode).then((_) {
+            if (mounted) {
+              _applyCliMediaIfNeeded(controller, cli);
+            }
+          }),
+        );
       case RomBootAction.showProblem:
         _showRomProblemDialog();
       case RomBootAction.none:
         break;
+    }
+  }
+
+  /// CLI（APP-05）が指定したCPU種別・速度・オプションスイッチを、
+  /// `launch()`より前に適用する。既存の「次回`launch()`にも再適用できる
+  /// よう覚える」仕組み（SYS-03/05/06）にそのまま乗せる。
+  void _applyCliRuntimeOverrides(
+    EmulatorController controller,
+    CliOptions cli,
+  ) {
+    if (!cli.hasRuntimeOverrides) {
+      return;
+    }
+    if (cli.cpuType != null) {
+      controller.setCpuType(cli.cpuType!);
+    }
+    if (cli.speedMultiplier != null) {
+      controller.setSpeedMultiplier(cli.speedMultiplier!);
+    }
+    if (cli.fullSpeed) {
+      controller.setFullSpeed(true);
+    }
+    if (cli.cycleSteal != null ||
+        cli.extendedRam != null ||
+        cli.syncToHsync != null) {
+      final current = ref.read(emulatorControllerProvider).optionSwitches;
+      controller.setRunOptionSwitches(
+        current.copyWith(
+          cycleSteal: cli.cycleSteal,
+          extendedRam: cli.extendedRam,
+          syncToHsync: cli.syncToHsync,
+        ),
+      );
+    }
+  }
+
+  /// CLI（APP-05）が指定した媒体をFD1(0)→FD2(1)の順に一度だけ挿入する。
+  ///
+  /// 単一image-fileでバンク省略時、挿入結果が複数バンクなら同じファイルの
+  /// バンク2をFD2へも挿入する（specification.md 7.9）。バンク番号が実際に
+  /// そのファイルに存在しないなど、GUI起動後にしか分からない媒体エラーは
+  /// この時点でexit(3)する（design.md「CLI（APP-05）の実装方式」の既知の
+  /// 制約）。
+  Future<void> _applyCliMediaIfNeeded(
+    EmulatorController controller,
+    CliOptions cli,
+  ) async {
+    if (_cliMediaApplied || cli.media.isEmpty) {
+      return;
+    }
+    _cliMediaApplied = true;
+    for (var drive = 0; drive < cli.media.length; drive++) {
+      final spec = cli.media[drive];
+      final bank = (spec.bank ?? 1) - 1;
+      final ok = await controller.insertFddFromCliPath(
+        drive,
+        spec.path,
+        bank: bank,
+      );
+      if (!mounted) {
+        return;
+      }
+      if (!ok) {
+        stderr.writeln('Media error: failed to insert "${spec.path}".');
+        exit(3);
+      }
+    }
+    if (cli.media.length == 1 && cli.media.first.bank == null) {
+      final bankNum = ref.read(emulatorControllerProvider).fddBankNum[0] ?? 1;
+      if (bankNum > 1) {
+        final ok = await controller.insertFddFromCliPath(
+          1,
+          cli.media.first.path,
+          bank: 1,
+        );
+        if (mounted && !ok) {
+          stderr.writeln(
+            'Media error: failed to insert "${cli.media.first.path}" (bank 2) into FD2.',
+          );
+          exit(3);
+        }
+      }
     }
   }
 

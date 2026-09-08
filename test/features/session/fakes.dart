@@ -519,6 +519,10 @@ class FakeExternalFileAccess implements ExternalFileAccess {
   final List<String> resolveCalls = [];
   final List<String?> pickSaveLocationSuggestedNames = [];
 
+  /// [resourceForPath]がパスごとに返す結果。未登録ならnull。
+  final Map<String, ExternalResource?> resourceForPathResultByPath = {};
+  final List<String> resourceForPathCalls = [];
+
   @override
   Future<ExternalResource?> pickDirectory({String? dialogTitle}) =>
       throw UnimplementedError();
@@ -548,6 +552,12 @@ class FakeExternalFileAccess implements ExternalFileAccess {
   Future<ExternalResource?> resolve(String token) async {
     resolveCalls.add(token);
     return resolveResultByToken[token];
+  }
+
+  @override
+  Future<ExternalResource?> resourceForPath(String path) async {
+    resourceForPathCalls.add(path);
+    return resourceForPathResultByPath[path] ?? FakeExternalResource(path);
   }
 }
 

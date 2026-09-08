@@ -88,6 +88,9 @@ class OsExternalFileAccess implements ExternalFileAccess {
     return _PathResource(token);
   }
 
+  @override
+  Future<ExternalResource?> resourceForPath(String path) => _resourceFor(path);
+
   Future<ExternalResource> _resourceFor(String path) async {
     if (await _supportsBookmarks()) {
       String? token;

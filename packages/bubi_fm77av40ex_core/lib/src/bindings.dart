@@ -140,9 +140,7 @@ final class BubiCoreBindings {
           .asFunction(),
       setJoystickState = library
           .lookup<
-            NativeFunction<
-              Int32 Function(Pointer<BfmSession>, Int32, Uint32)
-            >
+            NativeFunction<Int32 Function(Pointer<BfmSession>, Int32, Uint32)>
           >('bfm_set_joystick_state')
           .asFunction();
 
