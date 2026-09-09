@@ -1,4 +1,4 @@
-import 'package:bubi_fm77av40ex/features/session/input/romaji_to_kana.dart';
+import 'package:bubifm77av40ex/features/session/input/romaji_to_kana.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// ローマ字かな変換（INP-03）の変換規則。

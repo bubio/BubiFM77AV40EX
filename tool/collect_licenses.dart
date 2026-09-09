@@ -31,7 +31,7 @@ Future<void> main(List<String> args) async {
   final packages =
       (config['packages'] as List<dynamic>)
           .cast<Map<String, dynamic>>()
-          .where((package) => package['name'] != 'bubi_fm77av40ex')
+          .where((package) => package['name'] != 'bubifm77av40ex')
           .toList()
         ..sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
 

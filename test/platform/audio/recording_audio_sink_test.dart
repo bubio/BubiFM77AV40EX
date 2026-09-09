@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:bubi_fm77av40ex/platform/audio/recording_audio_sink.dart';
-import 'package:bubi_fm77av40ex/platform/core_ffi/audio_sink.dart';
+import 'package:bubifm77av40ex/platform/audio/recording_audio_sink.dart';
+import 'package:bubifm77av40ex/platform/core_ffi/audio_sink.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeAudioSink implements AudioSink {

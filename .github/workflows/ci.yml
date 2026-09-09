@@ -113,7 +113,7 @@ jobs:
         with:
           submodules: false
 
-      # M1 WP1 以降、アプリは packages/bubi_fm77av40ex_core 経由で
+      # M1 WP1 以降、アプリは packages/bubifm77av40ex_core 経由で
       # ネイティブコアをリンクする。ビルドにコアの実体が要る。
       # .gitmodules はSSHで記述しているがCIには鍵がないため、
       # 取得URLだけをHTTPSへ読み替える（.gitmodules 自体は変更しない）。

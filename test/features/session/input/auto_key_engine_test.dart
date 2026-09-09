@@ -1,5 +1,5 @@
-import 'package:bubi_fm77av40ex/features/session/input/auto_key_engine.dart';
-import 'package:bubi_fm77av40ex/features/session/input/win32_vk.dart';
+import 'package:bubifm77av40ex/features/session/input/auto_key_engine.dart';
+import 'package:bubifm77av40ex/features/session/input/win32_vk.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:bubi_fm77av40ex/features/display/screenshot_service.dart';
+import 'package:bubifm77av40ex/features/display/screenshot_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

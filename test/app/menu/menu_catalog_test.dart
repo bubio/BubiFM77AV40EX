@@ -1,11 +1,11 @@
-import 'package:bubi_fm77av40ex/app/l10n/generated/app_localizations.dart';
-import 'package:bubi_fm77av40ex/app/l10n/generated/app_localizations_en.dart';
-import 'package:bubi_fm77av40ex/app/menu/menu_catalog.dart';
-import 'package:bubi_fm77av40ex/app/menu/menu_command.dart';
-import 'package:bubi_fm77av40ex/emulator/session_state.dart';
-import 'package:bubi_fm77av40ex/features/display/screen_filter.dart';
-import 'package:bubi_fm77av40ex/features/display/screen_fit.dart';
-import 'package:bubi_fm77av40ex/features/settings/settings_state.dart';
+import 'package:bubifm77av40ex/app/l10n/generated/app_localizations.dart';
+import 'package:bubifm77av40ex/app/l10n/generated/app_localizations_en.dart';
+import 'package:bubifm77av40ex/app/menu/menu_catalog.dart';
+import 'package:bubifm77av40ex/app/menu/menu_command.dart';
+import 'package:bubifm77av40ex/emulator/session_state.dart';
+import 'package:bubifm77av40ex/features/display/screen_filter.dart';
+import 'package:bubifm77av40ex/features/display/screen_fit.dart';
+import 'package:bubifm77av40ex/features/settings/settings_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// `Control / Disk / Device / Host`カタログの構造契約（design.md 12.2、12.3）。

@@ -1,15 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:bubi_fm77av40ex/emulator/emulator_error.dart';
-import 'package:bubi_fm77av40ex/emulator/emulator_event.dart';
-import 'package:bubi_fm77av40ex/emulator/emulator_stats.dart';
-import 'package:bubi_fm77av40ex/emulator/led_state.dart';
-import 'package:bubi_fm77av40ex/emulator/session_state.dart';
-import 'package:bubi_fm77av40ex/features/display/screen_filter.dart';
-import 'package:bubi_fm77av40ex/features/session/emulator_controller.dart';
-import 'package:bubi_fm77av40ex/features/session/emulator_state.dart';
-import 'package:bubi_fm77av40ex/features/session/input/win32_vk.dart';
+import 'package:bubifm77av40ex/emulator/emulator_error.dart';
+import 'package:bubifm77av40ex/emulator/emulator_event.dart';
+import 'package:bubifm77av40ex/emulator/emulator_stats.dart';
+import 'package:bubifm77av40ex/emulator/led_state.dart';
+import 'package:bubifm77av40ex/emulator/session_state.dart';
+import 'package:bubifm77av40ex/features/display/screen_filter.dart';
+import 'package:bubifm77av40ex/features/session/emulator_controller.dart';
+import 'package:bubifm77av40ex/features/session/emulator_state.dart';
+import 'package:bubifm77av40ex/features/session/input/win32_vk.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

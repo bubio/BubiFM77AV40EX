@@ -1,6 +1,6 @@
-import 'package:bubi_fm77av40ex/app/l10n/generated/app_localizations.dart';
-import 'package:bubi_fm77av40ex/features/input/joystick_assignment_controller.dart';
-import 'package:bubi_fm77av40ex/features/input/joystick_assignment_dialog.dart';
+import 'package:bubifm77av40ex/app/l10n/generated/app_localizations.dart';
+import 'package:bubifm77av40ex/features/input/joystick_assignment_controller.dart';
+import 'package:bubifm77av40ex/features/input/joystick_assignment_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

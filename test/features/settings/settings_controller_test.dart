@@ -1,6 +1,6 @@
-import 'package:bubi_fm77av40ex/features/settings/settings_controller.dart';
-import 'package:bubi_fm77av40ex/features/settings/settings_state.dart';
-import 'package:bubi_fm77av40ex/platform/persistence/preferences_store.dart';
+import 'package:bubifm77av40ex/features/settings/settings_controller.dart';
+import 'package:bubifm77av40ex/features/settings/settings_state.dart';
+import 'package:bubifm77av40ex/platform/persistence/preferences_store.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 

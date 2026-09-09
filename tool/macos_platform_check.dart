@@ -13,10 +13,10 @@
 // 結果を出力して自分で終了する。CIでは実行しない。
 import 'dart:io';
 
-import 'package:bubi_fm77av40ex/emulator/session_state.dart';
-import 'package:bubi_fm77av40ex/platform/persistence/os_app_data_paths.dart';
-import 'package:bubi_fm77av40ex/platform/core_ffi/ffi_emulator_session.dart';
-import 'package:bubi_fm77av40ex_platform/bubi_fm77av40ex_platform.dart';
+import 'package:bubifm77av40ex/emulator/session_state.dart';
+import 'package:bubifm77av40ex/platform/persistence/os_app_data_paths.dart';
+import 'package:bubifm77av40ex/platform/core_ffi/ffi_emulator_session.dart';
+import 'package:bubifm77av40ex_platform/bubifm77av40ex_platform.dart';
 import 'package:flutter/widgets.dart';
 
 int failures = 0;

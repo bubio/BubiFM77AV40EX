@@ -1,9 +1,9 @@
-import 'package:bubi_fm77av40ex/emulator/emulator_error.dart';
-import 'package:bubi_fm77av40ex/emulator/emulator_event.dart';
-import 'package:bubi_fm77av40ex/emulator/led_state.dart';
-import 'package:bubi_fm77av40ex/emulator/session_state.dart';
-import 'package:bubi_fm77av40ex/platform/core_ffi/native_conversions.dart';
-import 'package:bubi_fm77av40ex_core/bubi_fm77av40ex_core.dart';
+import 'package:bubifm77av40ex/emulator/emulator_error.dart';
+import 'package:bubifm77av40ex/emulator/emulator_event.dart';
+import 'package:bubifm77av40ex/emulator/led_state.dart';
+import 'package:bubifm77av40ex/emulator/session_state.dart';
+import 'package:bubifm77av40ex/platform/core_ffi/native_conversions.dart';
+import 'package:bubifm77av40ex_core/bubifm77av40ex_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// C ABI の値と `lib/emulator/` の型の対応を検査する。

@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:bubi_fm77av40ex_platform/bubi_fm77av40ex_platform.dart';
+import 'package:bubifm77av40ex_platform/bubifm77av40ex_platform.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app_data_paths.dart';

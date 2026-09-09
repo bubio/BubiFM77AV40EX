@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -337,6 +338,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
         // failureMessageへ出さず、選択値をstateへ反映しないだけにする。
       }
     } on Object catch (error) {
+      debugPrint('EmulatorController.launch failed: $error');
       state = state.copyWith(
         session: SessionState.failed,
         failureMessage: '$error',
@@ -1262,6 +1264,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       case LedStateChanged(:final state):
         this.state = this.state.copyWith(ledState: state);
       case EmulatorErrorOccurred(:final code):
+        debugPrint('EmulatorController: core reported error $code');
         state = state.copyWith(failureMessage: '$code');
       case CommandCompleted(:final commandId, :final error):
         _pendingCommands.remove(commandId)?.complete(error);

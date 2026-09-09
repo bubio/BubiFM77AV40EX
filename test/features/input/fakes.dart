@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:bubi_fm77av40ex/features/input/joystick_source.dart';
+import 'package:bubifm77av40ex/features/input/joystick_source.dart';
 
 /// [JoystickSource]のFake。実チャンネルを叩かずイベント・一覧を注入できる。
 class FakeJoystickSource implements JoystickSource {

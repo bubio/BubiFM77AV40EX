@@ -48,6 +48,13 @@ app.*.map.json
 **/*.xcworkspace/xcuserdata/
 **/*.xcodeproj/xcuserdata/
 
+# Windows / Linux
+# （runner配下のgenerated_plugin_registrant.cc/hはFlutter標準どおり追跡する。
+#  ephemeralは各windows/.gitignore・linux/.gitignoreで除外済みだが、
+#  macOSと対で明示しておく。）
+**/windows/flutter/ephemeral/
+**/linux/flutter/ephemeral/
+
 # Build outputs and packaging
 /dist/
 # FFIプラグインがCMakeで作る中間生成物

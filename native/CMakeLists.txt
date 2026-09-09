@@ -5,7 +5,7 @@
 # native/bridge/ とこの定義だけに置く（design.md 3.2）。
 cmake_minimum_required(VERSION 3.24)
 
-project(bubi_fm77av40ex_core CXX C)
+project(bubifm77av40ex_core CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -109,9 +109,9 @@ set(BRIDGE_SOURCES
 )
 list(TRANSFORM BRIDGE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 
-add_library(bubi_fm77av40ex_core STATIC ${CORE_SOURCES} ${BRIDGE_SOURCES})
+add_library(bubifm77av40ex_core STATIC ${CORE_SOURCES} ${BRIDGE_SOURCES})
 
-target_include_directories(bubi_fm77av40ex_core
+target_include_directories(bubifm77av40ex_core
   PUBLIC
     # 製品用 C ABI の公開ヘッダー
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/include"
@@ -126,7 +126,7 @@ target_include_directories(bubi_fm77av40ex_core
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/osd"
 )
 
-target_compile_definitions(bubi_fm77av40ex_core
+target_compile_definitions(bubifm77av40ex_core
   PUBLIC
     # 機種選択。vc++2017/fm77av40ex.vcxproj と同じ唯一の機種定義。
     _FM77AV40EX
@@ -140,11 +140,11 @@ target_compile_definitions(bubi_fm77av40ex_core
 
 # コアはMSVC前提で書かれているため、clang/libc++ で不足する標準ヘッダーを
 # プリアンブルで強制インクルードする。upstreamのソースは変更しない。
-target_compile_options(bubi_fm77av40ex_core PUBLIC
+target_compile_options(bubifm77av40ex_core PUBLIC
   -include "${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat/bubi_core_prelude.h"
 )
 
-target_compile_options(bubi_fm77av40ex_core PRIVATE
+target_compile_options(bubifm77av40ex_core PRIVATE
   -Wno-writable-strings       # MSVCが許す char* への文字列リテラル代入
   -Wno-invalid-source-encoding # コメント中のShift-JIS
   -Wno-register                # C++17で削除された register 指定子
@@ -170,7 +170,7 @@ if(BUBI_BUILD_HOST_TOOLS)
   # 最小ホスト: VMを生成して破棄できることだけを確認する（development_plan.md 5.2）。
   # ROMを1つも必要とせず、CIで実行できる。
   add_executable(core_smoke "${CMAKE_CURRENT_SOURCE_DIR}/host/core_smoke.cpp")
-  target_link_libraries(core_smoke PRIVATE bubi_fm77av40ex_core)
+  target_link_libraries(core_smoke PRIVATE bubifm77av40ex_core)
   target_include_directories(core_smoke PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat")
 
   # 製品用 C ABI の検査（development_plan.md 6 WP1）。
@@ -182,7 +182,7 @@ if(BUBI_BUILD_HOST_TOOLS)
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/frame_ring.cpp"
   )
   target_compile_definitions(session_test PRIVATE BUBI_ENABLE_TEST_HOOKS)
-  target_link_libraries(session_test PRIVATE bubi_fm77av40ex_core)
+  target_link_libraries(session_test PRIVATE bubifm77av40ex_core)
 
   # 実ROMでの起動確認（development_plan.md 6 WP2）。
   # 利用者のROMを引数で受け取る。ROMがないと動かないため ctest には登録せず、
@@ -193,7 +193,7 @@ if(BUBI_BUILD_HOST_TOOLS)
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/frame_ring.cpp"
   )
   target_compile_definitions(rom_boot_check PRIVATE BUBI_ENABLE_TEST_HOOKS)
-  target_link_libraries(rom_boot_check PRIVATE bubi_fm77av40ex_core)
+  target_link_libraries(rom_boot_check PRIVATE bubifm77av40ex_core)
 
   # 面リングの検査（development_plan.md 6 WP3）。コアには依存しない。
   add_executable(frame_ring_test
@@ -213,14 +213,14 @@ if(BUBI_BUILD_HOST_TOOLS)
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src")
 
   # 同じC ABIをDart FFIから呼べることを確かめるための共有ライブラリ。
-  # アプリへの組み込みは packages/bubi_fm77av40ex_core/ の静的リンクで行う
+  # アプリへの組み込みは packages/bubifm77av40ex_core/ の静的リンクで行う
   # （design.md 16.1）。ここはシンボル解決と呼び出しの検証専用である。
-  add_library(bubi_fm77av40ex_shared SHARED
+  add_library(bubifm77av40ex_shared SHARED
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/bubi_fm77av.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/frame_ring.cpp"
   )
-  set_target_properties(bubi_fm77av40ex_shared PROPERTIES OUTPUT_NAME bubi_fm77av40ex)
-  target_link_libraries(bubi_fm77av40ex_shared PRIVATE bubi_fm77av40ex_core)
+  set_target_properties(bubifm77av40ex_shared PROPERTIES OUTPUT_NAME bubifm77av40ex)
+  target_link_libraries(bubifm77av40ex_shared PRIVATE bubifm77av40ex_core)
 
   enable_testing()
   # 書込み先をビルドディレクトリ配下へ閉じ込め、ホームディレクトリを汚さない。

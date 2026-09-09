@@ -1,4 +1,4 @@
-// packages/bubi_fm77av40ex_core の FFI 束縛が、実際にビルドした
+// packages/bubifm77av40ex_core の FFI 束縛が、実際にビルドした
 // ネイティブライブラリへ届くことを確かめる。
 //
 // 確かめるのは次の点である。
@@ -15,12 +15,12 @@ import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:bubi_fm77av40ex/emulator/emulator_error.dart';
-import 'package:bubi_fm77av40ex/emulator/emulator_event.dart';
-import 'package:bubi_fm77av40ex/emulator/session_state.dart';
-import 'package:bubi_fm77av40ex/platform/core_ffi/audio_sink.dart';
-import 'package:bubi_fm77av40ex/platform/core_ffi/ffi_emulator_session.dart';
-import 'package:bubi_fm77av40ex_core/bubi_fm77av40ex_core.dart';
+import 'package:bubifm77av40ex/emulator/emulator_error.dart';
+import 'package:bubifm77av40ex/emulator/emulator_event.dart';
+import 'package:bubifm77av40ex/emulator/session_state.dart';
+import 'package:bubifm77av40ex/platform/core_ffi/audio_sink.dart';
+import 'package:bubifm77av40ex/platform/core_ffi/ffi_emulator_session.dart';
+import 'package:bubifm77av40ex_core/bubifm77av40ex_core.dart';
 import 'package:ffi/ffi.dart';
 
 /// `AudioSink`は`package:flutter`に依存しないため、この検証でも

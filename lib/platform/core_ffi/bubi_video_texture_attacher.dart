@@ -1,4 +1,4 @@
-import 'package:bubi_fm77av40ex_core/video_texture.dart';
+import 'package:bubifm77av40ex_core/video_texture.dart';
 
 import 'video_texture_attacher.dart';
 
