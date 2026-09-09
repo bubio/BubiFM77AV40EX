@@ -624,7 +624,10 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 		// EMU::is_floppy_disk_protected(drv, value)はディスク単位の
 		// ランタイム状態を書くだけで、未挿入でも呼べる（M3 FDD-06）。
 		session->emu->is_floppy_disk_protected(drv, queued.arg1 != 0);
-		session->fdd_write_protected[drv].store(queued.arg1 != 0);
+		// 未挿入ドライブの複製はfalseで揃える（bfm_session::fdd_write_protected
+		// のコメント、load_state直後の再同期と同じ方針）。
+		session->fdd_write_protected[drv].store(
+		    session->emu->is_floppy_disk_inserted(drv) && queued.arg1 != 0);
 		break;
 	}
 	case BFM_CMD_SET_FDD_TIMING: {
