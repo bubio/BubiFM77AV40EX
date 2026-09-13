@@ -43,6 +43,7 @@ class FakeWindowScale implements WindowScale {
   Size displaySize = const Size(1920, 1080);
   Size contentSize = const Size(640, 400);
   final List<Size> setContentSizeCalls = [];
+  final List<Size> setMinimumContentSizeCalls = [];
   int showCalls = 0;
 
   final StreamController<Size> _changes = StreamController<Size>.broadcast();
@@ -57,6 +58,11 @@ class FakeWindowScale implements WindowScale {
   Future<void> setContentSize(Size size) async {
     setContentSizeCalls.add(size);
     contentSize = size;
+  }
+
+  @override
+  Future<void> setMinimumContentSize(Size size) async {
+    setMinimumContentSizeCalls.add(size);
   }
 
   @override

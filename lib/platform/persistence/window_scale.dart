@@ -17,6 +17,11 @@ abstract interface class WindowScale {
   /// ウィンドウ内容領域（タイトルバーを除く）のサイズを変える（論理px）。
   Future<void> setContentSize(Size size);
 
+  /// ウィンドウ内容領域（タイトルバーを除く）の最小サイズを設定する
+  /// （論理px）。x1倍率のサイズを下限にし、利用者がドラッグでそれより
+  /// 小さくできないようにする。
+  Future<void> setMinimumContentSize(Size size);
+
   /// 主ディスプレイの作業領域サイズ（論理px）。倍率の上限決定に使う。
   Future<Size> getAvailableDisplaySize();
 

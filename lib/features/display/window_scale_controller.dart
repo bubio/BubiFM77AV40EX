@@ -117,6 +117,10 @@ class WindowScaleController extends Notifier<WindowScaleState> {
   );
 
   Future<void> _refresh() async {
+    // ゲスト画面サイズ・ステータスバー表示は最小サイズにも影響するため、
+    // フルスクリーン中かどうかに関わらず最新のx1サイズへ更新しておく
+    // （フルスクリーン解除後すぐに正しい下限が効くように）。
+    await windowScale.setMinimumContentSize(_windowSizeForMultiplier(1));
     if (_fullscreenSupported && await windowChrome.isFullScreen()) {
       // フルスクリーン中は実サイズがどの倍率とも一致しなくなるので、
       // ここで打ち切ってフルスクリーン化直前の状態をそのまま残す。

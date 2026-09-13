@@ -52,6 +52,14 @@ class OsWindowScale implements WindowScale {
   }
 
   @override
+  Future<void> setMinimumContentSize(Size size) async {
+    final titleBarHeight = await windowManager.getTitleBarHeight();
+    await windowManager.setMinimumSize(
+      Size(size.width, size.height + titleBarHeight),
+    );
+  }
+
+  @override
   Future<Size> getAvailableDisplaySize() async {
     final display = await screenRetriever.getPrimaryDisplay();
     return display.visibleSize ?? display.size;

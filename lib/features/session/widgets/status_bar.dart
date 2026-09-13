@@ -33,11 +33,13 @@ class StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = Theme.of(context).textTheme.labelSmall
-        ?.copyWith(color: Colors.white70);
+    final theme = Theme.of(context);
+    final textStyle = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
     return Container(
       height: statusBarHeight,
-      color: const Color(0xFF1A1A1A),
+      color: theme.colorScheme.surfaceContainerHighest,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
@@ -86,6 +88,7 @@ class _FddLamp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -93,8 +96,9 @@ class _FddLamp extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           label,
-          style: Theme.of(context).textTheme.labelSmall
-              ?.copyWith(color: Colors.white70),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -113,7 +117,7 @@ class _LedChip extends StatelessWidget {
     return Text(
       label,
       style: theme.textTheme.labelSmall?.copyWith(
-        color: lit ? theme.colorScheme.primary : Colors.white38,
+        color: lit ? theme.colorScheme.primary : theme.disabledColor,
         fontWeight: lit ? FontWeight.bold : FontWeight.normal,
       ),
     );
@@ -170,11 +174,11 @@ class _AccessLampState extends State<AccessLamp> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    // FDDアクセスランプは実機同様、テーマに関わらず赤固定にする。
     return Icon(
       Icons.circle,
       size: 8,
-      color: _isLit ? theme.colorScheme.primary : theme.disabledColor,
+      color: _isLit ? Colors.red : Theme.of(context).disabledColor,
     );
   }
 }

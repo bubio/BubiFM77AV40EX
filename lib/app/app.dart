@@ -52,6 +52,9 @@ class BubiFm77Av40ExApp extends ConsumerWidget {
     final materialApp = MaterialApp(
       navigatorKey: _navigatorKey,
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+      theme: ThemeData(brightness: Brightness.light, useMaterial3: true),
+      darkTheme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
+      themeMode: ThemeMode.system,
       locale: _localeOf(settings.localeMode),
       localizationsDelegates: const [
         AppLocalizations.delegate,

@@ -263,4 +263,31 @@ void main() {
       1,
     ]);
   });
+
+  test('起動時にウィンドウの最小サイズをx1のサイズへ設定する', () async {
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(windowScale.setMinimumContentSizeCalls.last, const Size(640, 400));
+  });
+
+  test('setChromeHeightを反映すると最小サイズにも足す', () async {
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    final controller = container.read(windowScaleControllerProvider.notifier);
+    await controller.setChromeHeight(24);
+
+    expect(windowScale.setMinimumContentSizeCalls.last, const Size(640, 424));
+  });
+
+  test('setBaseSizeが変わると最小サイズも新しいx1サイズへ更新する', () async {
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    final controller = container.read(windowScaleControllerProvider.notifier);
+    await controller.setBaseSize(const Size(960, 640));
+
+    expect(windowScale.setMinimumContentSizeCalls.last, const Size(960, 640));
+  });
 }
