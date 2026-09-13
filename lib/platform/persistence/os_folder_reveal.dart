@@ -17,10 +17,7 @@ class OsFolderReveal {
     if (Platform.isWindows) {
       // `explorer.exe`は成功時でも終了コード1を返すことがあるため、
       // 終了コードでは成否を判定しない（win32のExplorer実装の既知の挙動）。
-      await Process.start(
-        'explorer.exe',
-        [path.replaceAll('/', r'\')],
-      );
+      await Process.start('explorer.exe', [path.replaceAll('/', r'\')]);
       return;
     }
     await macReveal.reveal(path);

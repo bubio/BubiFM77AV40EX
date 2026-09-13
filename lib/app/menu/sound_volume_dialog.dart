@@ -45,7 +45,8 @@ class _SoundVolumeDialogState extends State<SoundVolumeDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final channel in SoundChannel.values) _slider(context, channel),
+            for (final channel in SoundChannel.values)
+              _slider(context, channel),
           ],
         ),
       ),
@@ -60,29 +61,32 @@ class _SoundVolumeDialogState extends State<SoundVolumeDialog> {
   }
 
   Widget _slider(BuildContext context, SoundChannel channel) {
-      final volume = _volumes[channel];
-      final percentage = '${(volume * 100).round()}%';
+    final volume = _volumes[channel];
+    final percentage = '${(volume * 100).round()}%';
 
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(_labelOf(channel), style: Theme.of(context).textTheme.labelLarge),
-              Text(percentage, style: Theme.of(context).textTheme.bodyMedium),
-            ],
-          ),
-          Slider(
-            value: volume,
-            onChanged: (value) {
-              setState(() => _volumes = _volumes.withVolume(channel, value));
-              widget.onChanged(channel, value);
-            },
-          ),
-        ],
-      );
-    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              _labelOf(channel),
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            Text(percentage, style: Theme.of(context).textTheme.bodyMedium),
+          ],
+        ),
+        Slider(
+          value: volume,
+          onChanged: (value) {
+            setState(() => _volumes = _volumes.withVolume(channel, value));
+            widget.onChanged(channel, value);
+          },
+        ),
+      ],
+    );
+  }
 
   String _labelOf(SoundChannel channel) {
     final l10n = widget.l10n;
