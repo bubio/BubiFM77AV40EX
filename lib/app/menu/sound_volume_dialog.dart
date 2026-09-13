@@ -40,12 +40,14 @@ class _SoundVolumeDialogState extends State<SoundVolumeDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(widget.l10n.hostSoundVolume),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final channel in SoundChannel.values) _slider(context, channel),
-        ],
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final channel in SoundChannel.values) _slider(context, channel),
+          ],
+        ),
       ),
       actions: [
         TextButton(
@@ -58,22 +60,29 @@ class _SoundVolumeDialogState extends State<SoundVolumeDialog> {
   }
 
   Widget _slider(BuildContext context, SoundChannel channel) {
-    final volume = _volumes[channel];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(_labelOf(channel), style: Theme.of(context).textTheme.labelLarge),
-        Slider(
-          value: volume,
-          onChanged: (value) {
-            setState(() => _volumes = _volumes.withVolume(channel, value));
-            widget.onChanged(channel, value);
-          },
-          label: '${(volume * 100).round()}%',
-        ),
-      ],
-    );
-  }
+      final volume = _volumes[channel];
+      final percentage = '${(volume * 100).round()}%';
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(_labelOf(channel), style: Theme.of(context).textTheme.labelLarge),
+              Text(percentage, style: Theme.of(context).textTheme.bodyMedium),
+            ],
+          ),
+          Slider(
+            value: volume,
+            onChanged: (value) {
+              setState(() => _volumes = _volumes.withVolume(channel, value));
+              widget.onChanged(channel, value);
+            },
+          ),
+        ],
+      );
+    }
 
   String _labelOf(SoundChannel channel) {
     final l10n = widget.l10n;
