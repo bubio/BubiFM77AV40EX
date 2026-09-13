@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../platform/persistence/window_chrome.dart';
 import '../../platform/persistence/window_scale.dart';
 
 /// ウィンドウ倍率の状態（design.md 12.2 `Host > Screen > Window x1/x2/…`）。
@@ -31,9 +32,26 @@ const _unsupportedWindowScaleState = (
 /// 待つ（[FullscreenController]と同じ設計、design.md 12.3「チェック項目は
 /// コマンド完了後の実状態を表示する」）。
 class WindowScaleController extends Notifier<WindowScaleState> {
-  WindowScaleController({required this.windowScale});
+  WindowScaleController({
+    required this.windowScale,
+    required this.windowChrome,
+  });
 
   final WindowScale windowScale;
+
+  /// フルスクリーン中かどうかを都度[FullscreenController]を介さず直接
+  /// 問い合わせるために持つ（design.mdの倍率メニュー、design.md 12.3の
+  /// 「チェック項目はコマンド完了後の実状態を表示する」と同じ考え方）。
+  /// フルスクリーン中はウィンドウの実サイズがディスプレイ全体になり、
+  /// どの倍率とも一致しなくなるため、[_refresh]をスキップしてフルスクリーン
+  /// 化直前の表示をそのまま保つ（利用者からの報告：「フルスクリーンにすると
+  /// 倍率メニューが空欄になる」）。
+  final WindowChrome windowChrome;
+
+  /// フルスクリーン対応OSかどうか（[_initialize]で一度だけ確定）。
+  /// 未対応OSで[windowChrome.isFullScreen]を呼ぶと
+  /// [MissingPluginException]になるため、事前にこれで分岐する。
+  bool _fullscreenSupported = false;
 
   /// 倍率の計算対象になるゲスト画面サイズ（論理px）。[setBaseSize]が
   /// `EmulatorViewState.frameWidth/frameHeight`から更新する。
@@ -63,6 +81,7 @@ class WindowScaleController extends Notifier<WindowScaleState> {
     if (!await windowScale.isSupported) {
       return;
     }
+    _fullscreenSupported = await windowChrome.isSupported;
     await _refresh();
     _subscription = windowScale.contentSizeChanges.listen((_) {
       unawaited(_refresh());
@@ -98,6 +117,11 @@ class WindowScaleController extends Notifier<WindowScaleState> {
   );
 
   Future<void> _refresh() async {
+    if (_fullscreenSupported && await windowChrome.isFullScreen()) {
+      // フルスクリーン中は実サイズがどの倍率とも一致しなくなるので、
+      // ここで打ち切ってフルスクリーン化直前の状態をそのまま残す。
+      return;
+    }
     final display = await windowScale.getAvailableDisplaySize();
     final maxByWidth = (display.width / _baseSize.width).floor();
     final maxByHeight = ((display.height - _chromeHeight) / _baseSize.height)

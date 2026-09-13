@@ -97,7 +97,10 @@ Future<Widget> buildApp({
         () => FullscreenController(windowChrome: OsWindowChrome()),
       ),
       windowScaleControllerProvider.overrideWith(
-        () => WindowScaleController(windowScale: OsWindowScale()),
+        () => WindowScaleController(
+          windowScale: OsWindowScale(),
+          windowChrome: OsWindowChrome(),
+        ),
       ),
       joystickAssignmentControllerProvider.overrideWith(
         () => JoystickAssignmentController(

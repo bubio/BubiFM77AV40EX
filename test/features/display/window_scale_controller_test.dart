@@ -8,14 +8,19 @@ import 'fakes.dart';
 
 void main() {
   late FakeWindowScale windowScale;
+  late FakeWindowChrome windowChrome;
   late ProviderContainer container;
 
   setUp(() {
     windowScale = FakeWindowScale();
+    windowChrome = FakeWindowChrome();
     container = ProviderContainer(
       overrides: [
         windowScaleControllerProvider.overrideWith(
-          () => WindowScaleController(windowScale: windowScale),
+          () => WindowScaleController(
+            windowScale: windowScale,
+            windowChrome: windowChrome,
+          ),
         ),
       ],
     );
@@ -197,6 +202,53 @@ void main() {
     await controller.applyInitialMultiplierIfNeeded();
 
     expect(windowScale.showCalls, 0);
+  });
+
+  test('フルスクリーン中はウィンドウの実サイズが変わっても現在値を再計算しない', () async {
+    windowScale.contentSize = const Size(1280, 800);
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(windowScaleControllerProvider).currentMultiplier, 2);
+
+    windowChrome.emit(true);
+    windowScale.emit(const Size(1920, 1080));
+    await Future<void>.delayed(Duration.zero);
+
+    // フルスクリーンで実サイズがディスプレイ全体になっても、フルスクリーン
+    // 化直前のx2表示のまま（利用者からの報告：「フルスクリーンにすると
+    // 倍率メニューが空欄になる」への対応）。
+    expect(container.read(windowScaleControllerProvider).currentMultiplier, 2);
+  });
+
+  test('フルスクリーン解除後はウィンドウの実サイズから現在値を再計算する', () async {
+    windowScale.contentSize = const Size(1280, 800);
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    windowChrome.emit(true);
+    windowScale.emit(const Size(1920, 1080));
+    await Future<void>.delayed(Duration.zero);
+
+    windowChrome.emit(false);
+    windowScale.emit(const Size(640, 400));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(container.read(windowScaleControllerProvider).currentMultiplier, 1);
+  });
+
+  test('フルスクリーン未対応OSでは通常どおり実サイズから現在値を再計算する', () async {
+    windowChrome.supported = false;
+    windowScale.contentSize = const Size(1280, 800);
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    windowScale.emit(const Size(1920, 1080));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      container.read(windowScaleControllerProvider).currentMultiplier,
+      isNull,
+    );
   });
 
   test('setBaseSizeでゲスト画面サイズが変わると倍率候補を再計算する', () async {

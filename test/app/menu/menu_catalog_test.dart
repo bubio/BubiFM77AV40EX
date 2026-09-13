@@ -637,6 +637,20 @@ void main() {
     );
   });
 
+  test('Host > Screen > Windowはフルスクリーン中は選択中の値を保ったまま操作不可', () {
+    final entries = catalog(
+      windowScaleSupported: true,
+      windowScaleMultipliers: const [1, 2, 3],
+      windowScaleCurrentMultiplier: 2,
+      isFullscreen: true,
+    ).firstWhere((g) => g.id == MenuGroupId.host).entries;
+    final screen = entries[4] as MenuSubmenu;
+    final windowScale = screen.entries[0] as MenuRadioGroup<int>;
+
+    expect(windowScale.groupValue, 2);
+    expect(windowScale.options.every((o) => !o.enabled), isTrue);
+  });
+
   test('Host > Screen > Fullscreenは未対応OSでは無効', () {
     final host = catalog(fullscreenSupported: false)
         .firstWhere((g) => g.id == MenuGroupId.host)

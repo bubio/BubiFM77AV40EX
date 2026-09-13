@@ -394,9 +394,17 @@ List<MenuGroup> buildMenuCatalog({
                 // 表示する（design.md 12.3「ラジオ項目は設定値と常に一つ
                 // だけ一致」の例外、一致する設定値自体が無い）。
                 groupValue: windowScaleCurrentMultiplier ?? -1,
+                // フルスクリーン中はウィンドウサイズを変更できないため、
+                // 選択中の倍率は表示したまま操作だけ無効化する
+                // （利用者からの報告：「フルスクリーン中は操作できないように
+                // して」）。
                 options: [
                   for (final multiplier in windowScaleMultipliers)
-                    MenuRadioOption(value: multiplier, label: 'x$multiplier'),
+                    MenuRadioOption(
+                      value: multiplier,
+                      label: 'x$multiplier',
+                      enabled: !isFullscreen,
+                    ),
                 ],
                 onChanged: onWindowScaleChanged,
               ),
