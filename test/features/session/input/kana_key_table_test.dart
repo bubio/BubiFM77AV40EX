@@ -1,5 +1,5 @@
-import 'package:bubi_fm77av40ex/features/session/input/kana_key_table.dart';
-import 'package:bubi_fm77av40ex/features/session/input/win32_vk.dart';
+import 'package:bubifm77av40ex/features/session/input/kana_key_table.dart';
+import 'package:bubifm77av40ex/features/session/input/win32_vk.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// `kana_key_table.dart`の対応表の契約（INP-03）。

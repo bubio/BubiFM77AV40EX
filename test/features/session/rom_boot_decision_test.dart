@@ -1,7 +1,7 @@
-import 'package:bubi_fm77av40ex/emulator/rom/rom_inventory.dart';
-import 'package:bubi_fm77av40ex/emulator/session_state.dart';
-import 'package:bubi_fm77av40ex/features/session/rom_boot_decision.dart';
-import 'package:bubi_fm77av40ex/features/session/rom_settings_state.dart';
+import 'package:bubifm77av40ex/emulator/rom/rom_inventory.dart';
+import 'package:bubifm77av40ex/emulator/session_state.dart';
+import 'package:bubifm77av40ex/features/session/rom_boot_decision.dart';
+import 'package:bubifm77av40ex/features/session/rom_settings_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fakes.dart';

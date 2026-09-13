@@ -1,8 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:bubi_fm77av40ex_platform/bubi_fm77av40ex_platform.dart';
-
 import '../emulator/rom/rom_manifest.dart';
 import '../emulator/session_state.dart';
 import '../features/display/fullscreen_controller.dart';
@@ -18,6 +16,7 @@ import '../platform/persistence/file_system_rom_scanner.dart';
 import '../platform/persistence/os_app_data_paths.dart';
 import '../platform/persistence/os_cache_workspace.dart';
 import '../platform/persistence/os_external_file_access.dart';
+import '../platform/persistence/os_folder_reveal.dart';
 import '../platform/persistence/os_window_chrome.dart';
 import '../platform/persistence/os_window_scale.dart';
 import '../platform/audio/fdd_mechanical_audio_sink.dart';
@@ -43,7 +42,7 @@ Future<Widget> buildApp({
   final preferences = await OsPreferencesStore.open();
   final appDataPaths = OsAppDataPaths();
   const scanner = FileSystemRomScanner();
-  const reveal = FileManagerReveal();
+  const reveal = OsFolderReveal();
   final externalFileAccess = OsExternalFileAccess();
   final cacheWorkspace = OsCacheWorkspace(appDataPaths: appDataPaths);
   await cacheWorkspace.purgeAbandonedWorkspaces();

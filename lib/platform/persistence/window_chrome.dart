@@ -1,7 +1,7 @@
 /// メインウィンドウのフルスクリーン状態の境界（VID-03、design.md 3.1）。
 ///
 /// [AppDataPaths]/[ExternalFileAccess]と同じく、feature層はこの抽象だけを
-/// 知り、実体（`bubi_fm77av40ex_platform`のOSチャンネル）は`app`が
+/// 知り、実体（`bubifm77av40ex_platform`のOSチャンネル）は`app`が
 /// 差し込む。
 abstract interface class WindowChrome {
   /// このOSでフルスクリーン制御を扱えるか。

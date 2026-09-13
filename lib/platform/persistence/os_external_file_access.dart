@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:bubi_fm77av40ex_platform/bubi_fm77av40ex_platform.dart';
+import 'package:bubifm77av40ex_platform/bubifm77av40ex_platform.dart';
 import 'package:file_selector/file_selector.dart' as selector;
 
 import 'external_file_access.dart';

@@ -1,4 +1,4 @@
-import 'package:bubi_fm77av40ex/emulator/led_state.dart';
+import 'package:bubifm77av40ex/emulator/led_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// vm/fm7/keyboard.cpp の SIG_FM7KEY_LED_STATUS ビット

@@ -1,4 +1,4 @@
-import 'package:bubi_fm77av40ex/platform/audio/fdd_mechanical_sound.dart';
+import 'package:bubifm77av40ex/platform/audio/fdd_mechanical_sound.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// FDD内部機構音（readWriteのみ、AUD-04）の純Dart合成器の単体テスト。

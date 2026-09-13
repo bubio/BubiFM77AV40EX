@@ -4,7 +4,7 @@
 /// 単体テストから直接検証できる。
 library;
 
-import 'package:bubi_fm77av40ex_core/bubi_fm77av40ex_core.dart';
+import 'package:bubifm77av40ex_core/bubifm77av40ex_core.dart';
 
 import '../../emulator/emulator_error.dart';
 import '../../emulator/emulator_event.dart';

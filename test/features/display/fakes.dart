@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:ui';
 
-import 'package:bubi_fm77av40ex/platform/persistence/window_chrome.dart';
-import 'package:bubi_fm77av40ex/platform/persistence/window_scale.dart';
+import 'package:bubifm77av40ex/platform/persistence/window_chrome.dart';
+import 'package:bubifm77av40ex/platform/persistence/window_scale.dart';
 
 /// [WindowChrome]のFake。既定は対応OS扱いで、`fullScreenChanges`は
 /// 呼び出し側が[emit]で任意に流す。

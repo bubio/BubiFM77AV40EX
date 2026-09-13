@@ -1,8 +1,8 @@
-import 'package:bubi_fm77av40ex/emulator/rom/rom_inventory.dart';
-import 'package:bubi_fm77av40ex/emulator/rom/rom_manifest.dart';
-import 'package:bubi_fm77av40ex/emulator/rom/rom_probe.dart';
-import 'package:bubi_fm77av40ex/emulator/rom/rom_requirement.dart';
-import 'package:bubi_fm77av40ex/emulator/rom/rom_status.dart';
+import 'package:bubifm77av40ex/emulator/rom/rom_inventory.dart';
+import 'package:bubifm77av40ex/emulator/rom/rom_manifest.dart';
+import 'package:bubifm77av40ex/emulator/rom/rom_probe.dart';
+import 'package:bubifm77av40ex/emulator/rom/rom_requirement.dart';
+import 'package:bubifm77av40ex/emulator/rom/rom_status.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const int kib = 1024;

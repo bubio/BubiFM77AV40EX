@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:bubi_fm77av40ex/platform/persistence/os_cache_workspace.dart';
+import 'package:bubifm77av40ex/platform/persistence/os_cache_workspace.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// `CacheWorkspace`は消えてよい前提の一時領域である（design.md 11.2、16.1）。

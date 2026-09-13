@@ -1,6 +1,6 @@
-import 'package:bubi_fm77av40ex/app/l10n/generated/app_localizations.dart';
-import 'package:bubi_fm77av40ex/app/menu/sound_volume_dialog.dart';
-import 'package:bubi_fm77av40ex/emulator/session_state.dart';
+import 'package:bubifm77av40ex/app/l10n/generated/app_localizations.dart';
+import 'package:bubifm77av40ex/app/menu/sound_volume_dialog.dart';
+import 'package:bubifm77av40ex/emulator/session_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';

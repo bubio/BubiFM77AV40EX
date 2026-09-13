@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:bubi_fm77av40ex/platform/audio/wav_recorder.dart';
+import 'package:bubifm77av40ex/platform/audio/wav_recorder.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// [WavRecorder]（AUD-06）の単体テスト。

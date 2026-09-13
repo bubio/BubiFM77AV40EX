@@ -1,4 +1,4 @@
-import 'package:bubi_fm77av40ex_platform/bubi_fm77av40ex_platform.dart';
+import 'package:bubifm77av40ex_platform/bubifm77av40ex_platform.dart';
 
 import 'window_chrome.dart';
 

@@ -77,7 +77,7 @@ void main() {
   const nativeBoundaryPackages = {
     'dart:ffi',
     'package:ffi/',
-    'package:bubi_fm77av40ex_core/',
+    'package:bubifm77av40ex_core/',
   };
   const nativeBoundaryDirectory = 'lib/platform/core_ffi';
 
@@ -187,7 +187,7 @@ Set<String> _importedLibPaths(File file) {
 
 /// package: と相対importを`lib/`起点の相対パスへ正規化する。
 String? _normalizeToLibRelative(String uri, File file) {
-  const packagePrefix = 'package:bubi_fm77av40ex/';
+  const packagePrefix = 'package:bubifm77av40ex/';
   if (uri.startsWith(packagePrefix)) {
     return uri.substring(packagePrefix.length);
   }

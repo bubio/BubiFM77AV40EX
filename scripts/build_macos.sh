@@ -6,7 +6,7 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 MODE="${1:-release}"
 
-# packages/bubi_fm77av40ex_core のCMakeビルドが native/core/upstream を参照する。
+# packages/bubifm77av40ex_core のCMakeビルドが native/core/upstream を参照する。
 # 取得は冪等なので毎回呼ぶ。
 echo "==> ./scripts/build_native_core.sh fetch"
 ./scripts/build_native_core.sh fetch

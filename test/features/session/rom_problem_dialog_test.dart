@@ -1,9 +1,9 @@
-import 'package:bubi_fm77av40ex/app/l10n/generated/app_localizations.dart';
-import 'package:bubi_fm77av40ex/emulator/session_state.dart';
-import 'package:bubi_fm77av40ex/features/session/emulator_controller.dart';
-import 'package:bubi_fm77av40ex/features/session/rom_settings_controller.dart';
-import 'package:bubi_fm77av40ex/features/session/session_providers.dart';
-import 'package:bubi_fm77av40ex/features/session/widgets/rom_problem_dialog.dart';
+import 'package:bubifm77av40ex/app/l10n/generated/app_localizations.dart';
+import 'package:bubifm77av40ex/emulator/session_state.dart';
+import 'package:bubifm77av40ex/features/session/emulator_controller.dart';
+import 'package:bubifm77av40ex/features/session/rom_settings_controller.dart';
+import 'package:bubifm77av40ex/features/session/session_providers.dart';
+import 'package:bubifm77av40ex/features/session/widgets/rom_problem_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

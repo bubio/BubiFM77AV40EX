@@ -1,4 +1,4 @@
-name: bubi_fm77av40ex
+name: bubifm77av40ex
 description: "FM77AV40EX emulator front-end built on the Common Source Code Project core."
 publish_to: 'none'
 
@@ -19,8 +19,8 @@ dependencies:
   ffi: 2.2.0
   # 無改変エミュレーションコアのFFIプラグイン（design.md 16.1）。
   # ビルド定義の正は native/CMakeLists.txt にある。
-  bubi_fm77av40ex_core:
-    path: packages/bubi_fm77av40ex_core
+  bubifm77av40ex_core:
+    path: packages/bubifm77av40ex_core
   # 状態管理・依存注入（BluePrint 技術スタック）
   flutter_riverpod: 3.4.2
   # エミュレーター音声出力（BluePrint 技術スタック）
@@ -38,8 +38,8 @@ dependencies:
   file_selector: 1.1.0
   # 利用者が選んだ位置への永続アクセス権（security-scoped bookmark）。
   # macOSのブックマークAPIを扱う自前のプラグイン。
-  bubi_fm77av40ex_platform:
-    path: packages/bubi_fm77av40ex_platform
+  bubifm77av40ex_platform:
+    path: packages/bubifm77av40ex_platform
   # 物理ジョイスティック/ゲームパッド入力（INP-04）。macOS/iOSは内部で
   # GameController.frameworkを使う。自前のSwiftプラットフォームチャンネルは
   # 作らない（design.md「ジョイスティック割当（M3、INP-04）の実装方式」）。

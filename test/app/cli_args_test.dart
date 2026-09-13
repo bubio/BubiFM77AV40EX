@@ -1,5 +1,5 @@
-import 'package:bubi_fm77av40ex/app/cli_args.dart';
-import 'package:bubi_fm77av40ex/emulator/session_state.dart';
+import 'package:bubifm77av40ex/app/cli_args.dart';
+import 'package:bubifm77av40ex/emulator/session_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

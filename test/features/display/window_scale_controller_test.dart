@@ -1,6 +1,6 @@
 import 'dart:ui';
 
-import 'package:bubi_fm77av40ex/features/display/window_scale_controller.dart';
+import 'package:bubifm77av40ex/features/display/window_scale_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 

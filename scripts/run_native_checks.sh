@@ -4,7 +4,7 @@
 #
 # session_test 本体は ctest（scripts/build_native_core.sh test）が実行する。
 # ここは同じバイナリに対するリーク検査と、
-# packages/bubi_fm77av40ex_core の束縛を使った Dart FFI 呼び出し検証を行う。
+# packages/bubifm77av40ex_core の束縛を使った Dart FFI 呼び出し検証を行う。
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -42,7 +42,7 @@ run_with_timeout() {
 
 SESSION_TEST="${BUILD_DIR}/session_test"
 SESSION_HOME="${BUILD_DIR}/session-home"
-CORE_DYLIB="${BUILD_DIR}/libbubi_fm77av40ex.dylib"
+CORE_DYLIB="${BUILD_DIR}/libbubifm77av40ex.dylib"
 LEAK_LOG="${BUILD_DIR}/leaks.log"
 
 log "build"
@@ -51,7 +51,7 @@ log "build"
 # leaks(1) やctestが残した子プロセスがstdoutを掴んだままだと、
 # シェルが終了してもCIのステップが終わらない。節目で必ず掃除する。
 cleanup_test_processes() {
-  # 実行ファイルのパスで厳密に一致させる。libbubi_fm77av40ex.dylib を
+  # 実行ファイルのパスで厳密に一致させる。libbubifm77av40ex.dylib を
   # 引数に持つ dart のコマンドラインを巻き込まないため。
   pkill -9 -f "${BUILD_DIR}/session_test" 2>/dev/null || true
 }
@@ -90,7 +90,7 @@ else
   fi
 fi
 
-# --- Dart FFI からの呼び出し（packages/bubi_fm77av40ex_core の束縛） ---
+# --- Dart FFI からの呼び出し（packages/bubifm77av40ex_core の束縛） ---
 [ -f "${CORE_DYLIB}" ] || { echo "error: ${CORE_DYLIB} がありません" >&2; exit 1; }
 
 cleanup_test_processes

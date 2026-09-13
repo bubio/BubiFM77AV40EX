@@ -1,5 +1,5 @@
-import 'package:bubi_fm77av40ex/emulator/emulator_error.dart';
-import 'package:bubi_fm77av40ex/platform/core_ffi/ffi_emulator_session.dart';
+import 'package:bubifm77av40ex/emulator/emulator_error.dart';
+import 'package:bubifm77av40ex/platform/core_ffi/ffi_emulator_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// ネイティブライブラリを開く前に弾ける入力の検査。

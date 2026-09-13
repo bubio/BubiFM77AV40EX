@@ -1,6 +1,6 @@
-import 'package:bubi_fm77av40ex/emulator/joystick_bit.dart';
-import 'package:bubi_fm77av40ex/features/input/joystick_assignment_controller.dart';
-import 'package:bubi_fm77av40ex/features/input/joystick_source.dart';
+import 'package:bubifm77av40ex/emulator/joystick_bit.dart';
+import 'package:bubifm77av40ex/features/input/joystick_assignment_controller.dart';
+import 'package:bubifm77av40ex/features/input/joystick_source.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -1,6 +1,6 @@
 import 'dart:ui' show Size;
 
-import 'package:bubi_fm77av40ex/features/display/screen_fit.dart';
+import 'package:bubifm77av40ex/features/display/screen_fit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
