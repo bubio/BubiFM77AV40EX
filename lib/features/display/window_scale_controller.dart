@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../platform/persistence/preferences_store.dart';
 import '../../platform/persistence/window_chrome.dart';
 import '../../platform/persistence/window_scale.dart';
 
@@ -35,9 +36,20 @@ class WindowScaleController extends Notifier<WindowScaleState> {
   WindowScaleController({
     required this.windowScale,
     required this.windowChrome,
+    required this.preferences,
   });
 
   final WindowScale windowScale;
+
+  /// 選択した倍率を再起動後も復元するための保存先
+  /// （design.md 12.2 `Host > Screen > Window x1/x2/…`、利用者からの
+  /// 指摘：「起動のたびにx1へ戻ってしまう」）。
+  final PreferencesStore preferences;
+
+  static const String _multiplierKey = 'settings.windowMultiplier';
+
+  /// [_refresh]で書き込むたびに`PreferencesStore`へ触れないための直近値。
+  int? _lastPersistedMultiplier;
 
   /// フルスクリーン中かどうかを都度[FullscreenController]を介さず直接
   /// 問い合わせるために持つ（design.mdの倍率メニュー、design.md 12.3の
@@ -150,6 +162,10 @@ class WindowScaleController extends Notifier<WindowScaleState> {
       availableMultipliers: multipliers,
       currentMultiplier: matched,
     );
+    if (matched != null && matched != _lastPersistedMultiplier) {
+      _lastPersistedMultiplier = matched;
+      await preferences.setInt(_multiplierKey, matched);
+    }
   }
 
   /// ウィンドウをゲスト画面の[multiplier]倍へリサイズする。
@@ -183,7 +199,12 @@ class WindowScaleController extends Notifier<WindowScaleState> {
     await _refresh();
     if (state.currentMultiplier == null &&
         state.availableMultipliers.isNotEmpty) {
-      await setMultiplier(1);
+      final stored = preferences.getInt(_multiplierKey);
+      final target =
+          (stored != null && state.availableMultipliers.contains(stored))
+          ? stored
+          : 1;
+      await setMultiplier(target);
     }
     await windowScale.show();
   }

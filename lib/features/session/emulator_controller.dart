@@ -180,11 +180,30 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   @override
   EmulatorViewState build() {
     ref.onDispose(_teardown);
+    _cpuType = _readCpuType();
+    _optionSwitches = _readOptionSwitches();
+    _soundVolumes = _readSoundVolumes();
+    _fddMechanicalSoundEnabled = _readFddMechanicalSoundEnabled();
+    _cmtDriveSettings = CmtDriveSettings(waveShaping: _readCmtWaveShaping());
+    _cmtSoundSettings = _readCmtSoundSettings();
+    for (var drive = 0; drive < 2; drive++) {
+      _fddDriveSettings[drive] = _readFddDriveSettings(drive);
+    }
     return EmulatorViewState(
+      fit: _readScreenFit(),
+      scanlineEnabled: _readScanlineEnabled(),
+      hostFilter: _readHostFilter(),
       fddRecentFiles: {
         for (var drive = 0; drive < 2; drive++) drive: _readRecentFiles(drive),
       },
+      fddDriveSettings: Map.of(_fddDriveSettings),
       cmtRecentFiles: _readCmtRecentFiles(),
+      cpuType: _cpuType,
+      optionSwitches: _optionSwitches,
+      soundVolumes: _soundVolumes,
+      fddMechanicalSoundEnabled: _fddMechanicalSoundEnabled,
+      cmtDriveSettings: _cmtDriveSettings,
+      cmtSoundSettings: _cmtSoundSettings,
     );
   }
 
@@ -327,6 +346,160 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     await preferences.setString(_cmtRecentFilesKey, jsonEncode(const []));
     state = state.copyWith(cmtRecentFiles: const []);
   }
+
+  static const _scanlineKey = 'device.display.scanline';
+  static const _screenFitKey = 'host.screen.fit';
+  static const _hostFilterKey = 'host.screen.filter';
+  static const _cpuTypeKey = 'device.cpuType';
+  static const _optionSwitchesKey = 'device.optionSwitches';
+  static const _soundVolumesKey = 'host.sound.volumes';
+  static const _fddMechanicalSoundEnabledKey = 'host.sound.fddMechanismEnabled';
+  static const _cmtWaveShapingKey = 'cmt.waveShaping';
+  static const _cmtSoundKey = 'cmt.sound';
+
+  String _fddDriveSettingsKey(int drive) => 'fdd.driveSettings.fd$drive';
+
+  ScreenFit _readScreenFit() => switch (preferences.getString(_screenFitKey)) {
+    'integer' => ScreenFit.integer,
+    'fill' => ScreenFit.fill,
+    _ => ScreenFit.aspect,
+  };
+
+  HostScreenFilter _readHostFilter() =>
+      switch (preferences.getString(_hostFilterKey)) {
+        'rgb' => HostScreenFilter.rgb,
+        _ => HostScreenFilter.none,
+      };
+
+  CpuType _readCpuType() => switch (preferences.getString(_cpuTypeKey)) {
+    'slow' => CpuType.slow,
+    _ => CpuType.fast,
+  };
+
+  bool _readScanlineEnabled() => preferences.getBool(_scanlineKey) ?? false;
+
+  bool _readFddMechanicalSoundEnabled() =>
+      preferences.getBool(_fddMechanicalSoundEnabledKey) ?? true;
+
+  RunOptionSwitches _readOptionSwitches() {
+    final raw = preferences.getString(_optionSwitchesKey);
+    if (raw == null) {
+      return const RunOptionSwitches();
+    }
+    try {
+      final decoded = jsonDecode(raw) as Map<String, Object?>;
+      return RunOptionSwitches(
+        cycleSteal: decoded['cycleSteal'] == true,
+        extendedRam: decoded['extendedRam'] == true,
+        syncToHsync: decoded['syncToHsync'] == true,
+      );
+    } on FormatException {
+      return const RunOptionSwitches();
+    }
+  }
+
+  Future<void> _writeOptionSwitches(RunOptionSwitches switches) =>
+      preferences.setString(
+        _optionSwitchesKey,
+        jsonEncode({
+          'cycleSteal': switches.cycleSteal,
+          'extendedRam': switches.extendedRam,
+          'syncToHsync': switches.syncToHsync,
+        }),
+      );
+
+  SoundChannelVolumes _readSoundVolumes() {
+    final raw = preferences.getString(_soundVolumesKey);
+    if (raw == null) {
+      return const SoundChannelVolumes();
+    }
+    try {
+      final decoded = jsonDecode(raw) as Map<String, Object?>;
+      double read(String key) => (decoded[key] as num?)?.toDouble() ?? 1.0;
+      return SoundChannelVolumes(
+        opnFm: read('opnFm'),
+        opnPsg: read('opnPsg'),
+        beep: read('beep'),
+        keyboardBeep: read('keyboardBeep'),
+        fddMechanism: read('fddMechanism'),
+      );
+    } on FormatException {
+      return const SoundChannelVolumes();
+    }
+  }
+
+  Future<void> _writeSoundVolumes(SoundChannelVolumes volumes) =>
+      preferences.setString(
+        _soundVolumesKey,
+        jsonEncode({
+          'opnFm': volumes.opnFm,
+          'opnPsg': volumes.opnPsg,
+          'beep': volumes.beep,
+          'keyboardBeep': volumes.keyboardBeep,
+          'fddMechanism': volumes.fddMechanism,
+        }),
+      );
+
+  bool _readCmtWaveShaping() =>
+      preferences.getBool(_cmtWaveShapingKey) ?? false;
+
+  CmtSoundSettings _readCmtSoundSettings() {
+    final raw = preferences.getString(_cmtSoundKey);
+    if (raw == null) {
+      return const CmtSoundSettings();
+    }
+    try {
+      final decoded = jsonDecode(raw) as Map<String, Object?>;
+      return CmtSoundSettings(
+        noiseEnabled: decoded['noiseEnabled'] == true,
+        signalEnabled: decoded['signalEnabled'] == true,
+        voiceEnabled: decoded['voiceEnabled'] == true,
+        noiseVolume: (decoded['noiseVolume'] as num?)?.toDouble() ?? 1.0,
+        signalVolume: (decoded['signalVolume'] as num?)?.toDouble() ?? 1.0,
+      );
+    } on FormatException {
+      return const CmtSoundSettings();
+    }
+  }
+
+  Future<void> _writeCmtSoundSettings(CmtSoundSettings settings) =>
+      preferences.setString(
+        _cmtSoundKey,
+        jsonEncode({
+          'noiseEnabled': settings.noiseEnabled,
+          'signalEnabled': settings.signalEnabled,
+          'voiceEnabled': settings.voiceEnabled,
+          'noiseVolume': settings.noiseVolume,
+          'signalVolume': settings.signalVolume,
+        }),
+      );
+
+  FddDriveSettings _readFddDriveSettings(int drive) {
+    final raw = preferences.getString(_fddDriveSettingsKey(drive));
+    if (raw == null) {
+      return const FddDriveSettings();
+    }
+    try {
+      final decoded = jsonDecode(raw) as Map<String, Object?>;
+      return FddDriveSettings(
+        correctTiming: decoded['correctTiming'] == true,
+        ignoreCrc: decoded['ignoreCrc'] == true,
+      );
+    } on FormatException {
+      return const FddDriveSettings();
+    }
+  }
+
+  Future<void> _writePersistedFddDriveSettings(
+    int drive,
+    FddDriveSettings settings,
+  ) => preferences.setString(
+    _fddDriveSettingsKey(drive),
+    jsonEncode({
+      'correctTiming': settings.correctTiming,
+      'ignoreCrc': settings.ignoreCrc,
+    }),
+  );
 
   /// コアを起動して画面をつなぐ。すでに動いていれば何もしない。
   Future<void> launch({BootMode bootMode = BootMode.basic}) async {
@@ -511,19 +684,24 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     }
   }
 
-  /// 表示領域への合わせ方を変える（VID-02）。
+  /// 表示領域への合わせ方を変える（VID-02）。再起動後も復元する。
   void setFit(ScreenFit fit) {
     state = state.copyWith(fit: fit);
+    unawaited(preferences.setString(_screenFitKey, fit.name));
   }
 
   /// ホスト側の走査線効果を切り替える（VID-04）。コアへは送らない。
+  /// 再起動後も復元する。
   void setScanlineEnabled(bool enabled) {
     state = state.copyWith(scanlineEnabled: enabled);
+    unawaited(preferences.setBool(_scanlineKey, enabled));
   }
 
   /// ホスト側のRGBフィルターを変える（VID-04）。コアへは送らない。
+  /// 再起動後も復元する。
   void setHostFilter(HostScreenFilter filter) {
     state = state.copyWith(hostFilter: filter);
+    unawaited(preferences.setString(_hostFilterKey, filter.name));
   }
 
   /// マスター音量を変える（0.0〜1.0、design.md 12.4）。
@@ -568,6 +746,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   Future<void> setCpuType(CpuType type) async {
     _cpuType = type;
     state = state.copyWith(cpuType: type);
+    await preferences.setString(_cpuTypeKey, type.name);
     await _session?.setCpuType(type);
   }
 
@@ -579,6 +758,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   Future<void> setRunOptionSwitches(RunOptionSwitches switches) async {
     _optionSwitches = switches;
     state = state.copyWith(optionSwitches: switches);
+    await _writeOptionSwitches(switches);
     await _session?.setRunOptionSwitches(switches);
   }
 
@@ -594,6 +774,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   ) async {
     _soundVolumes = _soundVolumes.withVolume(channel, volume);
     state = state.copyWith(soundVolumes: _soundVolumes);
+    await _writeSoundVolumes(_soundVolumes);
     if (channel == SoundChannel.fddMechanism) {
       _session?.setFddMechanicalSoundVolume(volume);
       return;
@@ -607,6 +788,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   void setFddMechanicalSoundEnabled(bool enabled) {
     _fddMechanicalSoundEnabled = enabled;
     state = state.copyWith(fddMechanicalSoundEnabled: enabled);
+    unawaited(preferences.setBool(_fddMechanicalSoundEnabledKey, enabled));
     _session?.setFddMechanicalSoundEnabled(enabled);
   }
 
@@ -949,20 +1131,20 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   }
 
   /// ドライブごとのタイミング補正を変える（FDD-06）。起動中は即時反映。
+  /// 媒体ではなくドライブ自身の設定のため、再起動後も復元する。
   Future<void> setFddTiming(int drive, bool enabled) async {
-    await _updateFddDriveSettings(
-      drive,
-      _driveSettingsOf(drive).copyWith(correctTiming: enabled),
-    );
+    final settings = _driveSettingsOf(drive).copyWith(correctTiming: enabled);
+    await _updateFddDriveSettings(drive, settings);
+    await _writePersistedFddDriveSettings(drive, settings);
     await _session?.setFddTiming(drive, enabled);
   }
 
   /// ドライブごとのCRCエラー無視を変える（FDD-06）。起動中は即時反映。
+  /// 媒体ではなくドライブ自身の設定のため、再起動後も復元する。
   Future<void> setFddCrcCheck(int drive, bool ignore) async {
-    await _updateFddDriveSettings(
-      drive,
-      _driveSettingsOf(drive).copyWith(ignoreCrc: ignore),
-    );
+    final settings = _driveSettingsOf(drive).copyWith(ignoreCrc: ignore);
+    await _updateFddDriveSettings(drive, settings);
+    await _writePersistedFddDriveSettings(drive, settings);
     await _session?.setFddCrcCheck(drive, ignore);
   }
 
@@ -1525,6 +1707,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   Future<void> setCmtWaveShaping(bool enabled) async {
     _cmtDriveSettings = _cmtDriveSettings.copyWith(waveShaping: enabled);
     state = state.copyWith(cmtDriveSettings: _cmtDriveSettings);
+    await preferences.setBool(_cmtWaveShapingKey, enabled);
     await _session?.setCmtWaveShaping(enabled);
   }
 
@@ -1533,6 +1716,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   Future<void> setCmtSoundEnabled(CmtSoundKind kind, bool enabled) async {
     _cmtSoundSettings = _cmtSoundSettings.withEnabled(kind, enabled);
     state = state.copyWith(cmtSoundSettings: _cmtSoundSettings);
+    await _writeCmtSoundSettings(_cmtSoundSettings);
     await _session?.setCmtSoundEnabled(kind, enabled);
   }
 
@@ -1548,6 +1732,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
         ? _cmtSoundSettings.copyWith(noiseVolume: volume)
         : _cmtSoundSettings.copyWith(signalVolume: volume);
     state = state.copyWith(cmtSoundSettings: _cmtSoundSettings);
+    await _writeCmtSoundSettings(_cmtSoundSettings);
     await _session?.setCmtSoundVolume(kind, volume);
   }
 

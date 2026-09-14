@@ -9,17 +9,20 @@ import 'fakes.dart';
 void main() {
   late FakeWindowScale windowScale;
   late FakeWindowChrome windowChrome;
+  late FakePreferencesStore preferences;
   late ProviderContainer container;
 
   setUp(() {
     windowScale = FakeWindowScale();
     windowChrome = FakeWindowChrome();
+    preferences = FakePreferencesStore();
     container = ProviderContainer(
       overrides: [
         windowScaleControllerProvider.overrideWith(
           () => WindowScaleController(
             windowScale: windowScale,
             windowChrome: windowChrome,
+            preferences: preferences,
           ),
         ),
       ],
@@ -139,6 +142,51 @@ void main() {
 
     expect(windowScale.setContentSizeCalls, [const Size(640, 424)]);
     expect(container.read(windowScaleControllerProvider).currentMultiplier, 1);
+  });
+
+  test('setMultiplierで選んだ倍率をPreferencesStoreへ保存する', () async {
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    final controller = container.read(windowScaleControllerProvider.notifier);
+    await controller.setMultiplier(2);
+
+    expect(preferences.getInt('settings.windowMultiplier'), 2);
+  });
+
+  test('ドラッグで倍率と一致するサイズになった場合も保存する', () async {
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    windowScale.emit(const Size(1280, 800));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(preferences.getInt('settings.windowMultiplier'), 2);
+  });
+
+  test('applyInitialMultiplierIfNeededは保存済みの倍率があればそれへ合わせる', () async {
+    preferences.values['settings.windowMultiplier'] = 2;
+    windowScale.contentSize = const Size(800, 600);
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    final controller = container.read(windowScaleControllerProvider.notifier);
+    await controller.applyInitialMultiplierIfNeeded();
+
+    expect(windowScale.setContentSizeCalls, [const Size(1280, 800)]);
+    expect(container.read(windowScaleControllerProvider).currentMultiplier, 2);
+  });
+
+  test('保存済みの倍率が現在のディスプレイで選べなければx1へ合わせる', () async {
+    preferences.values['settings.windowMultiplier'] = 5;
+    windowScale.contentSize = const Size(800, 600);
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    final controller = container.read(windowScaleControllerProvider.notifier);
+    await controller.applyInitialMultiplierIfNeeded();
+
+    expect(windowScale.setContentSizeCalls, [const Size(640, 400)]);
   });
 
   test('applyInitialMultiplierIfNeededは起動直後の未一致サイズをx1へ合わせる', () async {

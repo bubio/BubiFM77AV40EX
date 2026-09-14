@@ -100,6 +100,7 @@ Future<Widget> buildApp({
         () => WindowScaleController(
           windowScale: OsWindowScale(),
           windowChrome: OsWindowChrome(),
+          preferences: preferences,
         ),
       ),
       joystickAssignmentControllerProvider.overrideWith(

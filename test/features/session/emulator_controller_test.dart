@@ -7,6 +7,7 @@ import 'package:bubifm77av40ex/emulator/emulator_stats.dart';
 import 'package:bubifm77av40ex/emulator/led_state.dart';
 import 'package:bubifm77av40ex/emulator/session_state.dart';
 import 'package:bubifm77av40ex/features/display/screen_filter.dart';
+import 'package:bubifm77av40ex/features/display/screen_fit.dart';
 import 'package:bubifm77av40ex/features/session/emulator_controller.dart';
 import 'package:bubifm77av40ex/features/session/emulator_state.dart';
 import 'package:bubifm77av40ex/features/session/input/win32_vk.dart';
@@ -38,6 +39,7 @@ void main() {
   late FakeExternalFileAccess externalFileAccess;
   late FakeCacheWorkspace cacheWorkspace;
   late FakeAppDataPaths appDataPaths;
+  late FakePreferencesStore preferences;
   late ProviderContainer container;
   late NotifierProvider<EmulatorController, EmulatorViewState> provider;
 
@@ -47,12 +49,13 @@ void main() {
     externalFileAccess = FakeExternalFileAccess();
     cacheWorkspace = FakeCacheWorkspace();
     appDataPaths = FakeAppDataPaths();
+    preferences = FakePreferencesStore();
     provider = NotifierProvider<EmulatorController, EmulatorViewState>(
       () => EmulatorController(
         appDataPaths: appDataPaths,
         externalFileAccess: externalFileAccess,
         cacheWorkspace: cacheWorkspace,
-        preferences: FakePreferencesStore(),
+        preferences: preferences,
         createSession: ({
           required String homeDir,
           String? romDir,
@@ -68,6 +71,29 @@ void main() {
   EmulatorController controller() => container.read(provider.notifier);
   EmulatorViewState state() => container.read(provider);
 
+  /// 同じ`preferences`を共有する2つ目のControllerを作る
+  /// （アプリ再起動を模す。`preferences`だけがプロセスをまたいで残る）。
+  EmulatorViewState restart() {
+    final restartSession = FakeEmulatorSession();
+    final restartProvider =
+        NotifierProvider<EmulatorController, EmulatorViewState>(
+          () => EmulatorController(
+            appDataPaths: FakeAppDataPaths(),
+            externalFileAccess: FakeExternalFileAccess(),
+            cacheWorkspace: FakeCacheWorkspace(),
+            preferences: preferences,
+            createSession: ({
+              required String homeDir,
+              String? romDir,
+              BootMode bootMode = BootMode.basic,
+            }) => restartSession,
+          ),
+        );
+    final restartContainer = ProviderContainer();
+    addTearDown(restartContainer.dispose);
+    return restartContainer.read(restartProvider);
+  }
+
   test('SYS-04 bootModeを渡したリセットはsetBootModeを先に呼び、状態も更新する', () async {
     await controller().reset(ResetKind.normal, bootMode: BootMode.dos);
 
@@ -82,6 +108,19 @@ void main() {
     expect(state().scanlineEnabled, isTrue);
   });
 
+  test('VID-04 スキャンラインは再起動後も復元される', () {
+    controller().setScanlineEnabled(true);
+
+    expect(restart().scanlineEnabled, isTrue);
+  });
+
+  test('VID-02 setFitは即座にstateへ反映され、再起動後も復元される', () {
+    controller().setFit(ScreenFit.integer);
+    expect(state().fit, ScreenFit.integer);
+
+    expect(restart().fit, ScreenFit.integer);
+  });
+
   test('INP-04 setJoystickStateはそのままセッションへ転送される', () {
     controller().setJoystickState(0, 0x0f);
     controller().setJoystickState(1, 0x30);
@@ -93,6 +132,12 @@ void main() {
     expect(state().hostFilter, HostScreenFilter.none);
     controller().setHostFilter(HostScreenFilter.rgb);
     expect(state().hostFilter, HostScreenFilter.rgb);
+  });
+
+  test('VID-04 ホストフィルターは再起動後も復元される', () {
+    controller().setHostFilter(HostScreenFilter.rgb);
+
+    expect(restart().hostFilter, HostScreenFilter.rgb);
   });
 
   test('SYS-04 bootModeを渡さないリセットはsetBootModeを呼ばない', () async {
@@ -123,12 +168,29 @@ void main() {
     expect(state().cpuType, CpuType.slow);
   });
 
+  test('SYS-05 CPU種別は再起動後も復元される', () async {
+    await controller().setCpuType(CpuType.slow);
+
+    expect(restart().cpuType, CpuType.slow);
+  });
+
   test('SYS-06 オプションスイッチは起動中ならコアへ即時に送り、状態も更新する', () async {
     const switches = RunOptionSwitches(cycleSteal: true, extendedRam: true);
     await controller().setRunOptionSwitches(switches);
 
     expect(session.setRunOptionSwitchesCalls.last, switches);
     expect(state().optionSwitches, switches);
+  });
+
+  test('SYS-06 オプションスイッチは再起動後も復元される', () async {
+    const switches = RunOptionSwitches(
+      cycleSteal: true,
+      extendedRam: true,
+      syncToHsync: true,
+    );
+    await controller().setRunOptionSwitches(switches);
+
+    expect(restart().optionSwitches, switches);
   });
 
   test('AUD-03 チャンネル音量は起動中ならコアへ即時に送り、状態も更新する', () async {
@@ -138,6 +200,15 @@ void main() {
     expect(state().soundVolumes.beep, 0.5);
     // 他チャンネルは既定のまま。
     expect(state().soundVolumes.opnFm, 1.0);
+  });
+
+  test('AUD-03 チャンネル音量は再起動後も復元される', () async {
+    await controller().setSoundChannelVolume(SoundChannel.opnPsg, 0.2);
+    await controller().setSoundChannelVolume(SoundChannel.beep, 0.6);
+
+    final restarted = restart();
+    expect(restarted.soundVolumes.opnPsg, 0.2);
+    expect(restarted.soundVolumes.beep, 0.6);
   });
 
   test('実行設定は次回launch時に新しいセッションへ再適用される', () async {
@@ -188,6 +259,12 @@ void main() {
 
     expect(session.setFddMechanicalSoundEnabledCalls, [false]);
     expect(state().fddMechanicalSoundEnabled, isFalse);
+  });
+
+  test('AUD-04 機構音の有効・無効は再起動後も復元される', () {
+    controller().setFddMechanicalSoundEnabled(false);
+
+    expect(restart().fddMechanicalSoundEnabled, isFalse);
   });
 
   test('AUD-04 機構音の無効設定は次回launch時に再適用される', () async {
@@ -642,6 +719,21 @@ void main() {
     expect(session.setFddCrcCheckCalls, [(1, true)]);
   });
 
+  test('FDD-06 タイミング補正・CRC無視はドライブ自身の設定のため、再起動後も復元される', () async {
+    await controller().setFddTiming(0, true);
+    await controller().setFddCrcCheck(1, true);
+
+    final restarted = restart();
+    expect(
+      restarted.fddDriveSettings[0],
+      const FddDriveSettings(correctTiming: true),
+    );
+    expect(
+      restarted.fddDriveSettings[1],
+      const FddDriveSettings(ignoreCrc: true),
+    );
+  });
+
   test('FDD-06 書込み保護は媒体自身が持つ状態のため、launch時には再適用しない', () async {
     await controller().setFddWriteProtect(1, true);
     await controller().shutdown();
@@ -650,6 +742,15 @@ void main() {
     await controller().launch();
 
     expect(session.setFddWriteProtectCalls, isEmpty);
+  });
+
+  test('FDD-06 書込み保護は媒体自身が持つ状態のため、再起動後には復元しない', () async {
+    await controller().setFddWriteProtect(1, true);
+
+    expect(
+      restart().fddDriveSettings[1],
+      isNot(const FddDriveSettings(writeProtected: true)),
+    );
   });
 
   test('FDD-06 挿入すると書込み保護の表示は媒体自身が持つ実際値になる', () async {
@@ -1020,6 +1121,12 @@ void main() {
     expect(session.setCmtWaveShapingCalls, [true]);
   });
 
+  test('CMT-04 波形整形は再起動後も復元される', () async {
+    await controller().setCmtWaveShaping(true);
+
+    expect(restart().cmtDriveSettings.waveShaping, isTrue);
+  });
+
   test('AUD-07 CMTノイズ・信号・音声の有効化は起動中ならコアへ即時に送り、状態も更新する', () async {
     await controller().setCmtSoundEnabled(CmtSoundKind.noise, true);
     await controller().setCmtSoundEnabled(CmtSoundKind.signal, true);
@@ -1043,6 +1150,12 @@ void main() {
     await controller().launch();
 
     expect(session.setCmtSoundEnabledCalls, [(CmtSoundKind.noise, true)]);
+  });
+
+  test('AUD-07 有効化設定は再起動後も復元される', () async {
+    await controller().setCmtSoundEnabled(CmtSoundKind.voice, true);
+
+    expect(restart().cmtSoundSettings.voiceEnabled, isTrue);
   });
 
   test('AUD-07 ノイズ・信号の音量は起動中ならコアへ即時に送り、状態も更新する', () async {
@@ -1071,6 +1184,15 @@ void main() {
     await controller().launch();
 
     expect(session.setCmtSoundVolumeCalls, [(CmtSoundKind.noise, 0.5)]);
+  });
+
+  test('AUD-07 ノイズ・信号の音量は再起動後も復元される', () async {
+    await controller().setCmtSoundVolume(CmtSoundKind.noise, 0.5);
+    await controller().setCmtSoundVolume(CmtSoundKind.signal, 0.25);
+
+    final restarted = restart();
+    expect(restarted.cmtSoundSettings.noiseVolume, 0.5);
+    expect(restarted.cmtSoundSettings.signalVolume, 0.25);
   });
 
   test('CMT-05 挿入した媒体は最近使ったファイルへ記録され、再選択できる', () async {

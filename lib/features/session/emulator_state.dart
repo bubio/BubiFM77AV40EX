@@ -56,14 +56,15 @@ class EmulatorViewState {
   final int frameWidth;
   final int frameHeight;
 
-  /// 表示領域への合わせ方（VID-02）。
+  /// 表示領域への合わせ方（VID-02）。`EmulatorController`が
+  /// `PreferencesStore`へ永続化し、再起動後も復元する。
   final ScreenFit fit;
 
-  /// ホスト側の走査線効果が有効かどうか（VID-04）。永続化しない
-  /// セッション内の表示状態で、[fit]と同じ扱いにする（design.md 16.1）。
+  /// ホスト側の走査線効果が有効かどうか（VID-04）。[fit]と同じく
+  /// `EmulatorController`が永続化する。
   final bool scanlineEnabled;
 
-  /// ホスト側のRGBフィルター選択（VID-04）。[fit]と同じく永続化しない。
+  /// ホスト側のRGBフィルター選択（VID-04）。[fit]と同じく永続化する。
   final HostScreenFilter hostFilter;
 
   /// INS、KANA、CAPSの意味づけ済み状態（INP-02）。
