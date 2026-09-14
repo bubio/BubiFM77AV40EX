@@ -113,12 +113,27 @@ class WindowScaleController extends Notifier<WindowScaleState> {
 
   /// ゲスト画面以外が占める高さ（ステータスバー等）が変わったら
   /// 倍率候補・現在値を再計算する。
+  ///
+  /// 既にどれかの倍率と一致していた場合は、ウィンドウの実サイズを新しい
+  /// chromeHeightに合わせて能動的にリサイズし、同じ倍率を保つ（`Host >
+  /// Show Status Bar`の表示切替直後にウィンドウサイズが変わらず、ゲスト
+  /// 画面だけがステータスバー分伸び縮みして見える不具合への対応）。
+  /// 一致していなければ（利用者がドラッグで任意サイズにした直後など）、
+  /// 従来どおり値の再計算だけに留める。
   Future<void> setChromeHeight(double height) async {
     if (_chromeHeight == height) {
       return;
     }
+    final previousMultiplier = state.currentMultiplier;
     _chromeHeight = height;
-    if (state.supported) {
+    if (!state.supported) {
+      return;
+    }
+    final isFullscreen =
+        _fullscreenSupported && await windowChrome.isFullScreen();
+    if (previousMultiplier != null && !isFullscreen) {
+      await setMultiplier(previousMultiplier);
+    } else {
       await _refresh();
     }
   }

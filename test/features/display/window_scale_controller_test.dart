@@ -133,6 +133,9 @@ void main() {
   });
 
   test('setMultiplierはchromeHeightを含めた高さでウィンドウサイズを変える', () async {
+    // 未一致サイズから始め、setChromeHeight自体のリサイズ（下記の別テスト）と
+    // 混ざらないようにする。
+    windowScale.contentSize = const Size(999, 999);
     container.read(windowScaleControllerProvider);
     await Future<void>.delayed(Duration.zero);
 
@@ -327,6 +330,35 @@ void main() {
     await controller.setChromeHeight(24);
 
     expect(windowScale.setMinimumContentSizeCalls.last, const Size(640, 424));
+  });
+
+  test('setChromeHeightは既に倍率と一致していれば実際のウィンドウサイズも'
+      'リサイズして同じ倍率を保つ', () async {
+    windowScale.contentSize = const Size(1280, 800);
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(windowScaleControllerProvider).currentMultiplier, 2);
+
+    final controller = container.read(windowScaleControllerProvider.notifier);
+    await controller.setChromeHeight(24);
+
+    expect(windowScale.setContentSizeCalls, [const Size(1280, 824)]);
+    expect(container.read(windowScaleControllerProvider).currentMultiplier, 2);
+  });
+
+  test('setChromeHeightはフルスクリーン中はウィンドウをリサイズしない', () async {
+    windowScale.contentSize = const Size(1280, 800);
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    windowChrome.emit(true);
+    windowScale.emit(const Size(1920, 1080));
+    await Future<void>.delayed(Duration.zero);
+
+    final controller = container.read(windowScaleControllerProvider.notifier);
+    await controller.setChromeHeight(24);
+
+    expect(windowScale.setContentSizeCalls, isEmpty);
   });
 
   test('setBaseSizeが変わると最小サイズも新しいx1サイズへ更新する', () async {
