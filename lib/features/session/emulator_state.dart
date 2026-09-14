@@ -25,6 +25,14 @@ class EmulatorViewState {
     this.fddCurBank = const {},
     this.fddSourceKind = const {},
     this.fddRecentFiles = const {},
+    this.cmtInserted = false,
+    this.cmtPlaying = false,
+    this.cmtRecording = false,
+    this.cmtPosition = 0,
+    this.cmtMessage = 'Stop',
+    this.cmtDriveSettings = const CmtDriveSettings(),
+    this.cmtSoundSettings = const CmtSoundSettings(),
+    this.cmtRecentFiles = const [],
     this.bootMode = BootMode.basic,
     this.cpuType = CpuType.fast,
     this.speedMultiplier = SpeedMultiplier.x1,
@@ -91,6 +99,31 @@ class EmulatorViewState {
 
   /// FD1/FD2ごとの最近使ったファイル（FDD-07、新しい順）。
   final Map<int, List<FddRecentFile>> fddRecentFiles;
+
+  /// CMTに媒体が挿入されているか（CMT-01/CMT-02）。
+  final bool cmtInserted;
+
+  /// CMTが走行（再生）中かどうか（CMT-03）。
+  final bool cmtPlaying;
+
+  /// CMTが走行（録音）中かどうか（CMT-03）。
+  final bool cmtRecording;
+
+  /// CMTの走行位置（0〜100、CMT-05）。未挿入または再生中でなければ0。
+  final int cmtPosition;
+
+  /// CMTの状態メッセージ（CMT-05、upstream `DATAREC::get_message()`）。
+  final String cmtMessage;
+
+  /// CMTの波形整形設定（CMT-04）。
+  final CmtDriveSettings cmtDriveSettings;
+
+  /// CMTノイズ・CMT信号・CMT音声の個別有効化と、ノイズ・信号の音量
+  /// （AUD-07）。
+  final CmtSoundSettings cmtSoundSettings;
+
+  /// CMTの最近使ったファイル（CMT-05、新しい順）。
+  final List<CmtRecentFile> cmtRecentFiles;
 
   /// 起動に使ったブートモード（design.md 12.4のステータスバー`[BASIC|DOS]`）。
   ///
@@ -162,6 +195,14 @@ class EmulatorViewState {
     Map<int, int>? fddCurBank,
     Map<int, DiskSourceKind>? fddSourceKind,
     Map<int, List<FddRecentFile>>? fddRecentFiles,
+    bool? cmtInserted,
+    bool? cmtPlaying,
+    bool? cmtRecording,
+    int? cmtPosition,
+    String? cmtMessage,
+    CmtDriveSettings? cmtDriveSettings,
+    CmtSoundSettings? cmtSoundSettings,
+    List<CmtRecentFile>? cmtRecentFiles,
     BootMode? bootMode,
     CpuType? cpuType,
     int? speedMultiplier,
@@ -194,6 +235,14 @@ class EmulatorViewState {
       fddCurBank: fddCurBank ?? this.fddCurBank,
       fddSourceKind: fddSourceKind ?? this.fddSourceKind,
       fddRecentFiles: fddRecentFiles ?? this.fddRecentFiles,
+      cmtInserted: cmtInserted ?? this.cmtInserted,
+      cmtPlaying: cmtPlaying ?? this.cmtPlaying,
+      cmtRecording: cmtRecording ?? this.cmtRecording,
+      cmtPosition: cmtPosition ?? this.cmtPosition,
+      cmtMessage: cmtMessage ?? this.cmtMessage,
+      cmtDriveSettings: cmtDriveSettings ?? this.cmtDriveSettings,
+      cmtSoundSettings: cmtSoundSettings ?? this.cmtSoundSettings,
+      cmtRecentFiles: cmtRecentFiles ?? this.cmtRecentFiles,
       bootMode: bootMode ?? this.bootMode,
       cpuType: cpuType ?? this.cpuType,
       speedMultiplier: speedMultiplier ?? this.speedMultiplier,

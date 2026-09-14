@@ -254,3 +254,116 @@ enum DiskSourceKind {
   /// headerless raw。convertedと同様、原本を変更しない（FDD-09）。
   raw,
 }
+
+/// CMTの音声区分（specification.md AUD-07）。原作`.rc`の"Play CMT Noise"/
+/// "Play CMT Signal"/"Play CMT Voice"に対応する。標準OPN音量（AUD-03、
+/// [SoundChannel]）とは別区分のまま混在させない。
+enum CmtSoundKind {
+  /// リレー動作音・早送り音（`DATAREC`のNOISEデバイス3種）。
+  noise,
+
+  /// テープ信号をそのまま音として再生する経路（`config.sound_tape_signal`）。
+  signal,
+
+  /// テープの声（PCM相当）をそのまま音として再生する経路
+  /// （`config.sound_tape_voice`）。upstreamの`VM::set_sound_device_volume()`
+  /// がこの経路の内部音量（`DATAREC::set_volume(1,...)`）へ配線されておらず、
+  /// upstream改変禁止のため独立した音量調整はできない（有効・無効のみ）。
+  voice,
+}
+
+/// CMTドライブの波形整形設定（specification.md CMT-04）。
+///
+/// upstreamの`config.wave_shaper[0]`はWAV読込み時に直接読まれる
+/// ランタイム状態で、即時反映される。
+class CmtDriveSettings {
+  const CmtDriveSettings({this.waveShaping = false});
+
+  final bool waveShaping;
+
+  CmtDriveSettings copyWith({bool? waveShaping}) {
+    return CmtDriveSettings(waveShaping: waveShaping ?? this.waveShaping);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is CmtDriveSettings && other.waveShaping == waveShaping;
+
+  @override
+  int get hashCode => waveShaping.hashCode;
+}
+
+/// CMT音声の個別有効化と、ノイズ・信号のみの音量（specification.md AUD-07）。
+///
+/// [voiceEnabled]は切替できるが、[voice]の音量は独立して調整できない
+/// （[CmtSoundKind.voice]のコメント参照）。
+class CmtSoundSettings {
+  const CmtSoundSettings({
+    this.noiseEnabled = false,
+    this.signalEnabled = false,
+    this.voiceEnabled = false,
+    this.noiseVolume = 1.0,
+    this.signalVolume = 1.0,
+  });
+
+  final bool noiseEnabled;
+  final bool signalEnabled;
+  final bool voiceEnabled;
+
+  /// 0.0〜1.0。
+  final double noiseVolume;
+
+  /// 0.0〜1.0。
+  final double signalVolume;
+
+  bool enabledOf(CmtSoundKind kind) => switch (kind) {
+    CmtSoundKind.noise => noiseEnabled,
+    CmtSoundKind.signal => signalEnabled,
+    CmtSoundKind.voice => voiceEnabled,
+  };
+
+  CmtSoundSettings withEnabled(CmtSoundKind kind, bool enabled) =>
+      switch (kind) {
+        CmtSoundKind.noise => copyWith(noiseEnabled: enabled),
+        CmtSoundKind.signal => copyWith(signalEnabled: enabled),
+        CmtSoundKind.voice => copyWith(voiceEnabled: enabled),
+      };
+
+  CmtSoundSettings copyWith({
+    bool? noiseEnabled,
+    bool? signalEnabled,
+    bool? voiceEnabled,
+    double? noiseVolume,
+    double? signalVolume,
+  }) {
+    return CmtSoundSettings(
+      noiseEnabled: noiseEnabled ?? this.noiseEnabled,
+      signalEnabled: signalEnabled ?? this.signalEnabled,
+      voiceEnabled: voiceEnabled ?? this.voiceEnabled,
+      noiseVolume: noiseVolume ?? this.noiseVolume,
+      signalVolume: signalVolume ?? this.signalVolume,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is CmtSoundSettings &&
+      other.noiseEnabled == noiseEnabled &&
+      other.signalEnabled == signalEnabled &&
+      other.voiceEnabled == voiceEnabled &&
+      other.noiseVolume == noiseVolume &&
+      other.signalVolume == signalVolume;
+
+  @override
+  int get hashCode => Object.hash(
+    noiseEnabled,
+    signalEnabled,
+    voiceEnabled,
+    noiseVolume,
+    signalVolume,
+  );
+}
+
+/// CMTの最近使ったファイル1件（specification.md CMT-05）。
+/// [FddRecentFile]と同型（[token]/[displayName]の意味も同じ）。
+typedef CmtRecentFile = ({String token, String displayName});

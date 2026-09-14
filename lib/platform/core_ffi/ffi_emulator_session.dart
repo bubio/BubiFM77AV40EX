@@ -554,6 +554,174 @@ class FfiEmulatorSession implements EmulatorSession {
     }
   }
 
+  Future<int> _insertCmt(int mode, String imagePath) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    final pathUtf8 = imagePath.toNativeUtf8();
+    try {
+      command.ref.kind = BfmCommandKind.insertCmt;
+      command.ref.arg0 = mode;
+      command.ref.text = pathUtf8.cast<Char>();
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(pathUtf8);
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
+  Future<int> insertCmtForPlayback(String imagePath) => _insertCmt(0, imagePath);
+
+  @override
+  Future<int> insertCmtForRecording(String imagePath) => _insertCmt(1, imagePath);
+
+  @override
+  Future<int> ejectCmt() async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = BfmCommandKind.ejectCmt;
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  Future<int> _controlCmt(int op) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = BfmCommandKind.controlCmt;
+      command.ref.arg0 = op;
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
+  Future<int> playCmt() => _controlCmt(BfmCmtControlOp.play);
+
+  @override
+  Future<int> stopCmt() => _controlCmt(BfmCmtControlOp.stop);
+
+  @override
+  Future<int> fastForwardCmt() => _controlCmt(BfmCmtControlOp.fastForward);
+
+  @override
+  Future<int> rewindCmt() => _controlCmt(BfmCmtControlOp.fastRewind);
+
+  Future<int> _sendCmtSwitch(int kind, int arg0, bool value) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = kind;
+      command.ref.arg0 = arg0;
+      command.ref.arg1 = value ? 1 : 0;
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
+  Future<int> setCmtWaveShaping(bool enabled) =>
+      _sendCmtSwitch(BfmCommandKind.setCmtWaveShaping, 0, enabled);
+
+  @override
+  Future<int> setCmtSoundEnabled(CmtSoundKind kind, bool enabled) =>
+      _sendCmtSwitch(
+        BfmCommandKind.setCmtSoundEnable,
+        cmtSoundKindToNative(kind),
+        enabled,
+      );
+
+  @override
+  Future<int> setCmtSoundVolume(CmtSoundKind kind, double volume) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = BfmCommandKind.setCmtSoundVolume;
+      command.ref.arg0 = cmtSoundKindToNative(kind);
+      command.ref.arg1 = soundVolumeToDecibel(volume);
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
+  ({
+    bool inserted,
+    bool playing,
+    bool recording,
+    int position,
+    String message,
+  })
+  getCmtStatus() {
+    _ensureUsable();
+    final out = calloc<BfmCmtStatus>();
+    try {
+      final result = _bindings.getCmtStatus(_handle, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      final messageBytes = <int>[];
+      for (var i = 0; i < 128; i++) {
+        final byte = out.ref.message[i];
+        if (byte == 0) {
+          break;
+        }
+        messageBytes.add(byte);
+      }
+      return (
+        inserted: out.ref.inserted != 0,
+        playing: out.ref.playing != 0,
+        recording: out.ref.recording != 0,
+        position: out.ref.position,
+        message: String.fromCharCodes(messageBytes),
+      );
+    } finally {
+      calloc.free(out);
+    }
+  }
+
   @override
   void setJoystickState(int index, int bits) {
     _ensureUsable();

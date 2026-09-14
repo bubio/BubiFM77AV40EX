@@ -859,6 +859,280 @@ void main() {
     expect(state().session, SessionState.stopped);
   });
 
+  test('CMT-01 再生用に開くと原本を作業領域へ複製し、複製先パスをコアへ渡す', () async {
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/TAPE.T77',
+      displayName: 'TAPE.T77',
+    );
+
+    await controller().cmtPlay();
+
+    expect(cacheWorkspace.createSessionWorkspaceCallCount, 1);
+    expect(cacheWorkspace.handle.importedFileNames, ['cmt-TAPE.T77']);
+    expect(session.insertCmtForPlaybackCalls, [
+      '${cacheWorkspace.handle.nativePath}/cmt-TAPE.T77',
+    ]);
+    expect(state().cmtInserted, isTrue);
+  });
+
+  test('CMT-01 選択をキャンセルすると何も起きない', () async {
+    externalFileAccess.nextPickResult = null;
+
+    await controller().cmtPlay();
+
+    expect(session.insertCmtForPlaybackCalls, isEmpty);
+    expect(state().cmtInserted, isFalse);
+  });
+
+  test('CMT-01 挿入済みで再度開くと、先に排出してから入れ替える', () async {
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/TAPE.T77',
+      displayName: 'TAPE.T77',
+    );
+    await controller().cmtPlay();
+
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/OTHER.T77',
+      displayName: 'OTHER.T77',
+    );
+    await controller().cmtPlay();
+
+    expect(session.insertCmtForPlaybackCalls, hasLength(2));
+    expect(session.ejectCmtCallCount, 1);
+    // 再生用に開いた媒体は読取専用のため、排出時に書き戻さない。
+    expect(cacheWorkspace.handle.exportCalls, isEmpty);
+  });
+
+  test('CMT-01 コマンドが失敗したらアクセス権を返し状態を更新しない', () async {
+    session.nextInsertCmtError = EmulatorErrorCode.invalidArgument;
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/TAPE.T77',
+      displayName: 'TAPE.T77',
+    );
+
+    await controller().cmtPlay();
+
+    expect(state().cmtInserted, isFalse);
+  });
+
+  test('CMT-02 録音用に開くと作業領域内へ新規作成し、排出時に選択先へ書き戻す', () async {
+    externalFileAccess.nextSaveLocationResult = FakeExternalResource(
+      '/Volumes/USB/NEW.T77',
+      displayName: 'NEW.T77',
+    );
+
+    await controller().cmtRec();
+
+    expect(cacheWorkspace.createSessionWorkspaceCallCount, 1);
+    expect(session.insertCmtForRecordingCalls, [
+      '${cacheWorkspace.handle.nativePath}/cmt-NEW.T77',
+    ]);
+    expect(state().cmtInserted, isTrue);
+
+    await controller().cmtEject();
+
+    expect(session.ejectCmtCallCount, 1);
+    expect(cacheWorkspace.handle.exportCalls, [
+      ('cmt-NEW.T77', '/Volumes/USB/NEW.T77'),
+    ]);
+    expect(state().cmtInserted, isFalse);
+  });
+
+  test('CMT-02 保存先の選択をキャンセルすると何も起きない', () async {
+    externalFileAccess.nextSaveLocationResult = null;
+
+    await controller().cmtRec();
+
+    expect(session.insertCmtForRecordingCalls, isEmpty);
+  });
+
+  test('CMT-01 未挿入のドライブを排出しても何もしない', () async {
+    await controller().cmtEject();
+
+    expect(session.ejectCmtCallCount, 0);
+    expect(cacheWorkspace.handle.exportCalls, isEmpty);
+  });
+
+  test('CMT-03 走行制御はコアへ即時に送り、状態を問い合わせて反映する', () async {
+    session.cmtStatus = (
+      inserted: true,
+      playing: true,
+      recording: false,
+      position: 12,
+      message: 'Play',
+    );
+
+    await controller().cmtPlayButton();
+
+    expect(session.playCmtCallCount, 1);
+    expect(state().cmtPlaying, isTrue);
+    expect(state().cmtPosition, 12);
+    expect(state().cmtMessage, 'Play');
+
+    session.cmtStatus = (
+      inserted: true,
+      playing: false,
+      recording: false,
+      position: 0,
+      message: 'Stop',
+    );
+    await controller().cmtStopButton();
+    expect(session.stopCmtCallCount, 1);
+    expect(state().cmtPlaying, isFalse);
+
+    await controller().cmtFastForward();
+    expect(session.fastForwardCmtCallCount, 1);
+
+    await controller().cmtFastRewind();
+    expect(session.rewindCmtCallCount, 1);
+  });
+
+  test('CMT-05 TapePositionChangedイベントを受けると状態を問い合わせて反映する', () async {
+    session.cmtStatus = (
+      inserted: true,
+      playing: false,
+      recording: false,
+      position: 50,
+      message: 'Stop (50 %)',
+    );
+
+    session.emit(const TapePositionChanged());
+    await Future<void>.delayed(Duration.zero);
+
+    expect(state().cmtPosition, 50);
+    expect(state().cmtMessage, 'Stop (50 %)');
+  });
+
+  test('CMT-04 波形整形は起動中ならコアへ即時に送り、状態も更新する', () async {
+    await controller().setCmtWaveShaping(true);
+
+    expect(session.setCmtWaveShapingCalls, [true]);
+    expect(state().cmtDriveSettings.waveShaping, isTrue);
+  });
+
+  test('CMT-04 波形整形は次回launch時に新しいセッションへ再適用される', () async {
+    await controller().setCmtWaveShaping(true);
+    await controller().shutdown();
+    session = FakeEmulatorSession();
+
+    await controller().launch();
+
+    expect(session.setCmtWaveShapingCalls, [true]);
+  });
+
+  test('AUD-07 CMTノイズ・信号・音声の有効化は起動中ならコアへ即時に送り、状態も更新する', () async {
+    await controller().setCmtSoundEnabled(CmtSoundKind.noise, true);
+    await controller().setCmtSoundEnabled(CmtSoundKind.signal, true);
+    await controller().setCmtSoundEnabled(CmtSoundKind.voice, true);
+
+    expect(session.setCmtSoundEnabledCalls, [
+      (CmtSoundKind.noise, true),
+      (CmtSoundKind.signal, true),
+      (CmtSoundKind.voice, true),
+    ]);
+    expect(state().cmtSoundSettings.noiseEnabled, isTrue);
+    expect(state().cmtSoundSettings.signalEnabled, isTrue);
+    expect(state().cmtSoundSettings.voiceEnabled, isTrue);
+  });
+
+  test('AUD-07 有効化設定は次回launch時に新しいセッションへ再適用される', () async {
+    await controller().setCmtSoundEnabled(CmtSoundKind.noise, true);
+    await controller().shutdown();
+    session = FakeEmulatorSession();
+
+    await controller().launch();
+
+    expect(session.setCmtSoundEnabledCalls, [(CmtSoundKind.noise, true)]);
+  });
+
+  test('AUD-07 ノイズ・信号の音量は起動中ならコアへ即時に送り、状態も更新する', () async {
+    await controller().setCmtSoundVolume(CmtSoundKind.noise, 0.5);
+    await controller().setCmtSoundVolume(CmtSoundKind.signal, 0.25);
+
+    expect(session.setCmtSoundVolumeCalls, [
+      (CmtSoundKind.noise, 0.5),
+      (CmtSoundKind.signal, 0.25),
+    ]);
+    expect(state().cmtSoundSettings.noiseVolume, 0.5);
+    expect(state().cmtSoundSettings.signalVolume, 0.25);
+  });
+
+  test('AUD-07 CMT音声へは音量調整を送らない（経路がない既知の制約）', () async {
+    await controller().setCmtSoundVolume(CmtSoundKind.voice, 0.5);
+
+    expect(session.setCmtSoundVolumeCalls, isEmpty);
+  });
+
+  test('AUD-07 音量設定も次回launch時に新しいセッションへ再適用される', () async {
+    await controller().setCmtSoundVolume(CmtSoundKind.noise, 0.5);
+    await controller().shutdown();
+    session = FakeEmulatorSession();
+
+    await controller().launch();
+
+    expect(session.setCmtSoundVolumeCalls, [(CmtSoundKind.noise, 0.5)]);
+  });
+
+  test('CMT-05 挿入した媒体は最近使ったファイルへ記録され、再選択できる', () async {
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/TAPE.T77',
+      displayName: 'TAPE.T77',
+    );
+    await controller().cmtPlay();
+
+    expect(state().cmtRecentFiles, [
+      (token: '/Volumes/USB/TAPE.T77', displayName: 'TAPE.T77'),
+    ]);
+
+    await controller().cmtEject();
+    externalFileAccess.resolveResultByToken['/Volumes/USB/TAPE.T77'] =
+        FakeExternalResource('/Volumes/USB/TAPE.T77', displayName: 'TAPE.T77');
+
+    await controller().cmtPlayFromRecent('/Volumes/USB/TAPE.T77');
+
+    expect(session.insertCmtForPlaybackCalls, hasLength(2));
+  });
+
+  test('CMT-05 失効したトークンは履歴から外す', () async {
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/TAPE.T77',
+      displayName: 'TAPE.T77',
+    );
+    await controller().cmtPlay();
+    await controller().cmtEject();
+
+    await controller().cmtPlayFromRecent('/Volumes/USB/TAPE.T77');
+
+    expect(state().cmtRecentFiles, isEmpty);
+  });
+
+  test('CMT-05 履歴を消去できる', () async {
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/TAPE.T77',
+      displayName: 'TAPE.T77',
+    );
+    await controller().cmtPlay();
+    expect(state().cmtRecentFiles, isNotEmpty);
+
+    await controller().clearCmtRecentFiles();
+
+    expect(state().cmtRecentFiles, isEmpty);
+  });
+
+  test('shutdownは挿入中のCMTを排出してから終了する', () async {
+    externalFileAccess.nextSaveLocationResult = FakeExternalResource(
+      '/Volumes/USB/NEW.T77',
+      displayName: 'NEW.T77',
+    );
+    await controller().cmtRec();
+
+    await controller().shutdown();
+
+    expect(session.ejectCmtCallCount, 1);
+    expect(cacheWorkspace.handle.exportCalls, hasLength(1));
+    expect(state().session, SessionState.stopped);
+  });
+
   test('STA-01 saveStateはサムネイル・state.bin・metadata.jsonを書く', () async {
     final tempDir = Directory.systemTemp.createTempSync('bubi-state-test');
     addTearDown(() => tempDir.deleteSync(recursive: true));

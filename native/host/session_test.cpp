@@ -139,6 +139,77 @@ bool write_blank_d88(const std::string& path, bool protect = false)
 	return write_file(path, header);
 }
 
+/*
+ * BIOS不要の最小CMTテストテープ（specification.md CMT-01/CMT-02、M4）。
+ * upstream DATAREC::play_tape/load_t77_image/load_wav_image/load_tap_image
+ * （native/core/upstream/src/vm/datarec.cpp）が受理する最小限のレイアウトを
+ * その場に作る。著作権のある実ソフトウェアの吸い出しは使わない。
+ */
+
+// "XM7 TAPE IMAGE 0"（16バイト）+ 2エントリ（v=0x7fff最大長を2回）。
+// T77_PUT_SIGNAL がlen分だけptrを進めるため、buffer_length=65534
+// （9us/sample換算で約0.59秒分）になる。CMT-03の走行状態検査
+// （Play Buttonを押した直後に position/playing を読む）が、コアの
+// 自動End-of-Tape停止より先に確実に完了する長さを確保するため、
+// 極端に短い（数サンプルの）テープにしない。
+bool write_minimal_t77(const std::string& path)
+{
+	std::string data;
+	data.append("XM7 TAPE IMAGE 0", 16);
+	for (int i = 0; i < 2; ++i) {
+		data.push_back(0x7F); // h（signalビットなし、上位7ビットがv上位）
+		data.push_back(static_cast<char>(0xFF)); // l（v=0x7fff、最大長）
+	}
+	return write_file(path, data);
+}
+
+// 標準PCM WAV（8bit・モノラル・sample_rate=8000）。load_wav_image()は
+// riff_chunk/fmt_chunk/data_chunkを順に読むだけで、RIFF/data双方の
+// sizeフィールド自体は検証しないため、簡略化した並びでも受理される。
+bool write_minimal_wav(const std::string& path)
+{
+	std::string data;
+	const uint32_t sample_rate = 8000;
+	const uint16_t channels = 1;
+	const uint16_t sample_bits = 8;
+	const uint16_t block_size = static_cast<uint16_t>(channels * sample_bits / 8);
+	const uint32_t data_speed = sample_rate * block_size;
+	const std::string samples(16, static_cast<char>(0x80)); // 無音相当
+	const uint32_t data_size = static_cast<uint32_t>(samples.size());
+	const uint32_t fmt_size = 16;
+	const uint32_t riff_size =
+	    static_cast<uint32_t>(4 + (8 + fmt_size) + (8 + data_size));
+
+	data.append("RIFF", 4);
+	data.append(reinterpret_cast<const char*>(&riff_size), 4);
+	data.append("WAVE", 4);
+	data.append("fmt ", 4);
+	data.append(reinterpret_cast<const char*>(&fmt_size), 4);
+	const uint16_t format_id = 1; // PCM
+	data.append(reinterpret_cast<const char*>(&format_id), 2);
+	data.append(reinterpret_cast<const char*>(&channels), 2);
+	data.append(reinterpret_cast<const char*>(&sample_rate), 4);
+	data.append(reinterpret_cast<const char*>(&data_speed), 4);
+	data.append(reinterpret_cast<const char*>(&block_size), 2);
+	data.append(reinterpret_cast<const char*>(&sample_bits), 2);
+	data.append("data", 4);
+	data.append(reinterpret_cast<const char*>(&data_size), 4);
+	data.append(samples);
+	return write_file(path, data);
+}
+
+// "TAPE"マジックなし（else分岐）: 先頭4バイトがLEのsample_rate、
+// 以降は生のビット詰め信号データ。upstream DATAREC::rec_tapeが.tap書込みで
+// 使う並びと同じ（マジック無し）。
+bool write_minimal_tap(const std::string& path)
+{
+	std::string data;
+	const uint32_t sample_rate = 8000;
+	data.append(reinterpret_cast<const char*>(&sample_rate), 4);
+	data.push_back(static_cast<char>(0xAA)); // 8ビット分の信号データ
+	return write_file(path, data);
+}
+
 std::string core_directory_of(bfm_session* session)
 {
 	char buffer[4096];
@@ -1656,6 +1727,298 @@ void test_media()
 	bfm_destroy(session);
 }
 
+void test_cmt()
+{
+	group("CMT媒体（M4）");
+
+	const std::string media_dir = g_home + "/cmt-test";
+	mkdir(media_dir.c_str(), 0700);
+	const std::string t77_image = media_dir + "/tape.t77";
+	const std::string wav_image = media_dir + "/tape.wav";
+	const std::string tap_image = media_dir + "/tape.tap";
+	check(write_minimal_t77(t77_image), "T77用の最小テストテープを作れる");
+	check(write_minimal_wav(wav_image), "WAV用の最小テストテープを作れる");
+	check(write_minimal_tap(tap_image), "TAP用の最小テストテープを作れる");
+
+	bfm_session* session = make_session();
+	if (session == nullptr) {
+		check(false, "生成できる");
+		return;
+	}
+	bfm_start(session);
+	check(wait_for_state(session, BFM_STATE_RUNNING, 5000), "running へ遷移する");
+
+	auto send_and_collect = [&](const bfm_command& command, std::vector<bfm_event>* out) -> int32_t {
+		uint64_t id = 0;
+		if (bfm_send_command(session, &command, &id) != BFM_OK) {
+			return -1;
+		}
+		for (int i = 0; i < 5000; ++i) {
+			bfm_event event{};
+			while (bfm_poll_event(session, &event) == BFM_OK) {
+				out->push_back(event);
+				if (event.kind == BFM_EVENT_COMMAND_COMPLETED && event.command_id == id) {
+					return event.code;
+				}
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		return -1;
+	};
+
+	auto has_media_changed = [](const std::vector<bfm_event>& events, int64_t inserted) {
+		for (const auto& event : events) {
+			if (event.kind == BFM_EVENT_MEDIA_CHANGED && event.arg0 == 0 &&
+			    event.arg1 == inserted) {
+				return true;
+			}
+		}
+		return false;
+	};
+
+	std::vector<bfm_event> events;
+
+	// --- CMT-01: T77/WAV/TAPを再生用に開き、排出できる ---
+	bfm_command play_t77{};
+	play_t77.kind = BFM_CMD_INSERT_CMT;
+	play_t77.arg0 = 0; // 再生用
+	play_t77.text = t77_image.c_str();
+	events.clear();
+	check(send_and_collect(play_t77, &events) == BFM_OK, "T77を再生用に開ける");
+	check(has_media_changed(events, 1), "T77挿入のMEDIA_CHANGEDが届く");
+
+	bfm_cmt_status status{};
+	check(bfm_get_cmt_status(session, &status) == BFM_OK, "挿入後の状態を取得できる");
+	check(status.inserted == 1, "挿入状態がinsertedに反映される");
+
+	bfm_command eject_cmt{};
+	eject_cmt.kind = BFM_CMD_EJECT_CMT;
+	events.clear();
+	check(send_and_collect(eject_cmt, &events) == BFM_OK, "T77を排出できる");
+	check(has_media_changed(events, 0), "排出のMEDIA_CHANGEDが届く");
+	check(bfm_get_cmt_status(session, &status) == BFM_OK && status.inserted == 0,
+	      "排出後はinsertedが0に戻る");
+
+	// 挿入済みドライブへの再挿入はinvalidState。
+	events.clear();
+	check(send_and_collect(play_t77, &events) == BFM_OK, "検査のため再度T77を開ける");
+	events.clear();
+	check(send_and_collect(play_t77, &events) == BFM_ERR_INVALID_STATE,
+	      "挿入済みへの再挿入はinvalidState（先に排出させる）");
+	events.clear();
+	check(send_and_collect(eject_cmt, &events) == BFM_OK, "後続検査のため排出できる");
+
+	bfm_command play_wav = play_t77;
+	play_wav.text = wav_image.c_str();
+	events.clear();
+	check(send_and_collect(play_wav, &events) == BFM_OK, "WAVを再生用に開ける");
+	events.clear();
+	check(send_and_collect(eject_cmt, &events) == BFM_OK, "WAVを排出できる");
+
+	bfm_command play_tap = play_t77;
+	play_tap.text = tap_image.c_str();
+	events.clear();
+	check(send_and_collect(play_tap, &events) == BFM_OK, "TAPを再生用に開ける");
+	events.clear();
+	check(send_and_collect(eject_cmt, &events) == BFM_OK, "TAPを排出できる");
+
+	// 未挿入への排出は冪等にOK。
+	events.clear();
+	check(send_and_collect(eject_cmt, &events) == BFM_OK, "未挿入ドライブへの排出も冪等にOK");
+	check(!has_media_changed(events, 0), "未挿入からの排出はMEDIA_CHANGEDを出さない");
+
+	// 範囲外のarg0はinvalidArgument。
+	bfm_command play_bad_mode = play_t77;
+	play_bad_mode.arg0 = 2;
+	events.clear();
+	check(send_and_collect(play_bad_mode, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "arg0が0/1以外はinvalidArgument");
+
+	// 未知の拡張子は再生用としてinvalidArgument。
+	const std::string unknown_ext = media_dir + "/tape.bin";
+	check(write_file(unknown_ext, std::string(4, '\0')), "未知拡張子のダミーファイルを作れる");
+	bfm_command play_unknown = play_t77;
+	play_unknown.text = unknown_ext.c_str();
+	events.clear();
+	check(send_and_collect(play_unknown, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "既知の3拡張子以外は再生用としてinvalidArgument");
+
+	// コアが受理しない不正な内容（マジック不一致）もinvalidArgument。
+	const std::string bad_t77 = media_dir + "/bad.t77";
+	check(write_file(bad_t77, std::string(16, 'x')), "不正なT77ダミーを作れる");
+	bfm_command play_bad_t77 = play_t77;
+	play_bad_t77.text = bad_t77.c_str();
+	events.clear();
+	check(send_and_collect(play_bad_t77, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "マジック不一致のT77はコアが受理せずinvalidArgument");
+	check(!has_media_changed(events, 1), "受理されなければMEDIA_CHANGEDは届かない");
+
+	// --- CMT-02: T77、WAV、TAPへ録音できる ---
+	const std::string rec_t77 = media_dir + "/rec.t77";
+	bfm_command rec_cmd{};
+	rec_cmd.kind = BFM_CMD_INSERT_CMT;
+	rec_cmd.arg0 = 1; // 録音用
+	rec_cmd.text = rec_t77.c_str();
+	events.clear();
+	check(send_and_collect(rec_cmd, &events) == BFM_OK, "録音用に新規T77を開ける");
+	check(has_media_changed(events, 1), "録音開始のMEDIA_CHANGEDが届く");
+	check(bfm_get_cmt_status(session, &status) == BFM_OK && status.recording == 0,
+	      "開いただけではrecordingにはならない（Play Buttonで走行開始、CMT-03）");
+
+	events.clear();
+	check(send_and_collect(eject_cmt, &events) == BFM_OK, "録音を排出できる");
+	check(is_regular_file(rec_t77), "録音先に実ファイルが残る");
+
+	// --- CMT-03: 再生、停止、早送り、巻戻しを操作できる ---
+	events.clear();
+	check(send_and_collect(play_t77, &events) == BFM_OK, "制御操作検査のためT77を開ける");
+
+	bfm_command control_play{};
+	control_play.kind = BFM_CMD_CONTROL_CMT;
+	control_play.arg0 = BFM_CMT_CONTROL_PLAY;
+	events.clear();
+	check(send_and_collect(control_play, &events) == BFM_OK, "Play Buttonを押せる");
+	check(bfm_get_cmt_status(session, &status) == BFM_OK && status.playing == 1,
+	      "Play Button後はplayingになる");
+
+	bfm_command control_stop{};
+	control_stop.kind = BFM_CMD_CONTROL_CMT;
+	control_stop.arg0 = BFM_CMT_CONTROL_STOP;
+	// CMT-05: 状態メッセージが変わるとBFM_EVENT_TAPE_POSITION_CHANGEDが届く。
+	// upstream DATAREC::update_event()は再生開始時にはmessageを書き換えず
+	// （"Record"はrec開始時のみ）、停止時にだけ構築時の既定値"Stop"から
+	// "Stop (Beginning-of-Tape)"/"Stop (NN %)"へ書き換える。そのため最初の
+	// 停止（このPlay→Stop）で必ず変化が観測できる。
+	check(send_and_collect(control_stop, &events) == BFM_OK, "Stop Buttonを押せる");
+	check(bfm_get_cmt_status(session, &status) == BFM_OK && status.playing == 0,
+	      "Stop Button後はplayingが0に戻る");
+	{
+		bool saw_tape_position_changed = false;
+		for (const auto& event : events) {
+			if (event.kind == BFM_EVENT_TAPE_POSITION_CHANGED) {
+				saw_tape_position_changed = true;
+			}
+		}
+		check(saw_tape_position_changed,
+		      "状態メッセージが変わるとBFM_EVENT_TAPE_POSITION_CHANGEDが届く");
+	}
+
+	bfm_command control_ff{};
+	control_ff.kind = BFM_CMD_CONTROL_CMT;
+	control_ff.arg0 = BFM_CMT_CONTROL_FAST_FORWARD;
+	events.clear();
+	check(send_and_collect(control_ff, &events) == BFM_OK, "Fast Forwardを押せる");
+
+	bfm_command control_rewind{};
+	control_rewind.kind = BFM_CMD_CONTROL_CMT;
+	control_rewind.arg0 = BFM_CMT_CONTROL_FAST_REWIND;
+	events.clear();
+	check(send_and_collect(control_rewind, &events) == BFM_OK, "Fast Rewindを押せる");
+
+	events.clear();
+	check(send_and_collect(control_stop, &events) == BFM_OK, "後続検査のため停止できる");
+
+	bfm_command control_bad = control_play;
+	control_bad.arg0 = 99;
+	events.clear();
+	check(send_and_collect(control_bad, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "範囲外の操作種別はinvalidArgument");
+
+	events.clear();
+	check(send_and_collect(eject_cmt, &events) == BFM_OK, "後続検査のため排出できる");
+
+	// --- CMT-04: 波形整形の有効・無効を設定できる ---
+	bfm_command wave_shaping_on{};
+	wave_shaping_on.kind = BFM_CMD_SET_CMT_WAVE_SHAPING;
+	wave_shaping_on.arg0 = 1;
+	events.clear();
+	check(send_and_collect(wave_shaping_on, &events) == BFM_OK, "波形整形を有効化できる");
+
+	bfm_command wave_shaping_off = wave_shaping_on;
+	wave_shaping_off.arg0 = 0;
+	events.clear();
+	check(send_and_collect(wave_shaping_off, &events) == BFM_OK, "波形整形を無効化できる");
+
+	bfm_command wave_shaping_bad = wave_shaping_on;
+	wave_shaping_bad.arg0 = 2;
+	events.clear();
+	check(send_and_collect(wave_shaping_bad, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "0/1以外はinvalidArgument");
+
+	// --- AUD-07: CMTノイズ・CMT信号・CMT音声を個別に有効化し、
+	//     ノイズ・信号のみ音量を調整できる ---
+	for (int64_t kind : {BFM_CMT_SOUND_NOISE, BFM_CMT_SOUND_SIGNAL, BFM_CMT_SOUND_VOICE}) {
+		bfm_command enable_on{};
+		enable_on.kind = BFM_CMD_SET_CMT_SOUND_ENABLE;
+		enable_on.arg0 = kind;
+		enable_on.arg1 = 1;
+		events.clear();
+		check(send_and_collect(enable_on, &events) == BFM_OK, "AUD-07: 種別を有効化できる");
+
+		bfm_command enable_off = enable_on;
+		enable_off.arg1 = 0;
+		events.clear();
+		check(send_and_collect(enable_off, &events) == BFM_OK, "AUD-07: 種別を無効化できる");
+	}
+
+	bfm_command enable_bad_kind{};
+	enable_bad_kind.kind = BFM_CMD_SET_CMT_SOUND_ENABLE;
+	enable_bad_kind.arg0 = 99;
+	enable_bad_kind.arg1 = 1;
+	events.clear();
+	check(send_and_collect(enable_bad_kind, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "AUD-07: 範囲外の種別はinvalidArgument");
+
+	bfm_command enable_bad_value{};
+	enable_bad_value.kind = BFM_CMD_SET_CMT_SOUND_ENABLE;
+	enable_bad_value.arg0 = BFM_CMT_SOUND_NOISE;
+	enable_bad_value.arg1 = 2;
+	events.clear();
+	check(send_and_collect(enable_bad_value, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "AUD-07: 0/1以外の値はinvalidArgument");
+
+	for (int64_t kind : {BFM_CMT_SOUND_NOISE, BFM_CMT_SOUND_SIGNAL}) {
+		bfm_command volume_cmd{};
+		volume_cmd.kind = BFM_CMD_SET_CMT_SOUND_VOLUME;
+		volume_cmd.arg0 = kind;
+		volume_cmd.arg1 = -20;
+		events.clear();
+		check(send_and_collect(volume_cmd, &events) == BFM_OK,
+		      "AUD-07: ノイズ・信号は音量を調整できる");
+	}
+
+	bfm_command volume_voice{};
+	volume_voice.kind = BFM_CMD_SET_CMT_SOUND_VOLUME;
+	volume_voice.arg0 = BFM_CMT_SOUND_VOICE;
+	volume_voice.arg1 = -20;
+	events.clear();
+	check(send_and_collect(volume_voice, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "AUD-07: CMT音声は音量調整の経路がなくinvalidArgument"
+	      "（upstream VM::set_sound_device_volume()がDATAREC::set_volume(1,...)へ"
+	      "到達しないため。改変禁止の既知の制約）");
+
+	bfm_command volume_out_of_range{};
+	volume_out_of_range.kind = BFM_CMD_SET_CMT_SOUND_VOLUME;
+	volume_out_of_range.arg0 = BFM_CMT_SOUND_NOISE;
+	volume_out_of_range.arg1 = 1; // 範囲外（[-192, 0]）
+	events.clear();
+	check(send_and_collect(volume_out_of_range, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "AUD-07: デシベル範囲外はinvalidArgument");
+
+	// bfm_get_cmt_status への引数検査。
+	check(bfm_get_cmt_status(nullptr, &status) == BFM_ERR_INVALID_ARGUMENT,
+	      "bfm_get_cmt_status: session=NULLはinvalidArgument");
+	check(bfm_get_cmt_status(session, nullptr) == BFM_ERR_INVALID_ARGUMENT,
+	      "bfm_get_cmt_status: out=NULLはinvalidArgument");
+
+	bfm_stats stats{};
+	check(bfm_get_stats(session, &stats) == BFM_OK, "統計を取得できる");
+	check(stats.vm_access_violations == 0, "VM操作はCore threadに閉じている");
+
+	bfm_stop(session);
+	bfm_destroy(session);
+}
+
 int main(int argc, char** argv)
 {
 	if (argc < 2) {
@@ -1689,6 +2052,7 @@ int main(int argc, char** argv)
 	test_input();
 	test_audio();
 	test_media();
+	test_cmt();
 	test_home_dir_is_process_wide();
 
 	std::printf("\n%s\n", failures == 0 ? "すべて合格" : "失敗あり");

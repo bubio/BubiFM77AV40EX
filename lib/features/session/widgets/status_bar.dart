@@ -9,10 +9,12 @@ import '../emulator_state.dart';
 /// エミュレーターの一段ステータスバー（design.md 12.4）。
 ///
 /// `BubiC-8801MAのdraw_status_bar()`を構成基準とし、高さ24論理px、
-/// 暗色背景、一段表示にする。左からFD2、FD1のアクセスランプ、マスター
-/// 音量、INS、KANA、CAPSを置き、右端へ`[BASIC|DOS]`とView/Core FPSを
-/// 右寄せする。CPU速度（`2.0MHz|1.2MHz`）はコアから読める観測値がなく、
-/// bridgeコマンドも予約のみ（M3）のため出さない（design.md 16.1）。
+/// 暗色背景、一段表示にする。左からFD2、FD1のアクセスランプ、CMT走行状態
+/// （specification.md CMT-05、M4）、マスター音量、INS、KANA、CAPSを置き、
+/// 右端へ`[BASIC|DOS]`とView/Core FPSを右寄せする。CPU速度
+/// （`2.0MHz|1.2MHz`）はコアから読める観測値がなく、bridgeコマンドも
+/// 予約のみ（M3）のため出さない（design.md 16.1）。マウス接続アイコン
+/// （P2、INP-06）は本マイルストーンの対象外のまま追加しない。
 /// [StatusBar]の高さ（論理px、design.md 12.4）。ウィンドウ倍率計算
 /// （`WindowScaleController`）が内容領域からこの分を差し引く。
 const double statusBarHeight = 24;
@@ -51,6 +53,14 @@ class StatusBar extends StatelessWidget {
           _FddLamp(
             label: l10n.fddDriveLabel(1),
             lastAccessed: state.fddLastAccessed[0],
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            flex: 8,
+            child: _CmtIndicator(
+              text: l10n.statusCmt(state.cmtMessage),
+              running: state.cmtPlaying || state.cmtRecording,
+            ),
           ),
           const SizedBox(width: 10),
           Text(
@@ -98,6 +108,49 @@ class _FddLamp extends StatelessWidget {
           label,
           style: theme.textTheme.labelSmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// CMT走行状態の表示（specification.md CMT-05、design.md 12.4、M4）。
+///
+/// 原作Windows版のステータスバーと同様に「CMT : Play (3 %)」のように
+/// 状態と走行位置を1つの文字列で表示する。[text]は
+/// [EmulatorSession.getCmtStatus]の`message`（コアの
+/// `DATAREC::update_event`/`event_callback`が生成する状態文字列、
+/// native/core/upstream/src/vm/datarec.cpp）をそのまま使う。
+///
+/// FDDのアクセスランプ（read-and-clearの一過性通知）とは性質が異なり、
+/// `playing`/`recording`は走行中ずっとtrueであり続ける継続的な状態のため、
+/// [AccessLamp]のような自前のタイムアウトは持たず、値をそのまま表示する。
+class _CmtIndicator extends StatelessWidget {
+  const _CmtIndicator({required this.text, required this.running});
+
+  final String text;
+  final bool running;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(
+          Icons.circle,
+          size: 8,
+          color: running ? Colors.red : theme.disabledColor,
+        ),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            text,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ],

@@ -29,6 +29,25 @@ void main() {
     Map<int, int> fddCurBank = const {},
     Map<int, DiskSourceKind> fddSourceKind = const {},
     Map<int, List<FddRecentFile>> fddRecentFiles = const {},
+    bool cmtInserted = false,
+    bool cmtPlaying = false,
+    bool cmtRecording = false,
+    void Function()? onCmtPlay,
+    void Function()? onCmtRec,
+    void Function()? onCmtEject,
+    void Function()? onCmtPlayButton,
+    void Function()? onCmtStopButton,
+    void Function()? onCmtFastForward,
+    void Function()? onCmtFastRewind,
+    CmtDriveSettings cmtDriveSettings = const CmtDriveSettings(),
+    void Function(bool enabled)? onCmtWaveShapingChanged,
+    List<CmtRecentFile> cmtRecentFiles = const [],
+    void Function(String token)? onCmtPlayFromRecent,
+    void Function()? onCmtClearRecentFiles,
+    CmtSoundSettings cmtSoundSettings = const CmtSoundSettings(),
+    void Function(CmtSoundKind kind, bool enabled)?
+    onCmtSoundEnabledChanged,
+    void Function()? onOpenCmtSoundVolume,
     ScreenFit screenFit = ScreenFit.aspect,
     bool scanlineEnabled = false,
     HostScreenFilter hostFilter = HostScreenFilter.none,
@@ -84,6 +103,24 @@ void main() {
       fddRecentFiles: fddRecentFiles,
       onFddInsertFromRecent: (_, _) {},
       onFddClearRecentFiles: (_) {},
+      cmtInserted: cmtInserted,
+      cmtPlaying: cmtPlaying,
+      cmtRecording: cmtRecording,
+      onCmtPlay: onCmtPlay ?? () {},
+      onCmtRec: onCmtRec ?? () {},
+      onCmtEject: onCmtEject ?? () {},
+      onCmtPlayButton: onCmtPlayButton ?? () {},
+      onCmtStopButton: onCmtStopButton ?? () {},
+      onCmtFastForward: onCmtFastForward ?? () {},
+      onCmtFastRewind: onCmtFastRewind ?? () {},
+      cmtDriveSettings: cmtDriveSettings,
+      onCmtWaveShapingChanged: onCmtWaveShapingChanged ?? (_) {},
+      cmtRecentFiles: cmtRecentFiles,
+      onCmtPlayFromRecent: onCmtPlayFromRecent ?? (_) {},
+      onCmtClearRecentFiles: onCmtClearRecentFiles ?? () {},
+      cmtSoundSettings: cmtSoundSettings,
+      onCmtSoundEnabledChanged: onCmtSoundEnabledChanged ?? (_, _) {},
+      onOpenCmtSoundVolume: onOpenCmtSoundVolume ?? () {},
       screenFit: screenFit,
       onScreenFitChanged: (_) {},
       scanlineEnabled: scanlineEnabled,
@@ -120,11 +157,12 @@ void main() {
     );
   }
 
-  test('4分類をControl/Disk/Device/Hostの順で持つ', () {
+  test('5分類をControl/Disk/CMT/Device/Hostの順で持つ', () {
     final groups = catalog();
     expect(groups.map((g) => g.id), [
       MenuGroupId.control,
       MenuGroupId.disk,
+      MenuGroupId.cmt,
       MenuGroupId.device,
       MenuGroupId.host,
     ]);
@@ -403,18 +441,134 @@ void main() {
     expect(mountedCheckbox.enabled, isTrue);
   });
 
-  test('Device: Sound、Displayの順で持つ（Bubilator88準拠でSoundはOPNのみ）', () {
-    final entries = catalog()
-        .firstWhere((g) => g.id == MenuGroupId.device)
-        .entries;
-    final sound = entries[0] as MenuSubmenu;
-    expect(sound.id, 'device.sound');
-    expect(sound.entries, hasLength(1));
-    final radio = sound.entries[0] as MenuRadioGroup<String>;
-    expect(radio.options.map((o) => o.label), ['OPN']);
-    final display = entries[1] as MenuSubmenu;
-    expect(display.id, 'device.display');
+  test(
+    'CMT: Play/Rec/Eject、区切り、Play Button/Stop Button/Fast Forward/'
+    'Fast Rewind、区切り、Waveform Shaper、区切り、Recentの順（原作.rc準拠）',
+    () {
+      final entries = catalog()
+          .firstWhere((g) => g.id == MenuGroupId.cmt)
+          .entries;
+      expect(entries.map((e) => e.id), [
+        'cmt.play',
+        'cmt.rec',
+        'cmt.eject',
+        'cmt.sep0',
+        'cmt.playButton',
+        'cmt.stopButton',
+        'cmt.fastForward',
+        'cmt.fastRewind',
+        'cmt.sep1',
+        'cmt.waveShaper',
+        'cmt.sep2',
+        'cmt.recent',
+      ]);
+    },
+  );
+
+  test('CMT: Ejectは媒体が挿入されているときだけ有効', () {
+    final empty = catalog(
+      cmtInserted: false,
+    ).firstWhere((g) => g.id == MenuGroupId.cmt).entries;
+    expect((empty[2] as MenuAction).enabled, isFalse);
+
+    final inserted = catalog(
+      cmtInserted: true,
+    ).firstWhere((g) => g.id == MenuGroupId.cmt).entries;
+    expect((inserted[2] as MenuAction).enabled, isTrue);
   });
+
+  test(
+    'CMT: Play Button/Stop Buttonは走行状態に応じて有効・無効が入れ替わる',
+    () {
+      final stopped = catalog(
+        cmtInserted: true,
+        cmtPlaying: false,
+        cmtRecording: false,
+      ).firstWhere((g) => g.id == MenuGroupId.cmt).entries;
+      expect((stopped[4] as MenuAction).enabled, isTrue); // playButton
+      expect((stopped[5] as MenuAction).enabled, isFalse); // stopButton
+
+      final playing = catalog(
+        cmtInserted: true,
+        cmtPlaying: true,
+      ).firstWhere((g) => g.id == MenuGroupId.cmt).entries;
+      expect((playing[4] as MenuAction).enabled, isFalse);
+      expect((playing[5] as MenuAction).enabled, isTrue);
+    },
+  );
+
+  test('CMT: Waveform Shaperはチェック状態が引数に従う', () {
+    final entries = catalog(
+      cmtDriveSettings: const CmtDriveSettings(waveShaping: true),
+    ).firstWhere((g) => g.id == MenuGroupId.cmt).entries;
+    final checkbox = entries.firstWhere((e) => e.id == 'cmt.waveShaper')
+        as MenuCheckbox;
+    expect(checkbox.checked, isTrue);
+  });
+
+  test('CMT: Recentが空ならプレースホルダーを、あれば項目とClearを持つ', () {
+    final empty = catalog()
+        .firstWhere((g) => g.id == MenuGroupId.cmt)
+        .entries
+        .firstWhere((e) => e.id == 'cmt.recent') as MenuSubmenu;
+    expect(empty.entries.map((e) => e.id), [
+      'cmt.recent.empty',
+      'cmt.recent.sep',
+      'cmt.recent.clear',
+    ]);
+    expect((empty.entries[2] as MenuAction).enabled, isFalse);
+
+    final withHistory = catalog(
+      cmtRecentFiles: const [(token: 't1', displayName: 'TAPE.T77')],
+    ).firstWhere((g) => g.id == MenuGroupId.cmt).entries.firstWhere(
+      (e) => e.id == 'cmt.recent',
+    ) as MenuSubmenu;
+    expect(withHistory.entries.map((e) => e.id), [
+      'cmt.recent.t1',
+      'cmt.recent.sep',
+      'cmt.recent.clear',
+    ]);
+    expect((withHistory.entries[0] as MenuAction).label, 'TAPE.T77');
+    expect((withHistory.entries[2] as MenuAction).enabled, isTrue);
+  });
+
+  test(
+    'Device: Sound、Displayの順で持つ（Bubilator88準拠でSoundはOPNのみ＋CMT音声3種）',
+    () {
+      final entries = catalog()
+          .firstWhere((g) => g.id == MenuGroupId.device)
+          .entries;
+      final sound = entries[0] as MenuSubmenu;
+      expect(sound.id, 'device.sound');
+      // OPNラジオ、区切り、CMTノイズ/信号/音声、CMT音量ダイアログ。
+      expect(sound.entries, hasLength(6));
+      final radio = sound.entries[0] as MenuRadioGroup<String>;
+      expect(radio.options.map((o) => o.label), ['OPN']);
+      expect(sound.entries[1], isA<MenuSeparator>());
+      expect(
+        sound.entries[2],
+        isA<MenuCheckbox>().having((e) => e.id, 'id', 'device.sound.cmtNoise'),
+      );
+      expect(
+        sound.entries[3],
+        isA<MenuCheckbox>().having(
+          (e) => e.id,
+          'id',
+          'device.sound.cmtSignal',
+        ),
+      );
+      expect(
+        sound.entries[4],
+        isA<MenuCheckbox>().having((e) => e.id, 'id', 'device.sound.cmtVoice'),
+      );
+      expect(
+        sound.entries[5],
+        isA<MenuAction>().having((e) => e.id, 'id', 'device.sound.cmtVolume'),
+      );
+      final display = entries[1] as MenuSubmenu;
+      expect(display.id, 'device.display');
+    },
+  );
 
   test('Device > Displayは走査線チェックボックスを持つ（VID-04）', () {
     final display =

@@ -26,6 +26,7 @@ import 'l10n/generated/app_localizations.dart';
 import 'l10n/generated/app_localizations_en.dart';
 import 'l10n/generated/app_localizations_ja.dart';
 import 'menu/app_menu_bar.dart';
+import 'menu/cmt_sound_volume_dialog.dart';
 import 'menu/menu_catalog.dart';
 import 'menu/platform_application_menu.dart';
 import 'menu/settings_dialog.dart';
@@ -236,6 +237,24 @@ class _HomeState extends ConsumerState<_Home> {
       fddRecentFiles: emulator.fddRecentFiles,
       onFddInsertFromRecent: emulatorController.insertFddFromRecent,
       onFddClearRecentFiles: emulatorController.clearRecentFiles,
+      cmtInserted: emulator.cmtInserted,
+      cmtPlaying: emulator.cmtPlaying,
+      cmtRecording: emulator.cmtRecording,
+      onCmtPlay: emulatorController.cmtPlay,
+      onCmtRec: emulatorController.cmtRec,
+      onCmtEject: emulatorController.cmtEject,
+      onCmtPlayButton: emulatorController.cmtPlayButton,
+      onCmtStopButton: emulatorController.cmtStopButton,
+      onCmtFastForward: emulatorController.cmtFastForward,
+      onCmtFastRewind: emulatorController.cmtFastRewind,
+      cmtDriveSettings: emulator.cmtDriveSettings,
+      onCmtWaveShapingChanged: emulatorController.setCmtWaveShaping,
+      cmtRecentFiles: emulator.cmtRecentFiles,
+      onCmtPlayFromRecent: emulatorController.cmtPlayFromRecent,
+      onCmtClearRecentFiles: emulatorController.clearCmtRecentFiles,
+      cmtSoundSettings: emulator.cmtSoundSettings,
+      onCmtSoundEnabledChanged: emulatorController.setCmtSoundEnabled,
+      onOpenCmtSoundVolume: _openCmtSoundVolumeDialog,
       screenFit: emulator.fit,
       onScreenFitChanged: emulatorController.setFit,
       scanlineEnabled: emulator.scanlineEnabled,
@@ -418,6 +437,22 @@ class _HomeState extends ConsumerState<_Home> {
         volumes: ref.read(emulatorControllerProvider).soundVolumes,
         onChanged: (channel, volume) {
           controller.setSoundChannelVolume(channel, volume);
+        },
+      ),
+    );
+  }
+
+  /// CMTノイズ・CMT信号の音量ダイアログを開く（AUD-07）。
+  /// [_openSoundVolumeDialog]と同じ制約（開いた時点の値を渡すだけ）。
+  void _openCmtSoundVolumeDialog() {
+    final controller = ref.read(emulatorControllerProvider.notifier);
+    showDialog<void>(
+      context: context,
+      builder: (context) => CmtSoundVolumeDialog(
+        l10n: AppLocalizations.of(context),
+        settings: ref.read(emulatorControllerProvider).cmtSoundSettings,
+        onChanged: (kind, volume) {
+          controller.setCmtSoundVolume(kind, volume);
         },
       ),
     );

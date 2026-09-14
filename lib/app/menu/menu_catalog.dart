@@ -47,6 +47,25 @@ List<MenuGroup> buildMenuCatalog({
   required Map<int, List<FddRecentFile>> fddRecentFiles,
   required void Function(int drive, String token) onFddInsertFromRecent,
   required void Function(int drive) onFddClearRecentFiles,
+  required bool cmtInserted,
+  required bool cmtPlaying,
+  required bool cmtRecording,
+  required void Function() onCmtPlay,
+  required void Function() onCmtRec,
+  required void Function() onCmtEject,
+  required void Function() onCmtPlayButton,
+  required void Function() onCmtStopButton,
+  required void Function() onCmtFastForward,
+  required void Function() onCmtFastRewind,
+  required CmtDriveSettings cmtDriveSettings,
+  required void Function(bool enabled) onCmtWaveShapingChanged,
+  required List<CmtRecentFile> cmtRecentFiles,
+  required void Function(String token) onCmtPlayFromRecent,
+  required void Function() onCmtClearRecentFiles,
+  required CmtSoundSettings cmtSoundSettings,
+  required void Function(CmtSoundKind kind, bool enabled)
+  onCmtSoundEnabledChanged,
+  required void Function() onOpenCmtSoundVolume,
   required ScreenFit screenFit,
   required void Function(ScreenFit fit) onScreenFitChanged,
   required bool scanlineEnabled,
@@ -270,6 +289,95 @@ List<MenuGroup> buildMenuCatalog({
           ),
       ],
     ),
+    // CMTは原作でもDeviceのサブメニューではなくトップレベルの独立メニュー
+    // （design.md 12.2、`res/fm77av40ex.rc`のPOPUP "CMT"）。FD1/FD2の
+    // すぐ後、Deviceの前に置く（原作の並び順のまま）。
+    MenuGroup(
+      id: MenuGroupId.cmt,
+      label: l10n.menuCmt,
+      entries: [
+        MenuAction(
+          'cmt.play',
+          label: l10n.cmtPlay,
+          enabled: isRunning,
+          onSelected: onCmtPlay,
+        ),
+        MenuAction(
+          'cmt.rec',
+          label: l10n.cmtRec,
+          enabled: isRunning,
+          onSelected: onCmtRec,
+        ),
+        MenuAction(
+          'cmt.eject',
+          label: l10n.cmtEject,
+          enabled: isRunning && cmtInserted,
+          onSelected: onCmtEject,
+        ),
+        const MenuSeparator('cmt.sep0'),
+        MenuAction(
+          'cmt.playButton',
+          label: l10n.cmtPlayButton,
+          enabled: isRunning && cmtInserted && !cmtPlaying && !cmtRecording,
+          onSelected: onCmtPlayButton,
+        ),
+        MenuAction(
+          'cmt.stopButton',
+          label: l10n.cmtStopButton,
+          enabled: isRunning && cmtInserted && (cmtPlaying || cmtRecording),
+          onSelected: onCmtStopButton,
+        ),
+        MenuAction(
+          'cmt.fastForward',
+          label: l10n.cmtFastForward,
+          enabled: isRunning && cmtInserted,
+          onSelected: onCmtFastForward,
+        ),
+        MenuAction(
+          'cmt.fastRewind',
+          label: l10n.cmtFastRewind,
+          enabled: isRunning && cmtInserted,
+          onSelected: onCmtFastRewind,
+        ),
+        const MenuSeparator('cmt.sep1'),
+        MenuCheckbox(
+          'cmt.waveShaper',
+          label: l10n.cmtWaveformShaper,
+          enabled: true,
+          checked: cmtDriveSettings.waveShaping,
+          onChanged: onCmtWaveShapingChanged,
+        ),
+        const MenuSeparator('cmt.sep2'),
+        MenuSubmenu(
+          'cmt.recent',
+          label: l10n.cmtRecentFiles,
+          entries: [
+            if (cmtRecentFiles.isEmpty)
+              MenuAction(
+                'cmt.recent.empty',
+                label: l10n.cmtRecentFilesEmpty,
+                enabled: false,
+                onSelected: () {},
+              )
+            else
+              for (final recent in cmtRecentFiles)
+                MenuAction(
+                  'cmt.recent.${recent.token}',
+                  label: recent.displayName,
+                  enabled: isRunning,
+                  onSelected: () => onCmtPlayFromRecent(recent.token),
+                ),
+            MenuSeparator('cmt.recent.sep'),
+            MenuAction(
+              'cmt.recent.clear',
+              label: l10n.cmtClearRecentFiles,
+              enabled: cmtRecentFiles.isNotEmpty,
+              onSelected: onCmtClearRecentFiles,
+            ),
+          ],
+        ),
+      ],
+    ),
     MenuGroup(
       id: MenuGroupId.device,
       label: l10n.menuDevice,
@@ -282,13 +390,49 @@ List<MenuGroup> buildMenuCatalog({
         MenuSubmenu(
           'device.sound',
           label: l10n.menuDeviceSound,
-          entries: const [
-            MenuRadioGroup<String>(
+          entries: [
+            const MenuRadioGroup<String>(
               'device.sound.chip',
               label: '',
               groupValue: 'opn',
               options: [MenuRadioOption(value: 'opn', label: 'OPN')],
               onChanged: _noopStringChanged,
+            ),
+            const MenuSeparator('device.sound.sep0'),
+            // CMTノイズ・CMT信号・CMT音声の個別有効化（AUD-07）。原作の
+            // "Play CMT Noise"/"Play CMT Signal"/"Play CMT Voice"
+            // （fm77av40ex.rc）と同じ位置（Device > Sound）に置く。
+            // 標準OPN音量（AUD-03）とは別区分のまま混在させない
+            // （design.md 7.1）。
+            MenuCheckbox(
+              'device.sound.cmtNoise',
+              label: l10n.cmtSoundNoise,
+              enabled: true,
+              checked: cmtSoundSettings.noiseEnabled,
+              onChanged: (value) =>
+                  onCmtSoundEnabledChanged(CmtSoundKind.noise, value),
+            ),
+            MenuCheckbox(
+              'device.sound.cmtSignal',
+              label: l10n.cmtSoundSignal,
+              enabled: true,
+              checked: cmtSoundSettings.signalEnabled,
+              onChanged: (value) =>
+                  onCmtSoundEnabledChanged(CmtSoundKind.signal, value),
+            ),
+            MenuCheckbox(
+              'device.sound.cmtVoice',
+              label: l10n.cmtSoundVoice,
+              enabled: true,
+              checked: cmtSoundSettings.voiceEnabled,
+              onChanged: (value) =>
+                  onCmtSoundEnabledChanged(CmtSoundKind.voice, value),
+            ),
+            MenuAction(
+              'device.sound.cmtVolume',
+              label: l10n.cmtSoundVolumeDialogTitle,
+              enabled: true,
+              onSelected: onOpenCmtSoundVolume,
             ),
           ],
         ),

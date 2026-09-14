@@ -401,6 +401,177 @@ class FakeEmulatorSession implements EmulatorSession {
   @override
   bool getFddWriteProtect(int drive) => fddWriteProtectByDrive[drive] ?? false;
 
+  // --- CMT（specification.md CMT-01〜05、AUD-07、M4） ---
+
+  final List<String> insertCmtForPlaybackCalls = [];
+  final List<String> insertCmtForRecordingCalls = [];
+  int ejectCmtCallCount = 0;
+  int playCmtCallCount = 0;
+  int stopCmtCallCount = 0;
+  int fastForwardCmtCallCount = 0;
+  int rewindCmtCallCount = 0;
+  final List<bool> setCmtWaveShapingCalls = [];
+  final List<(CmtSoundKind kind, bool enabled)> setCmtSoundEnabledCalls = [];
+  final List<(CmtSoundKind kind, double volume)> setCmtSoundVolumeCalls = [];
+
+  /// 次に受理する`insertCmtForPlayback`/`insertCmtForRecording`の完了結果。
+  /// nullなら成功。
+  EmulatorErrorCode? nextInsertCmtError;
+  EmulatorErrorCode? nextEjectCmtError;
+
+  /// [getCmtStatus]が返す値。テストから直接差し替える。
+  ({
+    bool inserted,
+    bool playing,
+    bool recording,
+    int position,
+    String message,
+  })
+  cmtStatus = (
+    inserted: false,
+    playing: false,
+    recording: false,
+    position: 0,
+    message: 'Stop',
+  );
+
+  @override
+  Future<int> insertCmtForPlayback(String imagePath) async {
+    insertCmtForPlaybackCalls.add(imagePath);
+    final id = _nextCommandId++;
+    final error = nextInsertCmtError;
+    nextInsertCmtError = null;
+    if (error == null) {
+      cmtStatus = (
+        inserted: true,
+        playing: false,
+        recording: false,
+        position: 0,
+        message: 'Stop',
+      );
+    }
+    scheduleMicrotask(() => emit(CommandCompleted(id, error: error)));
+    return id;
+  }
+
+  @override
+  Future<int> insertCmtForRecording(String imagePath) async {
+    insertCmtForRecordingCalls.add(imagePath);
+    final id = _nextCommandId++;
+    final error = nextInsertCmtError;
+    nextInsertCmtError = null;
+    if (error == null) {
+      cmtStatus = (
+        inserted: true,
+        playing: false,
+        recording: false,
+        position: 0,
+        message: 'Stop',
+      );
+    }
+    scheduleMicrotask(() => emit(CommandCompleted(id, error: error)));
+    return id;
+  }
+
+  @override
+  Future<int> ejectCmt() async {
+    ejectCmtCallCount++;
+    final id = _nextCommandId++;
+    final error = nextEjectCmtError;
+    nextEjectCmtError = null;
+    if (error == null) {
+      cmtStatus = (
+        inserted: false,
+        playing: false,
+        recording: false,
+        position: 0,
+        message: 'Stop',
+      );
+    }
+    scheduleMicrotask(() => emit(CommandCompleted(id, error: error)));
+    return id;
+  }
+
+  @override
+  Future<int> playCmt() async {
+    playCmtCallCount++;
+    final id = _nextCommandId++;
+    cmtStatus = (
+      inserted: cmtStatus.inserted,
+      playing: true,
+      recording: false,
+      position: cmtStatus.position,
+      message: 'Play',
+    );
+    scheduleMicrotask(() => emit(CommandCompleted(id)));
+    return id;
+  }
+
+  @override
+  Future<int> stopCmt() async {
+    stopCmtCallCount++;
+    final id = _nextCommandId++;
+    cmtStatus = (
+      inserted: cmtStatus.inserted,
+      playing: false,
+      recording: false,
+      position: cmtStatus.position,
+      message: 'Stop',
+    );
+    scheduleMicrotask(() => emit(CommandCompleted(id)));
+    return id;
+  }
+
+  @override
+  Future<int> fastForwardCmt() async {
+    fastForwardCmtCallCount++;
+    final id = _nextCommandId++;
+    scheduleMicrotask(() => emit(CommandCompleted(id)));
+    return id;
+  }
+
+  @override
+  Future<int> rewindCmt() async {
+    rewindCmtCallCount++;
+    final id = _nextCommandId++;
+    scheduleMicrotask(() => emit(CommandCompleted(id)));
+    return id;
+  }
+
+  @override
+  Future<int> setCmtWaveShaping(bool enabled) async {
+    setCmtWaveShapingCalls.add(enabled);
+    return _nextCommandId++;
+  }
+
+  @override
+  Future<int> setCmtSoundEnabled(CmtSoundKind kind, bool enabled) async {
+    setCmtSoundEnabledCalls.add((kind, enabled));
+    return _nextCommandId++;
+  }
+
+  @override
+  Future<int> setCmtSoundVolume(CmtSoundKind kind, double volume) async {
+    if (kind == CmtSoundKind.voice) {
+      throw EmulatorException(
+        EmulatorErrorCode.invalidArgument,
+        'CMT音声は音量調整の経路がない',
+      );
+    }
+    setCmtSoundVolumeCalls.add((kind, volume));
+    return _nextCommandId++;
+  }
+
+  @override
+  ({
+    bool inserted,
+    bool playing,
+    bool recording,
+    int position,
+    String message,
+  })
+  getCmtStatus() => cmtStatus;
+
   @override
   void setJoystickState(int index, int bits) {
     joystickStateCalls.add((index, bits));

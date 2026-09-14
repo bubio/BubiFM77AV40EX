@@ -71,6 +71,27 @@ abstract final class BfmSoundChannel {
   static const int fddMechanism = 4;
 }
 
+/// `bfm_cmt_control_op`。`BFM_CMD_CONTROL_CMT`（M4 CMT-03）のarg0。
+/// 原作`.rc`の"Play Button"/"Stop Button"/"Fast Forward"/"Fast Rewind"に
+/// 対応する。APSSは原作FM77AV40EXのメニューに配線されていないため含めない。
+abstract final class BfmCmtControlOp {
+  static const int play = 0;
+  static const int stop = 1;
+  static const int fastForward = 2;
+  static const int fastRewind = 3;
+}
+
+/// `bfm_cmt_sound_kind`。`BFM_CMD_SET_CMT_SOUND_ENABLE`/
+/// `BFM_CMD_SET_CMT_SOUND_VOLUME`（M4 AUD-07）のarg0。
+/// [voice] は`BFM_CMD_SET_CMT_SOUND_VOLUME`には渡せない（upstream
+/// `VM::set_sound_device_volume()`がCMT音声用の内部音量へ配線されておらず、
+/// upstream改変禁止のため調整できない既知の制約。invalidArgumentになる）。
+abstract final class BfmCmtSoundKind {
+  static const int noise = 0;
+  static const int signal = 1;
+  static const int voice = 2;
+}
+
 /// `BFM_CMD_SET_OPTION_SWITCH` の arg0 に渡すビット。
 ///
 /// この3ビットの組だけを毎回丸ごと置き換える（マージしない）。
@@ -105,6 +126,9 @@ abstract final class BfmCommandKind {
   static const int insertCmt = 0x0310;
   static const int ejectCmt = 0x0311;
   static const int controlCmt = 0x0312;
+  static const int setCmtWaveShaping = 0x0313;
+  static const int setCmtSoundEnable = 0x0314;
+  static const int setCmtSoundVolume = 0x0315;
 
   static const int keyDown = 0x0400;
   static const int keyUp = 0x0401;
@@ -226,6 +250,21 @@ final class BfmStats extends Struct {
   /// 読み手が追いつかず最古から捨てたフレーム数の累計。
   @Uint64()
   external int audioOverrunFrames;
+}
+
+/// `bfm_cmt_status`（M4 CMT-05）。[message] はNUL終端。
+final class BfmCmtStatus extends Struct {
+  @Int32()
+  external int inserted;
+  @Int32()
+  external int playing;
+  @Int32()
+  external int recording;
+  @Int32()
+  external int position;
+
+  @Array(128)
+  external Array<Uint8> message;
 }
 
 /// `bfm_video_frame`。借りているあいだ内容も大きさも変わらない。

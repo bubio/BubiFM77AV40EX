@@ -19,8 +19,8 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral
 
 SPEC CHECKSUMS:
-  bubifm77av40ex_core: 840e935fd03b136e7bbcee6e061290fa4db64799
-  bubifm77av40ex_platform: 2d7a16b06ff3625689d782373ebb2c0f0a9079c5
+  bubifm77av40ex_core: 273c71a98a21657700d2fec1a2dd6bdca69ddf81
+  bubifm77av40ex_platform: e7640948d721109af330bf6f815160ffbf6a0288
   FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
 
 PODFILE CHECKSUM: d41f7d8fe395791b3088f85bba0a8a7505481876

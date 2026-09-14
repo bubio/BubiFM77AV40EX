@@ -122,6 +122,36 @@ typedef enum {
 } bfm_sound_channel;
 
 /*
+ * BFM_CMD_CONTROL_CMT の arg0 に渡す操作種別（specification.md CMT-03、
+ * M4）。原作Windows版のメニュー（native/core/upstream/src/res/
+ * fm77av40ex.rc の"Play Button"/"Stop Button"/"Fast Forward"/
+ * "Fast Rewind"、ID_PLAY_BUTTON1等）に対応するupstream
+ * VM::push_play/push_stop/push_fast_forward/push_fast_rewindだけを使う。
+ * APSS（push_apss_forward/push_apss_rewind、DATAREC::do_apss）は同じ.rcで
+ * ID_APSS_FORWARD1/ID_APSS_REWIND1が予約されているだけで実際のメニューには
+ * 配線されておらず、FM77AV40EXでは使われていない機能のためここに含めない。
+ */
+typedef enum {
+	BFM_CMT_CONTROL_PLAY = 0,
+	BFM_CMT_CONTROL_STOP = 1,
+	BFM_CMT_CONTROL_FAST_FORWARD = 2,
+	BFM_CMT_CONTROL_FAST_REWIND = 3
+} bfm_cmt_control_op;
+
+/*
+ * BFM_CMD_SET_CMT_SOUND_ENABLE / BFM_CMD_SET_CMT_SOUND_VOLUME の arg0
+ * （specification.md AUD-07）。原作の"Play CMT Noise"/"Play CMT Signal"/
+ * "Play CMT Voice"（fm77av40ex.rc、ID_VM_SOUND_NOISE_CMT等）に対応する。
+ * BFM_CMT_SOUND_VOICEはBFM_CMD_SET_CMT_SOUND_VOLUMEには渡せない
+ * （下記コメント参照、BFM_ERR_INVALID_ARGUMENTを返す）。
+ */
+typedef enum {
+	BFM_CMT_SOUND_NOISE = 0,
+	BFM_CMT_SOUND_SIGNAL = 1,
+	BFM_CMT_SOUND_VOICE = 2
+} bfm_cmt_sound_kind;
+
+/*
  * BFM_CMD_SET_OPTION_SWITCH の arg0 に渡すビット（specification.md
  * SYS-06）。この3ビットの組だけを毎回丸ごと置き換える（マージしない）。
  * サイクルスチールとHSYNC同期はコアの update_config() で即時反映されるが、
@@ -243,9 +273,57 @@ typedef enum {
 	 * BFM_CMD_INSERT_FDD で行う（このコマンド自体は挿入しない）。
 	 */
 	BFM_CMD_CREATE_BLANK_FDD = 0x0305,       /* M3 FDD-05 */
-	BFM_CMD_INSERT_CMT = 0x0310,             /* M7 P2 */
-	BFM_CMD_EJECT_CMT = 0x0311,              /* M7 P2 */
-	BFM_CMD_CONTROL_CMT = 0x0312,            /* M7 P2 */
+	/*
+	 * BFM_CMD_INSERT_CMT: arg0 は0（再生用に開く、CMT-01）または1（録音用に
+	 * 新規作成、CMT-02）、text はコアがそのまま開く絶対パス（拡張子
+	 * .t77/.wav/.tapでコアが自動判別する、upstream
+	 * DATAREC::play_tape/rec_tapeのcheck_file_extension）。design.md 9.1の
+	 * FDDと同じ境界（呼び出し側が作業コピーを用意する）を使うが、録音は
+	 * upstreamが FILEIO_READ_WRITE_NEW_BINARY で新規作成するため、既存
+	 * ファイルの有無を問わない。既に挿入済みなら BFM_ERR_INVALID_STATE
+	 * （先に BFM_CMD_EJECT_CMT で排出させる）。コアが受理しなかった場合は
+	 * BFM_ERR_INVALID_ARGUMENT。
+	 *
+	 * BFM_CMD_EJECT_CMT: arg0/arg1/textともに未使用。未挿入なら何もせず
+	 * BFM_OK（FDDと同じ冪等方針）。
+	 *
+	 * BFM_CMD_CONTROL_CMT: arg0 は bfm_cmt_control_op。原作の"Play Button"/
+	 * "Stop Button"/"Fast Forward"/"Fast Rewind"に対応する
+	 * upstream VM::push_play/push_stop/push_fast_forward/push_fast_rewindを
+	 * 呼ぶ（bfm_cmt_control_op前掲コメントのとおりAPSSは対象外）。
+	 */
+	BFM_CMD_INSERT_CMT = 0x0310,             /* M4 CMT-01/CMT-02 */
+	BFM_CMD_EJECT_CMT = 0x0311,              /* M4 CMT-01 */
+	BFM_CMD_CONTROL_CMT = 0x0312,            /* M4 CMT-03 */
+	/*
+	 * BFM_CMD_SET_CMT_WAVE_SHAPING: arg0 は0/1（CMT-04）。upstreamの
+	 * config.wave_shaper[0]へ直接書く。DATAREC::load_wav_image()が
+	 * 呼出しのたびに直接読むため、FDDのTIMING/CRC_CHECKと同じく
+	 * update_config()は不要（design.md 16.1と同じ方針）。
+	 */
+	BFM_CMD_SET_CMT_WAVE_SHAPING = 0x0313,   /* M4 CMT-04 */
+	/*
+	 * BFM_CMD_SET_CMT_SOUND_ENABLE: arg0 は bfm_cmt_sound_kind、arg1 は
+	 * 0/1（AUD-07の有効・無効）。upstreamの
+	 * config.sound_noise_cmt/sound_tape_signal/sound_tape_voiceへ書き、
+	 * vm->update_config()を呼ぶ（DATAREC::update_config()が
+	 * sound_noise_cmtを読んでNOISEのmuteを更新するため必須。design.md
+	 * 16.1「実行設定の即時反映」と同じ方針）。
+	 */
+	BFM_CMD_SET_CMT_SOUND_ENABLE = 0x0314,   /* M4 AUD-07 */
+	/*
+	 * BFM_CMD_SET_CMT_SOUND_VOLUME: arg0 は bfm_cmt_sound_kind
+	 * （BFM_CMT_SOUND_VOICEは対象外、BFM_ERR_INVALID_ARGUMENT）、arg1は
+	 * デシベル（AUD-03と同じ0.5dB刻み、[-192, 0]の範囲外は
+	 * BFM_ERR_INVALID_ARGUMENT）。upstream
+	 * VM::set_sound_device_volume(ch, ...)（native/core/upstream/src/vm/
+	 * fm7/fm7.cpp:860-915）のch7がCMT信号（DATAREC::set_volume(0,...)）、
+	 * ch10がCMTノイズ（drec->get_context_noise_play/stop/fast）に対応する。
+	 * ch7はDATAREC::set_volume(1,...)（CMT音声）へは到達しないため、
+	 * CMT音声の音量は調整できない（upstream改変禁止のための既知の制約、
+	 * design.md「標準音声設定（M3、AUD-03）の実装方式」隣接の注記参照）。
+	 */
+	BFM_CMD_SET_CMT_SOUND_VOLUME = 0x0315,   /* M4 AUD-07 */
 
 	/* 入力 */
 	BFM_CMD_KEY_DOWN = 0x0400,               /* WP3 INP-01 */
@@ -322,7 +400,16 @@ typedef enum {
 	 * 流してしまう。代わりに bfm_get_media_access のポーリングで読む。
 	 */
 	BFM_EVENT_MEDIA_ACCESS_CHANGED = 4,/* 未使用。bfm_get_media_access を使う */
-	BFM_EVENT_TAPE_POSITION_CHANGED = 5,/* M7 P2 */
+	/*
+	 * upstream DATAREC::get_message()（"Play"/"Stop (NN %)"/"Record"等、
+	 * CMT-05）が返す状態文字列が前回と変わったときだけ発火する低頻度
+	 * イベント（BFM_EVENT_LED_CHANGEDと同じ「変化検知してイベント化」
+	 * 方針）。走行位置(%)自体は毎フレーム変わりうる高頻度データのため
+	 * イベントには含めず、bfm_get_cmt_status のポーリング専用とする
+	 * （design.md 4.3が禁じる高頻度データをここへ流さないため、
+	 * BFM_EVENT_MEDIA_ACCESS_CHANGEDと同じ考え方）。
+	 */
+	BFM_EVENT_TAPE_POSITION_CHANGED = 5,/* M4 CMT-05 */
 	BFM_EVENT_FDD_MECHANICAL = 6,      /* M3 AUD-04 */
 	BFM_EVENT_LED_CHANGED = 7,         /* WP3 INP-02 */
 	BFM_EVENT_SCREEN_MODE_CHANGED = 8, /* WP3 */
@@ -506,6 +593,23 @@ BFM_API bfm_result bfm_get_fdd_bank_info(bfm_session* session, int32_t drive,
  */
 BFM_API bfm_result bfm_get_fdd_write_protect(bfm_session* session, int32_t drive,
                                              int32_t* out_value);
+
+/*
+ * CMTの現在状態（design.md「D88 bank list」と同型の直接アクセサ、
+ * specification.md CMT-05、M4）。message は終端NULを含めて必ず
+ * NUL終端し、収まらない場合は切り詰める。position は0〜100（未挿入または
+ * 再生中でなければ0、upstream DATAREC::get_tape_position()と同じ意味）。
+ * 未挿入なら inserted/playing/recording はすべて0、message は空文字。
+ */
+typedef struct {
+	int32_t inserted;
+	int32_t playing;
+	int32_t recording;
+	int32_t position;
+	char message[128];
+} bfm_cmt_status;
+
+BFM_API bfm_result bfm_get_cmt_status(bfm_session* session, bfm_cmt_status* out);
 
 /*
  * ジョイスティックの直接入力（design.md 8「固定長スナップショット領域」、

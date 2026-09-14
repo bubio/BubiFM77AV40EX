@@ -138,6 +138,13 @@ final class BubiCoreBindings {
             >
           >('bfm_get_fdd_write_protect')
           .asFunction(),
+      getCmtStatus = library
+          .lookup<
+            NativeFunction<
+              Int32 Function(Pointer<BfmSession>, Pointer<BfmCmtStatus>)
+            >
+          >('bfm_get_cmt_status')
+          .asFunction(),
       setJoystickState = library
           .lookup<
             NativeFunction<Int32 Function(Pointer<BfmSession>, Int32, Uint32)>
@@ -178,6 +185,9 @@ final class BubiCoreBindings {
   /// ドライブごとの書込み保護の実際値（bfm_get_fdd_write_protect、M3 FDD-06）。
   final int Function(Pointer<BfmSession>, int, Pointer<Int32>)
   getFddWriteProtect;
+
+  /// CMTの現在状態（bfm_get_cmt_status、M4 CMT-05）。
+  final int Function(Pointer<BfmSession>, Pointer<BfmCmtStatus>) getCmtStatus;
 
   /// ジョイスティックの直接入力（bfm_set_joystick_state、M3 INP-04）。
   final int Function(Pointer<BfmSession>, int, int) setJoystickState;

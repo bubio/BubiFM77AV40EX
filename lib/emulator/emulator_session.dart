@@ -137,6 +137,68 @@ abstract class EmulatorSession {
   /// マウントされている媒体が実際に持つ値」を返す。未挿入ならfalse。
   bool getFddWriteProtect(int drive);
 
+  /// CMTを再生用に開き、コマンドの連番を返す（CMT-01）。
+  ///
+  /// [imagePath] はコアがそのまま開くOSパス（拡張子.t77/.wav/.tapで
+  /// コアが自動判別する）。既に挿入済みなら[EmulatorException]を
+  /// `invalidState`で投げる。原作`.rc`の"Play"に対応する。
+  Future<int> insertCmtForPlayback(String imagePath);
+
+  /// CMTを録音用に新規作成して開き、コマンドの連番を返す（CMT-02）。
+  ///
+  /// [imagePath] は新規作成する絶対パス（既存ファイルの有無は問わない）。
+  /// 既に挿入済みなら[EmulatorException]を`invalidState`で投げる。
+  /// 原作`.rc`の"Rec"に対応する。
+  Future<int> insertCmtForRecording(String imagePath);
+
+  /// CMTを排出し、コマンドの連番を返す（CMT-01）。
+  ///
+  /// 未挿入のドライブへの排出は冪等に成功する。
+  Future<int> ejectCmt();
+
+  /// CMTの走行を開始し、コマンドの連番を返す（CMT-03）。
+  /// 原作`.rc`の"Play Button"に対応する（挿入用の[insertCmtForPlayback]/
+  /// [insertCmtForRecording]とは別物）。
+  Future<int> playCmt();
+
+  /// CMTの走行を止め、コマンドの連番を返す（CMT-03）。
+  /// 原作`.rc`の"Stop Button"に対応する。
+  Future<int> stopCmt();
+
+  /// CMTを早送りし、コマンドの連番を返す（CMT-03）。
+  Future<int> fastForwardCmt();
+
+  /// CMTを巻戻し、コマンドの連番を返す（CMT-03）。
+  Future<int> rewindCmt();
+
+  /// CMTの波形整形の有効・無効を設定し、コマンドの連番を返す（CMT-04）。
+  Future<int> setCmtWaveShaping(bool enabled);
+
+  /// CMTノイズ・CMT信号・CMT音声を個別に有効・無効化し、コマンドの連番を
+  /// 返す（AUD-07）。
+  Future<int> setCmtSoundEnabled(CmtSoundKind kind, bool enabled);
+
+  /// CMTノイズ・CMT信号の音量を調整し、コマンドの連番を返す（AUD-07）。
+  ///
+  /// [kind]に[CmtSoundKind.voice]を渡すと[EmulatorException]を
+  /// `invalidArgument`で投げる（upstreamがCMT音声用の内部音量へ配線して
+  /// いないため。design.md「標準音声設定（M3、AUD-03）の実装方式」隣接の
+  /// 注記参照）。
+  Future<int> setCmtSoundVolume(CmtSoundKind kind, double volume);
+
+  /// CMTの現在状態を返す（CMT-05）。
+  ///
+  /// [getFddBankInfo]と同型の直接アクセサ。走行位置は0〜100
+  /// （未挿入または再生中でなければ0）。
+  ({
+    bool inserted,
+    bool playing,
+    bool recording,
+    int position,
+    String message,
+  })
+  getCmtStatus();
+
   /// ジョイスティック[index]（0=JS1、1=JS2）の直接入力を[bits]へ更新する
   /// （方向・ボタンのビット定義は`JoystickBit`、M3 INP-04）。都度即座に
   /// 反映される高頻度状態であり、コマンドの連番は持たない

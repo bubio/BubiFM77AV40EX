@@ -8,7 +8,7 @@
 library;
 
 /// メニューの最上位分類（design.md 12.1）。
-enum MenuGroupId { application, control, disk, device, host }
+enum MenuGroupId { application, control, disk, device, cmt, host }
 
 sealed class MenuEntry {
   const MenuEntry(this.id);

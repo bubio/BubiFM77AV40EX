@@ -34,6 +34,13 @@ const fddConvertedExtensions = ['td0', 'imd', 'dsk', 'nfd', 'fdi'];
 /// FD1/FD2ごとの最近使ったファイルの上限件数（FDD-07）。
 const fddRecentFilesLimit = 5;
 
+/// CMTが再生用として受け付ける拡張子（specification.md CMT-01）。
+/// upstream `DATAREC::play_tape`の`check_file_extension`判定と同じ3種。
+const cmtNativeExtensions = ['t77', 'wav', 'tap'];
+
+/// CMTの最近使ったファイルの上限件数（specification.md CMT-05）。
+const cmtRecentFilesLimit = 5;
+
 DiskSourceKind _sourceKindOfPath(String path) {
   final lower = path.toLowerCase();
   for (final ext in fddNativeContainerExtensions) {
@@ -143,6 +150,17 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   final Map<int, _FddSlot> _fddSlots = {};
   final Map<int, Completer<EmulatorErrorCode?>> _pendingCommands = {};
 
+  /// CMTの波形整形設定（CMT-04）。停止中に変更されても次回[launch]時に
+  /// 適用できるよう覚えておく（`_fddDriveSettings`と同じ扱い）。
+  CmtDriveSettings _cmtDriveSettings = const CmtDriveSettings();
+
+  /// CMTノイズ・CMT信号・CMT音声の個別有効化と、ノイズ・信号の音量
+  /// （AUD-07）。停止中に変更されても次回[launch]時に適用できるよう
+  /// 覚えておく（`_soundVolumes`と同じ扱い）。
+  CmtSoundSettings _cmtSoundSettings = const CmtSoundSettings();
+
+  _CmtSlot? _cmtSlot;
+
   /// ステータスバーのView/Core FPS（design.md 12.4）を出すための定期観測。
   ///
   /// `EmulatorStats`は累積カウンターのため、ここで前回値との差分を
@@ -166,6 +184,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       fddRecentFiles: {
         for (var drive = 0; drive < 2; drive++) drive: _readRecentFiles(drive),
       },
+      cmtRecentFiles: _readCmtRecentFiles(),
     );
   }
 
@@ -241,6 +260,72 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     state = state.copyWith(
       fddRecentFiles: {...state.fddRecentFiles, drive: const []},
     );
+  }
+
+  static const _cmtRecentFilesKey = 'cmt.recent';
+
+  List<Map<String, String>> _readCmtRecentEntries() {
+    final raw = preferences.getString(_cmtRecentFilesKey);
+    if (raw == null) {
+      return [];
+    }
+    try {
+      final decoded = jsonDecode(raw) as List<Object?>;
+      return [
+        for (final entry in decoded)
+          if (entry is Map<String, Object?> &&
+              entry['token'] is String &&
+              entry['displayName'] is String)
+            {
+              'token': entry['token']! as String,
+              'displayName': entry['displayName']! as String,
+            },
+      ];
+    } on FormatException {
+      return [];
+    }
+  }
+
+  List<CmtRecentFile> _readCmtRecentFiles() => [
+    for (final entry in _readCmtRecentEntries())
+      (token: entry['token']!, displayName: entry['displayName']!),
+  ];
+
+  Future<void> _recordCmtRecentFile(ExternalResource resource) async {
+    final entries = _readCmtRecentEntries()
+      ..removeWhere((entry) => entry['token'] == resource.token);
+    entries.insert(0, {
+      'token': resource.token,
+      'displayName': resource.displayName,
+    });
+    if (entries.length > cmtRecentFilesLimit) {
+      entries.removeRange(cmtRecentFilesLimit, entries.length);
+    }
+    await preferences.setString(_cmtRecentFilesKey, jsonEncode(entries));
+    state = state.copyWith(
+      cmtRecentFiles: [
+        for (final entry in entries)
+          (token: entry['token']!, displayName: entry['displayName']!),
+      ],
+    );
+  }
+
+  Future<void> _forgetCmtRecentFile(String token) async {
+    final entries = _readCmtRecentEntries()
+      ..removeWhere((entry) => entry['token'] == token);
+    await preferences.setString(_cmtRecentFilesKey, jsonEncode(entries));
+    state = state.copyWith(
+      cmtRecentFiles: [
+        for (final entry in entries)
+          (token: entry['token']!, displayName: entry['displayName']!),
+      ],
+    );
+  }
+
+  /// CMTの最近使ったファイルの履歴を消す（specification.md CMT-05）。
+  Future<void> clearCmtRecentFiles() async {
+    await preferences.setString(_cmtRecentFilesKey, jsonEncode(const []));
+    state = state.copyWith(cmtRecentFiles: const []);
   }
 
   /// コアを起動して画面をつなぐ。すでに動いていれば何もしない。
@@ -324,6 +409,31 @@ class EmulatorController extends Notifier<EmulatorViewState> {
             await session.setFddCrcCheck(drive, true);
           }
         }
+        if (_cmtDriveSettings.waveShaping) {
+          await session.setCmtWaveShaping(true);
+        }
+        const defaultCmtSound = CmtSoundSettings();
+        for (final kind in CmtSoundKind.values) {
+          if (_cmtSoundSettings.enabledOf(kind) !=
+              defaultCmtSound.enabledOf(kind)) {
+            await session.setCmtSoundEnabled(
+              kind,
+              _cmtSoundSettings.enabledOf(kind),
+            );
+          }
+        }
+        if (_cmtSoundSettings.noiseVolume != defaultCmtSound.noiseVolume) {
+          await session.setCmtSoundVolume(
+            CmtSoundKind.noise,
+            _cmtSoundSettings.noiseVolume,
+          );
+        }
+        if (_cmtSoundSettings.signalVolume != defaultCmtSound.signalVolume) {
+          await session.setCmtSoundVolume(
+            CmtSoundKind.signal,
+            _cmtSoundSettings.signalVolume,
+          );
+        }
         state = state.copyWith(
           speedMultiplier: _speedMultiplier,
           fullSpeed: _fullSpeed,
@@ -332,6 +442,8 @@ class EmulatorController extends Notifier<EmulatorViewState> {
           soundVolumes: _soundVolumes,
           fddMechanicalSoundEnabled: _fddMechanicalSoundEnabled,
           fddDriveSettings: {..._fddDriveSettings},
+          cmtDriveSettings: _cmtDriveSettings,
+          cmtSoundSettings: _cmtSoundSettings,
         );
       } on Object {
         // 起動自体は成功しているため、実行設定の再適用失敗は
@@ -356,6 +468,9 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     for (final drive in _fddSlots.keys.toList()) {
       await ejectFdd(drive);
     }
+    if (_cmtSlot != null) {
+      await cmtEject();
+    }
     await _teardown();
     // 実行設定（SYS-03、SYS-05、SYS-06）とマスター音量は次回launch時に
     // 再適用するため覚えたままにする。表示もそれに合わせ、既定値へ
@@ -370,6 +485,9 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       fddMechanicalSoundEnabled: _fddMechanicalSoundEnabled,
       fddDriveSettings: {..._fddDriveSettings},
       fddRecentFiles: state.fddRecentFiles,
+      cmtDriveSettings: _cmtDriveSettings,
+      cmtSoundSettings: _cmtSoundSettings,
+      cmtRecentFiles: state.cmtRecentFiles,
     );
   }
 
@@ -1214,6 +1332,239 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     );
   }
 
+  /// CMTを再生用に開く（specification.md CMT-01、原作`.rc`の"Play"）。
+  Future<void> cmtPlay() async {
+    if (_session == null) {
+      return;
+    }
+    final resource = await externalFileAccess.pickFile(
+      allowedExtensions: cmtNativeExtensions,
+    );
+    if (resource == null) {
+      return;
+    }
+    await _insertCmtResource(resource, forRecording: false);
+  }
+
+  /// CMTを録音用に新規作成して開く（specification.md CMT-02、原作`.rc`の
+  /// "Rec"）。upstreamが新規作成するため、既存ファイルの有無は問わない。
+  Future<void> cmtRec() async {
+    final session = _session;
+    if (session == null) {
+      return;
+    }
+    final destination = await externalFileAccess.pickSaveLocation(
+      suggestedFileName: 'tape.t77',
+    );
+    if (destination == null) {
+      return;
+    }
+    if (_cmtSlot != null) {
+      await cmtEject();
+    }
+    try {
+      final workspace = _workspace ??= await cacheWorkspace
+          .createSessionWorkspace();
+      final fileName = 'cmt-${destination.displayName}';
+      final workspacePath = '${workspace.nativePath}/$fileName';
+      final commandId = await session.insertCmtForRecording(workspacePath);
+      final error = await _awaitCommand(commandId);
+      if (error != null) {
+        await destination.release();
+        state = state.copyWith(failureMessage: '$error');
+        return;
+      }
+      _cmtSlot = _CmtSlot(
+        resource: destination,
+        workspaceFileName: fileName,
+        forRecording: true,
+      );
+      _refreshCmtStatus(session);
+      await _recordCmtRecentFile(destination);
+    } on Object catch (error) {
+      await destination.release();
+      state = state.copyWith(failureMessage: '$error');
+    }
+  }
+
+  /// CMTへ最近使ったファイル（specification.md CMT-05）を再生用として
+  /// 再挿入する。[token]が指す原本が既に無い・アクセスできない場合は
+  /// 履歴から外す。
+  Future<void> cmtPlayFromRecent(String token) async {
+    if (_session == null) {
+      return;
+    }
+    final resource = await externalFileAccess.resolve(token);
+    if (resource == null) {
+      await _forgetCmtRecentFile(token);
+      return;
+    }
+    await _insertCmtResource(resource, forRecording: false);
+  }
+
+  Future<bool> _insertCmtResource(
+    ExternalResource resource, {
+    required bool forRecording,
+  }) async {
+    final session = _session;
+    if (session == null) {
+      await resource.release();
+      return false;
+    }
+    if (_cmtSlot != null) {
+      await cmtEject();
+    }
+    try {
+      final workspace = _workspace ??= await cacheWorkspace
+          .createSessionWorkspace();
+      final fileName = 'cmt-${resource.displayName}';
+      final workspacePath = await resource.withAccess(
+        (nativePath) => workspace.importCopy(nativePath, fileName: fileName),
+      );
+      final commandId = forRecording
+          ? await session.insertCmtForRecording(workspacePath)
+          : await session.insertCmtForPlayback(workspacePath);
+      final error = await _awaitCommand(commandId);
+      if (error != null) {
+        await resource.release();
+        state = state.copyWith(failureMessage: '$error');
+        return false;
+      }
+      _cmtSlot = _CmtSlot(
+        resource: resource,
+        workspaceFileName: fileName,
+        forRecording: forRecording,
+      );
+      _refreshCmtStatus(session);
+      await _recordCmtRecentFile(resource);
+      return true;
+    } on Object catch (error) {
+      await resource.release();
+      state = state.copyWith(failureMessage: '$error');
+      return false;
+    }
+  }
+
+  /// CMTから媒体を排出する（specification.md CMT-01）。
+  ///
+  /// 録音用に開いていた場合は、コアが排出を終えたことを確認してから、
+  /// 作業領域の複製を原本へ原子的に書き戻す（design.md 16.1、FDDの
+  /// `ejectFdd`と同じ方針）。再生用に開いていた場合は読み取り専用のため
+  /// 書き戻さない。未挿入なら何もしない。
+  Future<void> cmtEject() async {
+    final session = _session;
+    final slot = _cmtSlot;
+    if (session == null || slot == null) {
+      return;
+    }
+    final commandId = await session.ejectCmt();
+    final error = await _awaitCommand(commandId);
+    if (error != null) {
+      state = state.copyWith(failureMessage: '$error');
+      return;
+    }
+    final workspace = _workspace;
+    if (workspace != null && slot.forRecording) {
+      await slot.resource.withAccess(
+        (nativePath) =>
+            workspace.exportAtomic(slot.workspaceFileName, nativePath),
+      );
+    }
+    await slot.resource.release();
+    _cmtSlot = null;
+    _refreshCmtStatus(session);
+  }
+
+  /// CMTの走行を開始する（specification.md CMT-03、原作`.rc`の
+  /// "Play Button"）。挿入用の[cmtPlay]/[cmtRec]とは別物。
+  Future<void> cmtPlayButton() async {
+    final session = _session;
+    if (session == null) {
+      return;
+    }
+    final commandId = await session.playCmt();
+    await _awaitCommand(commandId);
+    _refreshCmtStatus(session);
+  }
+
+  /// CMTの走行を止める（specification.md CMT-03、原作`.rc`の
+  /// "Stop Button"）。
+  Future<void> cmtStopButton() async {
+    final session = _session;
+    if (session == null) {
+      return;
+    }
+    final commandId = await session.stopCmt();
+    await _awaitCommand(commandId);
+    _refreshCmtStatus(session);
+  }
+
+  /// CMTを早送りする（specification.md CMT-03）。
+  Future<void> cmtFastForward() async {
+    final session = _session;
+    if (session == null) {
+      return;
+    }
+    final commandId = await session.fastForwardCmt();
+    await _awaitCommand(commandId);
+    _refreshCmtStatus(session);
+  }
+
+  /// CMTを巻戻す（specification.md CMT-03）。
+  Future<void> cmtFastRewind() async {
+    final session = _session;
+    if (session == null) {
+      return;
+    }
+    final commandId = await session.rewindCmt();
+    await _awaitCommand(commandId);
+    _refreshCmtStatus(session);
+  }
+
+  /// CMTの波形整形の有効・無効を設定する（specification.md CMT-04）。
+  Future<void> setCmtWaveShaping(bool enabled) async {
+    _cmtDriveSettings = _cmtDriveSettings.copyWith(waveShaping: enabled);
+    state = state.copyWith(cmtDriveSettings: _cmtDriveSettings);
+    await _session?.setCmtWaveShaping(enabled);
+  }
+
+  /// CMTノイズ・CMT信号・CMT音声を個別に有効・無効化する
+  /// （specification.md AUD-07）。
+  Future<void> setCmtSoundEnabled(CmtSoundKind kind, bool enabled) async {
+    _cmtSoundSettings = _cmtSoundSettings.withEnabled(kind, enabled);
+    state = state.copyWith(cmtSoundSettings: _cmtSoundSettings);
+    await _session?.setCmtSoundEnabled(kind, enabled);
+  }
+
+  /// CMTノイズ・CMT信号の音量を調整する（specification.md AUD-07）。
+  ///
+  /// [kind]に[CmtSoundKind.voice]を渡しても何もしない（音量調整の経路が
+  /// ない、`EmulatorSession.setCmtSoundVolume`のコメント参照）。
+  Future<void> setCmtSoundVolume(CmtSoundKind kind, double volume) async {
+    if (kind == CmtSoundKind.voice) {
+      return;
+    }
+    _cmtSoundSettings = kind == CmtSoundKind.noise
+        ? _cmtSoundSettings.copyWith(noiseVolume: volume)
+        : _cmtSoundSettings.copyWith(signalVolume: volume);
+    state = state.copyWith(cmtSoundSettings: _cmtSoundSettings);
+    await _session?.setCmtSoundVolume(kind, volume);
+  }
+
+  /// CMTの現在状態をコアへ問い合わせ、表示を合わせる
+  /// （specification.md CMT-05）。挿入・排出・走行制御コマンドの完了後と、
+  /// [TapePositionChanged]イベント受信時に呼ぶ。
+  void _refreshCmtStatus(EmulatorSession session) {
+    final status = session.getCmtStatus();
+    state = state.copyWith(
+      cmtInserted: status.inserted,
+      cmtPlaying: status.playing,
+      cmtRecording: status.recording,
+      cmtPosition: status.position,
+      cmtMessage: status.message,
+    );
+  }
+
   /// 前回の観測との差分からView/Core FPSを求める（design.md 12.4）。
   void _pollStats() {
     final session = _session;
@@ -1276,6 +1627,11 @@ class EmulatorController extends Notifier<EmulatorViewState> {
             for (final drive in accessedDrives) drive: now,
           },
         );
+      case TapePositionChanged():
+        final session = _session;
+        if (session != null) {
+          _refreshCmtStatus(session);
+        }
       default:
         break;
     }
@@ -1318,6 +1674,11 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       await slot.resource.release();
     }
     _fddSlots.clear();
+    final cmtSlot = _cmtSlot;
+    _cmtSlot = null;
+    if (cmtSlot != null) {
+      await cmtSlot.resource.release();
+    }
     final workspace = _workspace;
     _workspace = null;
     if (workspace != null) {
@@ -1338,4 +1699,19 @@ class _FddSlot {
 
   final ExternalResource resource;
   final String workspaceFileName;
+}
+
+class _CmtSlot {
+  _CmtSlot({
+    required this.resource,
+    required this.workspaceFileName,
+    required this.forRecording,
+  });
+
+  final ExternalResource resource;
+  final String workspaceFileName;
+
+  /// 録音用に開いた場合はtrue（排出時に原本へ書き戻す）。再生用に開いた
+  /// 場合は読み取り専用のため書き戻さない。
+  final bool forRecording;
 }

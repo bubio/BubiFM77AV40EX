@@ -77,6 +77,14 @@ constexpr int64_t kFddDriveCount = 2;
 const char* const kNativeContainerExtensions[] = {".d88", ".d77", ".d8e", ".1dd"};
 const char* const kConvertedExtensions[] = {".td0", ".imd", ".dsk", ".nfd", ".fdi"};
 
+/*
+ * CMTイメージの拡張子（specification.md CMT-01/CMT-02）。upstream
+ * DATAREC::play_tape/rec_tapeのcheck_file_extensionが同じ3種を
+ * 大文字小文字を問わず判別する。CMTは1ドライブのみ（USE_TAPE=1、
+ * native/core/upstream/src/vm/fm7/fm7.h）。
+ */
+const char* const kCmtExtensions[] = {".t77", ".wav", ".tap"};
+
 bool has_extension(const std::string& path, const char* const* extensions, size_t count)
 {
 	for (size_t i = 0; i < count; ++i) {
@@ -440,6 +448,34 @@ struct bfm_session {
 	std::atomic<bool> fdd_write_protected[kFddDriveCount]{};
 
 	/*
+	 * CMTの現在状態（specification.md CMT-05、M4）。fdd_bank_num等と同じ
+	 * 「Core threadだけが書き、複数消費者が読む」パターン。message文字列は
+	 * atomicにできないため、専用ミューテックスで保護する
+	 * （session->mutexとは別にする。イベント/コマンドキューの競合と
+	 * CMT状態の読み書きを分けるため）。
+	 */
+	std::atomic<int32_t> cmt_inserted{0};
+	std::atomic<int32_t> cmt_playing{0};
+	std::atomic<int32_t> cmt_recording{0};
+	std::atomic<int32_t> cmt_position{0};
+	std::mutex cmt_message_mutex;
+	char cmt_message[128] = {0};
+
+	void set_cmt_message(const char* value)
+	{
+		std::lock_guard<std::mutex> lock(cmt_message_mutex);
+		std::strncpy(cmt_message, value, sizeof(cmt_message) - 1);
+		cmt_message[sizeof(cmt_message) - 1] = '\0';
+	}
+
+	void copy_cmt_message(char* out, size_t out_size)
+	{
+		std::lock_guard<std::mutex> lock(cmt_message_mutex);
+		std::strncpy(out, cmt_message, out_size - 1);
+		out[out_size - 1] = '\0';
+	}
+
+	/*
 	 * ジョイスティックの直接入力（M3 INP-04）。design.md 8「固定長
 	 * スナップショット領域」の実体。bfm_set_joystick_stateがどのスレッド
 	 * からでも書き、Core threadがcore_thread_mainの毎ループでここを読んで
@@ -502,6 +538,20 @@ struct bfm_session {
 };
 
 namespace {
+
+/*
+ * CMTの複製フィールド（cmt_inserted等）を実際のコア状態へ合わせる。
+ * Core threadだけが呼ぶ（emu->is_tape_inserted等の呼出しはCore thread専用）。
+ * 挿入・排出・制御コマンドの完了直後、およびtickループから毎フレーム呼ぶ
+ * （fdd_bank_num[drv].store(...)と同じ「Core threadだけが書く」パターン）。
+ */
+void refresh_cmt_status(bfm_session* session)
+{
+	session->cmt_inserted.store(session->emu->is_tape_inserted(0) ? 1 : 0);
+	session->cmt_playing.store(session->emu->is_tape_playing(0) ? 1 : 0);
+	session->cmt_recording.store(session->emu->is_tape_recording(0) ? 1 : 0);
+	session->cmt_position.store(session->emu->get_tape_position(0));
+}
 
 // Core threadだけが呼ぶ。VMへの操作はすべてここを通る。
 void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& queued)
@@ -674,6 +724,135 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 		}
 		break;
 	}
+	case BFM_CMD_INSERT_CMT: {
+		// M4 CMT-01/CMT-02。arg0=0は再生用（既存ファイルを読む）、
+		// arg0=1は録音用（upstreamがFILEIO_READ_WRITE_NEW_BINARYで新規
+		// 作成するため既存ファイルの有無を問わない）。
+		if ((queued.arg0 != 0 && queued.arg0 != 1) || queued.text.empty()) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		if (session->emu->is_tape_inserted(0)) {
+			// FDDと同じ方針。先にBFM_CMD_EJECT_CMTで排出させる。
+			code = BFM_ERR_INVALID_STATE;
+			break;
+		}
+		if (queued.arg0 == 0 &&
+		    !has_extension(queued.text, kCmtExtensions,
+		                    sizeof(kCmtExtensions) / sizeof(kCmtExtensions[0]))) {
+			// 再生は既知の3拡張子だけを受け付ける。録音は新規作成のため
+			// 拡張子だけでコアの判別方式（check_file_extension）に委ねる。
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		if (queued.arg0 == 0) {
+			session->emu->play_tape(0, queued.text.c_str());
+		} else {
+			session->emu->rec_tape(0, queued.text.c_str());
+		}
+		if (!session->emu->is_tape_inserted(0)) {
+			// コアが形式を受理しなかった。
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		refresh_cmt_status(session);
+		bfm_event event{};
+		event.kind = BFM_EVENT_MEDIA_CHANGED;
+		event.arg0 = 0;
+		event.arg1 = 1;
+		session->push_event(event);
+		break;
+	}
+	case BFM_CMD_EJECT_CMT: {
+		if (!session->emu->is_tape_inserted(0)) {
+			// 未挿入への排出は冪等にOK（FDDと同じ方針）。
+			break;
+		}
+		session->emu->close_tape(0);
+		refresh_cmt_status(session);
+		bfm_event event{};
+		event.kind = BFM_EVENT_MEDIA_CHANGED;
+		event.arg0 = 0;
+		event.arg1 = 0;
+		session->push_event(event);
+		break;
+	}
+	case BFM_CMD_CONTROL_CMT: {
+		switch (queued.arg0) {
+		case BFM_CMT_CONTROL_PLAY:
+			session->emu->push_play(0);
+			break;
+		case BFM_CMT_CONTROL_STOP:
+			session->emu->push_stop(0);
+			break;
+		case BFM_CMT_CONTROL_FAST_FORWARD:
+			session->emu->push_fast_forward(0);
+			break;
+		case BFM_CMT_CONTROL_FAST_REWIND:
+			session->emu->push_fast_rewind(0);
+			break;
+		default:
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		if (code == BFM_OK) {
+			refresh_cmt_status(session);
+		}
+		break;
+	}
+	case BFM_CMD_SET_CMT_WAVE_SHAPING: {
+		// M4 CMT-04。config.wave_shaper[0]はDATAREC::load_wav_image()が
+		// 呼出しのたびに直接読むため、update_config()は不要
+		// （FDDのTIMING/CRC_CHECKと同じ方針）。
+		if (queued.arg0 != 0 && queued.arg0 != 1) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		config.wave_shaper[0] = queued.arg0 != 0;
+		break;
+	}
+	case BFM_CMD_SET_CMT_SOUND_ENABLE: {
+		// M4 AUD-07。config.sound_noise_cmt/sound_tape_signal/
+		// sound_tape_voiceへ書き、vm->update_config()でDATAREC::
+		// update_config()（NOISEのmute反映）まで通す。
+		if ((queued.arg0 != BFM_CMT_SOUND_NOISE && queued.arg0 != BFM_CMT_SOUND_SIGNAL &&
+		     queued.arg0 != BFM_CMT_SOUND_VOICE) ||
+		    (queued.arg1 != 0 && queued.arg1 != 1)) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		const bool enabled = queued.arg1 != 0;
+		switch (queued.arg0) {
+		case BFM_CMT_SOUND_NOISE:
+			config.sound_noise_cmt = enabled;
+			break;
+		case BFM_CMT_SOUND_SIGNAL:
+			config.sound_tape_signal = enabled;
+			break;
+		case BFM_CMT_SOUND_VOICE:
+			config.sound_tape_voice = enabled;
+			break;
+		}
+		vm->update_config();
+		break;
+	}
+	case BFM_CMD_SET_CMT_SOUND_VOLUME: {
+		// M4 AUD-07。CMT信号はVMチャンネル7、CMTノイズはVMチャンネル10
+		// （native/core/upstream/src/vm/fm7/fm7.cpp:860-915の
+		// set_sound_device_volumeチェーンを数えた対応。design.md
+		// 「標準音声設定（M3、AUD-03）の実装方式」隣接の注記を参照）。
+		// CMT音声（voice）はVM::set_sound_device_volume()の呼出し経路が
+		// DATAREC::set_volume(1,...)へ到達しないため対象外。
+		if ((queued.arg0 != BFM_CMT_SOUND_NOISE && queued.arg0 != BFM_CMT_SOUND_SIGNAL) ||
+		    queued.arg1 < -192 || queued.arg1 > 0) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		const int core_channel = queued.arg0 == BFM_CMT_SOUND_SIGNAL ? 7 : 10;
+		const int decibel = static_cast<int>(queued.arg1);
+		session->emu->set_sound_device_volume(core_channel, decibel, decibel);
+		break;
+	}
 	case BFM_CMD_SET_BOOT_MODE:
 		// コアはリセット時に config.boot_mode を読む。ここでは値を
 		// 置くだけで、反映は次のリセットまたは再起動になる（SYS-04）。
@@ -824,6 +1003,21 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 				session->push_event(event);
 			}
 		}
+		// M4: CMT-05。DATAREC::process_state はplay/rec_file_path/buffer等を
+		// state自体に含めて復元するため、FDDと同じくロード後に複製を
+		// 更新し、挿入状態が変わっていればMEDIA_CHANGEDを出す。
+		{
+			const bool had_cmt = session->cmt_inserted.load() != 0;
+			refresh_cmt_status(session);
+			const bool has_cmt_now = session->cmt_inserted.load() != 0;
+			if (has_cmt_now != had_cmt) {
+				bfm_event event{};
+				event.kind = BFM_EVENT_MEDIA_CHANGED;
+				event.arg0 = 0;
+				event.arg1 = has_cmt_now ? 1 : 0;
+				session->push_event(event);
+			}
+		}
 		break;
 	}
 	default:
@@ -964,6 +1158,33 @@ void accumulate_media_access(bfm_session* session, VM_TEMPLATE* vm)
 }
 
 /*
+ * CMTの状態（specification.md CMT-05、M4）。
+ *
+ * inserted/playing/recording/positionは毎フレーム複製するだけで、
+ * イベントにはしない（走行位置は高頻度に変わりうるため、
+ * accumulate_media_accessと同じくポーリング専用とする）。
+ * message文字列（"Play"/"Stop (NN %)"等）は前回値と比較し、変わって
+ * いたときだけ複製してBFM_EVENT_TAPE_POSITION_CHANGEDを1回push する
+ * （publish_led_if_changedと同じ「変化検知してイベント化」方針）。
+ */
+void publish_cmt_status_if_changed(bfm_session* session, VM_TEMPLATE* vm)
+{
+	(void)vm;
+	session->note_vm_access();
+	refresh_cmt_status(session);
+	const char* message = session->emu->get_tape_message(0);
+	char previous[128];
+	session->copy_cmt_message(previous, sizeof(previous));
+	if (std::strncmp(previous, message, sizeof(previous) - 1) == 0) {
+		return;
+	}
+	session->set_cmt_message(message);
+	bfm_event event{};
+	event.kind = BFM_EVENT_TAPE_POSITION_CHANGED;
+	session->push_event(event);
+}
+
+/*
  * design.md 16.1「音声はVMの駆動源にしない」。
  *
  * vm->create_sound()は要求した分（kAudioSamplesPerCall）が
@@ -1092,6 +1313,7 @@ void core_thread_main(bfm_session* session)
 				publish_frame_if_changed(session, vm);
 				publish_led_if_changed(session, vm);
 				accumulate_media_access(session, vm);
+				publish_cmt_status_if_changed(session, vm);
 				publish_audio_if_ready(session, vm);
 			}
 
@@ -1432,6 +1654,24 @@ BFM_API bfm_result bfm_get_fdd_write_protect(bfm_session* session, int32_t drive
 		return BFM_ERR_INVALID_ARGUMENT;
 	}
 	*out_value = session->fdd_write_protected[drive].load() ? 1 : 0;
+	return BFM_OK;
+}
+
+/*
+ * CMTの現在状態（specification.md CMT-05、M4）。bfm_session::cmt_inserted
+ * 等のコメントを参照。bfm_get_fdd_bank_infoと同じ、Core threadの実行を
+ * 待たせない読み出し専用の複製を返す。
+ */
+BFM_API bfm_result bfm_get_cmt_status(bfm_session* session, bfm_cmt_status* out)
+{
+	if (session == nullptr || out == nullptr) {
+		return BFM_ERR_INVALID_ARGUMENT;
+	}
+	out->inserted = session->cmt_inserted.load();
+	out->playing = session->cmt_playing.load();
+	out->recording = session->cmt_recording.load();
+	out->position = session->cmt_position.load();
+	session->copy_cmt_message(out->message, sizeof(out->message));
 	return BFM_OK;
 }
 

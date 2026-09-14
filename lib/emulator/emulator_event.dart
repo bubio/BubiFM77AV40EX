@@ -87,6 +87,19 @@ class MediaAccessChanged extends EmulatorEvent {
   final Set<int> accessedDrives;
 }
 
+/// CMTの状態メッセージが変わった（CMT-05、M4）。
+///
+/// ネイティブ側はupstream `DATAREC::get_message()`が返す文字列
+/// （"Play"/"Stop (NN %)"/"Record"等）が前回と変わったときだけこれを出す
+/// （native/bridge/include/bubi_fm77av.hのBFM_EVENT_TAPE_POSITION_CHANGED
+/// のコメント参照）。再生開始そのものではメッセージが変わらないため、
+/// このイベントは主に停止・録音開始・テープ端到達で届く。走行位置(%)は
+/// 高頻度に変わりうるためここには含めず、[EmulatorSession.getCmtStatus]の
+/// ポーリングで読む。
+class TapePositionChanged extends EmulatorEvent {
+  const TapePositionChanged();
+}
+
 /// まだ Dart 側で解釈していない種別のイベント。
 ///
 /// design.md 4.3 が挙げるイベントのうち、担当WPが未着手のものはここへ入る。

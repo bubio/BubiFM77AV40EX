@@ -148,6 +148,17 @@ void main() {
       );
     });
 
+    test('tapePositionChanged は TapePositionChanged になる（CMT-05、M4）', () {
+      final event = emulatorEventFromNative(
+        kind: BfmEventKind.tapePositionChanged,
+        code: 0,
+        commandId: 0,
+        arg0: 0,
+        arg1: 0,
+      );
+      expect(event, isA<TapePositionChanged>());
+    });
+
     test('未実装の種別は捨てずに UnhandledEmulatorEvent にする', () {
       final event = emulatorEventFromNative(
         kind: BfmEventKind.fddMechanical,

@@ -80,6 +80,13 @@ int soundChannelToNative(SoundChannel channel) => switch (channel) {
   SoundChannel.fddMechanism => BfmSoundChannel.fddMechanism,
 };
 
+/// [CmtSoundKind] を `bfm_cmt_sound_kind` へ変換する（M4 AUD-07）。
+int cmtSoundKindToNative(CmtSoundKind kind) => switch (kind) {
+  CmtSoundKind.noise => BfmCmtSoundKind.noise,
+  CmtSoundKind.signal => BfmCmtSoundKind.signal,
+  CmtSoundKind.voice => BfmCmtSoundKind.voice,
+};
+
 /// 0.0〜1.0の音量を`BFM_CMD_SET_SOUND_VOLUME`のarg1（デシベル、0.5dB刻み、
 /// 0=最大）へ変換する（M3 AUD-03）。範囲外はクランプする。
 ///
@@ -109,6 +116,7 @@ EmulatorEvent emulatorEventFromNative({
   BfmEventKind.screenModeChanged => ScreenModeChanged(arg0, arg1),
   BfmEventKind.ledChanged => LedStateChanged(LedState.fromBits(arg0)),
   BfmEventKind.mediaChanged => MediaChanged(arg0, inserted: arg1 != 0),
+  BfmEventKind.tapePositionChanged => const TapePositionChanged(),
   // BFM_EVENT_MEDIA_ACCESS_CHANGEDは未使用（bubi_fm77av.h参照）。
   // アクセス状態はFfiEmulatorSessionがbfm_get_media_accessを
   // ポーリングして合成する（native_conversions.dartのdriveSetFromBits）。

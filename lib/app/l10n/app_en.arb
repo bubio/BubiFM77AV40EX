@@ -194,6 +194,15 @@
       }
     }
   },
+  "statusCmt": "CMT : {message}",
+  "@statusCmt": {
+    "description": "Status bar: CMT transport state and tape position, e.g. \"CMT : Play (3 %)\". `message` is the native core's own status string (native/core/upstream/src/vm/datarec.cpp DATAREC::update_event/event_callback) and is not localized, matching the original Windows app which always shows it in English regardless of UI language.",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "statusMasterVolume": "Vol {percent}%",
   "@statusMasterVolume": {
     "description": "Status bar: master volume as a percentage.",
@@ -258,6 +267,70 @@
   "menuDisk": "Disk",
   "@menuDisk": {
     "description": "In-app menu group: floppy disk media."
+  },
+  "menuCmt": "CMT",
+  "@menuCmt": {
+    "description": "In-app menu group: cassette tape media (CMT-01..05). Matches the original fm77av40ex.rc top-level \"CMT\" popup."
+  },
+  "cmtPlay": "Play",
+  "@cmtPlay": {
+    "description": "Opens a file picker to open a tape image for playback (CMT-01). Matches the original \"Play\" menu item."
+  },
+  "cmtRec": "Rec",
+  "@cmtRec": {
+    "description": "Opens a save-location picker to create a new tape image for recording (CMT-02). Matches the original \"Rec\" menu item."
+  },
+  "cmtEject": "Eject",
+  "@cmtEject": {
+    "description": "Ejects the currently inserted tape image."
+  },
+  "cmtPlayButton": "Play Button",
+  "@cmtPlayButton": {
+    "description": "Starts tape transport playback (CMT-03). Matches the original \"Play Button\" menu item, distinct from cmtPlay (opening a file)."
+  },
+  "cmtStopButton": "Stop Button",
+  "@cmtStopButton": {
+    "description": "Stops tape transport (CMT-03). Matches the original \"Stop Button\" menu item."
+  },
+  "cmtFastForward": "Fast Forward",
+  "@cmtFastForward": {
+    "description": "Fast-forwards the tape (CMT-03)."
+  },
+  "cmtFastRewind": "Fast Rewind",
+  "@cmtFastRewind": {
+    "description": "Rewinds the tape (CMT-03)."
+  },
+  "cmtWaveformShaper": "Waveform Shaper",
+  "@cmtWaveformShaper": {
+    "description": "Checkbox toggling waveform shaping for WAV tape playback (CMT-04)."
+  },
+  "cmtRecentFiles": "Recent",
+  "@cmtRecentFiles": {
+    "description": "Submenu listing recently used tape images (CMT-05)."
+  },
+  "cmtRecentFilesEmpty": "(No Recent Files)",
+  "@cmtRecentFilesEmpty": {
+    "description": "Placeholder shown in the CMT Recent submenu when there is no history yet."
+  },
+  "cmtClearRecentFiles": "Clear Recent Files",
+  "@cmtClearRecentFiles": {
+    "description": "Clears the recent tape image history."
+  },
+  "cmtSoundNoise": "Play CMT Noise",
+  "@cmtSoundNoise": {
+    "description": "Checkbox toggling CMT relay/fast-forward noise (AUD-07). Matches the original \"Play CMT Noise\" menu item."
+  },
+  "cmtSoundSignal": "Play CMT Signal",
+  "@cmtSoundSignal": {
+    "description": "Checkbox toggling audible playback of the raw CMT signal (AUD-07). Matches the original \"Play CMT Signal\" menu item."
+  },
+  "cmtSoundVoice": "Play CMT Voice",
+  "@cmtSoundVoice": {
+    "description": "Checkbox toggling audible playback of the CMT voice/PCM path (AUD-07). Matches the original \"Play CMT Voice\" menu item. Volume is not independently adjustable (upstream limitation)."
+  },
+  "cmtSoundVolumeDialogTitle": "CMT Volume…",
+  "@cmtSoundVolumeDialogTitle": {
+    "description": "Action opening the CMT noise/signal volume dialog (AUD-07)."
   },
   "menuDevice": "Device",
   "@menuDevice": {
