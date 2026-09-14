@@ -216,6 +216,12 @@ class FakeEmulatorSession implements EmulatorSession {
   final List<RunOptionSwitches> setRunOptionSwitchesCalls = [];
   final List<(SoundChannel channel, double volume)> setSoundChannelVolumeCalls =
       [];
+  final List<bool> setRgbFilterEnabledCalls = [];
+  final List<(int x, int y)> setScreenPowerCalls = [];
+
+  /// 次の[setScreenPower]で送信自体を失敗させる（ネイティブの
+  /// `bfm_send_command`が拒否した場合を模す）。使ったらnullへ戻る。
+  EmulatorErrorCode? nextScreenPowerError;
   final List<bool> setFddMechanicalSoundEnabledCalls = [];
   final List<double> setFddMechanicalSoundVolumeCalls = [];
   final List<String> startRecordingCalls = [];
@@ -333,6 +339,23 @@ class FakeEmulatorSession implements EmulatorSession {
   }
 
   @override
+  Future<int> setRgbFilterEnabled(bool enabled) async {
+    setRgbFilterEnabledCalls.add(enabled);
+    return _nextCommandId++;
+  }
+
+  @override
+  Future<int> setScreenPower(int x, int y) async {
+    setScreenPowerCalls.add((x, y));
+    final error = nextScreenPowerError;
+    if (error != null) {
+      nextScreenPowerError = null;
+      throw EmulatorException(error, 'setScreenPower');
+    }
+    return _nextCommandId++;
+  }
+
+  @override
   Future<int> setFddWriteProtect(int drive, bool enabled) async {
     setFddWriteProtectCalls.add((drive, enabled));
     fddWriteProtectByDrive[drive] = enabled;
@@ -420,13 +443,7 @@ class FakeEmulatorSession implements EmulatorSession {
   EmulatorErrorCode? nextEjectCmtError;
 
   /// [getCmtStatus]が返す値。テストから直接差し替える。
-  ({
-    bool inserted,
-    bool playing,
-    bool recording,
-    int position,
-    String message,
-  })
+  ({bool inserted, bool playing, bool recording, int position, String message})
   cmtStatus = (
     inserted: false,
     playing: false,
@@ -563,13 +580,7 @@ class FakeEmulatorSession implements EmulatorSession {
   }
 
   @override
-  ({
-    bool inserted,
-    bool playing,
-    bool recording,
-    int position,
-    String message,
-  })
+  ({bool inserted, bool playing, bool recording, int position, String message})
   getCmtStatus() => cmtStatus;
 
   @override

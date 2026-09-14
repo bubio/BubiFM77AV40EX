@@ -103,6 +103,7 @@ set(BRIDGE_SOURCES
   bridge/osd/sdl/osd_sound.cpp
   bridge/src/bubi_fm77av.cpp
   bridge/src/frame_ring.cpp
+  bridge/src/rgb_filter.cpp
   bridge/compat/core_feature_shim.cpp
   bridge/compat/core_host_symbols.cpp
   bridge/compat/debugger_stubs.cpp
@@ -180,6 +181,7 @@ if(BUBI_BUILD_HOST_TOOLS)
     "${CMAKE_CURRENT_SOURCE_DIR}/host/session_test.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/bubi_fm77av.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/frame_ring.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/rgb_filter.cpp"
   )
   target_compile_definitions(session_test PRIVATE BUBI_ENABLE_TEST_HOOKS)
   target_link_libraries(session_test PRIVATE bubifm77av40ex_core)
@@ -191,6 +193,7 @@ if(BUBI_BUILD_HOST_TOOLS)
     "${CMAKE_CURRENT_SOURCE_DIR}/host/rom_boot_check.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/bubi_fm77av.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/frame_ring.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/rgb_filter.cpp"
   )
   target_compile_definitions(rom_boot_check PRIVATE BUBI_ENABLE_TEST_HOOKS)
   target_link_libraries(rom_boot_check PRIVATE bubifm77av40ex_core)
@@ -212,12 +215,22 @@ if(BUBI_BUILD_HOST_TOOLS)
   target_include_directories(pcm_ring_test
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src")
 
+  # RGBフィルターの検査（VID-04）。コアは動かさないが、scrntype_t 等の
+  # 定義に common.h を使うためコアのライブラリへリンクする。
+  add_executable(rgb_filter_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/host/rgb_filter_test.cpp"
+  )
+  target_include_directories(rgb_filter_test
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src")
+  target_link_libraries(rgb_filter_test PRIVATE bubifm77av40ex_core)
+
   # 同じC ABIをDart FFIから呼べることを確かめるための共有ライブラリ。
   # アプリへの組み込みは packages/bubifm77av40ex_core/ の静的リンクで行う
   # （design.md 16.1）。ここはシンボル解決と呼び出しの検証専用である。
   add_library(bubifm77av40ex_shared SHARED
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/bubi_fm77av.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/frame_ring.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/rgb_filter.cpp"
   )
   set_target_properties(bubifm77av40ex_shared PROPERTIES OUTPUT_NAME bubifm77av40ex)
   target_link_libraries(bubifm77av40ex_shared PRIVATE bubifm77av40ex_core)
@@ -228,6 +241,7 @@ if(BUBI_BUILD_HOST_TOOLS)
   add_test(NAME session_test COMMAND session_test "${CMAKE_CURRENT_BINARY_DIR}/session-home")
   add_test(NAME frame_ring_test COMMAND frame_ring_test)
   add_test(NAME pcm_ring_test COMMAND pcm_ring_test)
+  add_test(NAME rgb_filter_test COMMAND rgb_filter_test)
   # home_dir はプロセス全体で1つに固定されるため、書込み不能な home_dir の
   # 検査だけは別プロセスで走らせる。
   add_test(NAME session_test_unwritable_home

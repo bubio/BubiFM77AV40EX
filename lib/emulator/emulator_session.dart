@@ -70,6 +70,19 @@ abstract class EmulatorSession {
   /// （0.0〜1.0の範囲外はクランプする）。
   Future<int> setSoundChannelVolume(SoundChannel channel, double volume);
 
+  /// RGBフィルター（VID-04）の有効・無効を設定し、コマンドの連番を返す。
+  ///
+  /// 有効な間、ネイティブ側が移植元と同じ計算でコアの画面へフィルターを
+  /// 掛け、画面の[setScreenPower]倍の大きさの面をTextureへ渡す。
+  Future<int> setRgbFilterEnabled(bool enabled);
+
+  /// RGBフィルターが画面を広げる倍率（横[x]・縦[y]、1〜8）を設定し、
+  /// コマンドの連番を返す（VID-04）。
+  ///
+  /// 移植元が表示の大きさから求める値（`ceil(表示幅 / 画面幅)`）と同じ
+  /// ものを、表示側が求めて渡す。
+  Future<int> setScreenPower(int x, int y);
+
   /// キーを押す。[vkCode] は win32 の仮想キーコード（INP-01）。
   ///
   /// リピートの抑止と重複押下の除去は呼び出し側（Controller）の責務で、
@@ -190,13 +203,7 @@ abstract class EmulatorSession {
   ///
   /// [getFddBankInfo]と同型の直接アクセサ。走行位置は0〜100
   /// （未挿入または再生中でなければ0）。
-  ({
-    bool inserted,
-    bool playing,
-    bool recording,
-    int position,
-    String message,
-  })
+  ({bool inserted, bool playing, bool recording, int position, String message})
   getCmtStatus();
 
   /// ジョイスティック[index]（0=JS1、1=JS2）の直接入力を[bits]へ更新する

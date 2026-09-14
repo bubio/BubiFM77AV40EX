@@ -161,6 +161,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
 
   _CmtSlot? _cmtSlot;
 
+  /// RGBフィルターが画面を広げる倍率（VID-04、[setScreenPower]）。
+  /// 停止中に表示の大きさが変わっても次回[launch]時に送れるよう覚えておく。
+  ({int x, int y}) _screenPower = (x: 1, y: 1);
+
   /// ステータスバーのView/Core FPS（design.md 12.4）を出すための定期観測。
   ///
   /// `EmulatorStats`は累積カウンターのため、ここで前回値との差分を
@@ -545,6 +549,12 @@ class EmulatorController extends Notifier<EmulatorViewState> {
         if (_optionSwitches != const RunOptionSwitches()) {
           await session.setRunOptionSwitches(_optionSwitches);
         }
+        if (_screenPower != (x: 1, y: 1)) {
+          await session.setScreenPower(_screenPower.x, _screenPower.y);
+        }
+        if (state.hostFilter == HostScreenFilter.rgb) {
+          await session.setRgbFilterEnabled(true);
+        }
         if (_soundVolumes != const SoundChannelVolumes()) {
           const defaults = SoundChannelVolumes();
           for (final channel in SoundChannel.values) {
@@ -697,11 +707,35 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     unawaited(preferences.setBool(_scanlineKey, enabled));
   }
 
-  /// ホスト側のRGBフィルターを変える（VID-04）。コアへは送らない。
+  /// RGBフィルターを変える（VID-04）。フィルターはネイティブ側が
+  /// 移植元と同じ計算で掛けるため、起動中ならすぐにセッションへ送る。
   /// 再起動後も復元する。
-  void setHostFilter(HostScreenFilter filter) {
+  Future<void> setHostFilter(HostScreenFilter filter) async {
     state = state.copyWith(hostFilter: filter);
     unawaited(preferences.setString(_hostFilterKey, filter.name));
+    await _session?.setRgbFilterEnabled(filter == HostScreenFilter.rgb);
+  }
+
+  /// RGBフィルターが画面を広げる倍率（VID-04）を変える。表示の大きさから
+  /// 求めた値を`EmulatorScreen`が知らせる。変わったときだけ送る。
+  ///
+  /// 送信に成功してから覚える。失敗（コアの異常停止後、キュー満杯など）は
+  /// 呼び出し元が待たないため例外を外へ出さず、覚えないまま次の通知で
+  /// 送り直す。
+  Future<void> setScreenPower(int x, int y) async {
+    final power = (x: x, y: y);
+    if (_screenPower == power) {
+      return;
+    }
+    final session = _session;
+    if (session != null) {
+      try {
+        await session.setScreenPower(x, y);
+      } on EmulatorException {
+        return;
+      }
+    }
+    _screenPower = power;
   }
 
   /// マスター音量を変える（0.0〜1.0、design.md 12.4）。

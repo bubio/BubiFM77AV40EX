@@ -13,6 +13,7 @@
 
 #include "frame_ring.h"
 #include "pcm_ring.h"
+#include "rgb_filter.h"
 
 #include <dirent.h>
 #include <strings.h>
@@ -408,6 +409,14 @@ struct bfm_session {
 	// 直近に公開した解像度。Core threadだけが書く。
 	int screen_width = 0;
 	int screen_height = 0;
+
+	// RGBフィルター（VID-04、rgb_filter.h）。Core threadだけが触る。
+	int32_t screen_filter = BFM_SCREEN_FILTER_NONE;
+	int screen_power_x = 1;
+	int screen_power_y = 1;
+	bubi::RgbFilter rgb_filter;
+	bubi::FilterBitmap filter_source;
+	bubi::FilterBitmap filter_dest;
 
 	// 直近に通知したLED。初期値は「まだ読んでいない」を表す。
 	uint32_t led_status = 0xffffffffu;
@@ -938,6 +947,26 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 		session->emu->set_sound_device_volume(core_channel, decibel, decibel);
 		break;
 	}
+	case BFM_CMD_SET_SCREEN_FILTER:
+		// VID-04。publish_frame_if_changed が次の面から読む。画面が
+		// 変わらなくても掛け替えた結果を見せるため、次の面を強制公開する。
+		if (queued.arg0 != BFM_SCREEN_FILTER_NONE && queued.arg0 != BFM_SCREEN_FILTER_RGB) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+		} else {
+			session->screen_filter = static_cast<int32_t>(queued.arg0);
+			session->force_publish.store(true);
+		}
+		break;
+	case BFM_CMD_SET_SCREEN_POWER:
+		// VID-04。upstream の tmp_pow_x/y に当たる（bubi_fm77av.h前掲）。
+		if (queued.arg0 < 1 || queued.arg0 > 8 || queued.arg1 < 1 || queued.arg1 > 8) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+		} else {
+			session->screen_power_x = static_cast<int>(queued.arg0);
+			session->screen_power_y = static_cast<int>(queued.arg1);
+			session->force_publish.store(true);
+		}
+		break;
 	case BFM_CMD_SAVE_STATE: {
 		// M3 STA-01。queued.text は呼び出し側（AppDataPaths::stateSlot）が
 		// 決めたstate.binの絶対パス。スロット番号自体はホストのディレクトリ
@@ -1092,6 +1121,42 @@ void publish_frame_if_changed(bfm_session* session, VM_TEMPLATE* vm)
 	}
 
 	const uint64_t before = session->frames.dropped();
+	if (session->screen_filter == BFM_SCREEN_FILTER_RGB) {
+		// upstream の draw_screen() と同じく、コアの画面を
+		// 画面の大きさ × tmp_pow_x/y の面へフィルターしながら広げる。
+		// フィルターはコアが書いたアルファ（t0）を読むため、アルファを
+		// 補う前の値を渡す。
+		bubi::FilterBitmap& source = session->filter_source;
+		if (source.width != width || source.height != height) {
+			source.resize(width, height);
+		}
+		for (int y = 0; y < height; ++y) {
+			const scrntype_t* row = session->emu->get_screen_buffer(y);
+			uint32_t* dst = source.get_buffer(y);
+			for (int x = 0; x < width; ++x) {
+				dst[x] = (row == nullptr) ? 0u : static_cast<uint32_t>(row[x]);
+			}
+		}
+		bubi::FilterBitmap& filtered = session->filter_dest;
+		const int filtered_width = width * session->screen_power_x;
+		const int filtered_height = height * session->screen_power_y;
+		if (filtered.width != filtered_width || filtered.height != filtered_height) {
+			filtered.resize(filtered_width, filtered_height);
+		}
+		session->rgb_filter.apply(&source, &filtered);
+		session->frames.publish(
+			static_cast<uint32_t>(filtered_width), static_cast<uint32_t>(filtered_height),
+			[&filtered, filtered_width](uint32_t* dst, uint32_t y) {
+				const uint32_t* row = filtered.get_buffer(static_cast<int>(y));
+				for (int x = 0; x < filtered_width; ++x) {
+					dst[x] = row[x] | 0xff000000u;
+				}
+			});
+		if (session->frames.dropped() == before) {
+			session->frames_published.fetch_add(1);
+		}
+		return;
+	}
 	session->frames.publish(
 		static_cast<uint32_t>(width), static_cast<uint32_t>(height),
 		[session, width](uint32_t* dst, uint32_t y) {

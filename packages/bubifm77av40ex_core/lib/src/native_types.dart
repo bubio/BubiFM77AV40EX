@@ -104,6 +104,12 @@ abstract final class BfmOptionSwitch {
   static const int syncToHsync = 0x4;
 }
 
+/// `bfm_screen_filter`（`BfmCommandKind.setScreenFilter`のarg0、VID-04）。
+abstract final class BfmScreenFilter {
+  static const int none = 0;
+  static const int rgb = 1;
+}
+
 /// `bfm_command_kind`。上位バイトが design.md 4.2 の分類に対応する。
 ///
 /// WP1 で実装済みなのは [reset] と [specialReset] だけで、
@@ -141,6 +147,8 @@ abstract final class BfmCommandKind {
   static const int setVolume = 0x0502;
   static const int setFrameRate = 0x0503;
   static const int setSoundVolume = 0x0504;
+  static const int setScreenFilter = 0x0505;
+  static const int setScreenPower = 0x0506;
 
   static const int saveState = 0x0600;
   static const int loadState = 0x0601;

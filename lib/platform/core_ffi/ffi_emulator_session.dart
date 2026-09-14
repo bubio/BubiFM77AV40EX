@@ -390,6 +390,47 @@ class FfiEmulatorSession implements EmulatorSession {
   }
 
   @override
+  Future<int> setRgbFilterEnabled(bool enabled) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = BfmCommandKind.setScreenFilter;
+      command.ref.arg0 = enabled ? BfmScreenFilter.rgb : BfmScreenFilter.none;
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
+  Future<int> setScreenPower(int x, int y) async {
+    _ensureUsable();
+    final command = calloc<BfmCommand>();
+    final out = calloc<Uint64>();
+    try {
+      command.ref.kind = BfmCommandKind.setScreenPower;
+      command.ref.arg0 = x;
+      command.ref.arg1 = y;
+      final result = _bindings.sendCommand(_handle, command, out);
+      if (result != BfmResult.ok) {
+        final code = errorCodeFromNative(result);
+        throw EmulatorException(code, describeErrorCode(code));
+      }
+      return out.value;
+    } finally {
+      calloc.free(out);
+      calloc.free(command);
+    }
+  }
+
+  @override
   Future<int> insertFdd(int drive, String imagePath, {int bank = 0}) async {
     _ensureUsable();
     final command = calloc<BfmCommand>();
@@ -577,10 +618,12 @@ class FfiEmulatorSession implements EmulatorSession {
   }
 
   @override
-  Future<int> insertCmtForPlayback(String imagePath) => _insertCmt(0, imagePath);
+  Future<int> insertCmtForPlayback(String imagePath) =>
+      _insertCmt(0, imagePath);
 
   @override
-  Future<int> insertCmtForRecording(String imagePath) => _insertCmt(1, imagePath);
+  Future<int> insertCmtForRecording(String imagePath) =>
+      _insertCmt(1, imagePath);
 
   @override
   Future<int> ejectCmt() async {
@@ -686,13 +729,7 @@ class FfiEmulatorSession implements EmulatorSession {
   }
 
   @override
-  ({
-    bool inserted,
-    bool playing,
-    bool recording,
-    int position,
-    String message,
-  })
+  ({bool inserted, bool playing, bool recording, int position, String message})
   getCmtStatus() {
     _ensureUsable();
     final out = calloc<BfmCmtStatus>();

@@ -7,6 +7,7 @@ enum HostScreenFilter {
   /// フィルターなし。
   none,
 
-  /// RGBサブピクセルを強調するCRT風フィルター。
+  /// 移植元の`apply_rgb_filter_to_screen_buffer`と同じRGBフィルター
+  /// （ネイティブ側の`native/bridge/src/rgb_filter.cpp`が掛ける）。
   rgb,
 }

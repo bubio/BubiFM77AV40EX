@@ -151,6 +151,12 @@ typedef enum {
 	BFM_CMT_SOUND_VOICE = 2
 } bfm_cmt_sound_kind;
 
+/* BFM_CMD_SET_SCREEN_FILTER の arg0（VID-04）。 */
+typedef enum {
+	BFM_SCREEN_FILTER_NONE = 0,
+	BFM_SCREEN_FILTER_RGB = 1
+} bfm_screen_filter;
+
 /*
  * BFM_CMD_SET_OPTION_SWITCH の arg0 に渡すビット（specification.md
  * SYS-06）。この3ビットの組だけを毎回丸ごと置き換える（マージしない）。
@@ -363,6 +369,22 @@ typedef enum {
 	 * VMチャンネル番号の対応表を記録する。
 	 */
 	BFM_CMD_SET_SOUND_VOLUME = 0x0504,       /* M3 AUD-03 */
+	/*
+	 * BFM_CMD_SET_SCREEN_FILTER: arg0 は bfm_screen_filter（VID-04）。
+	 * upstream の config.filter_type に当たる。RGBの間、Core threadは
+	 * コアの画面へ upstream と同じ apply_rgb_filter_to_screen_buffer を
+	 * 掛け、コアの画面の BFM_CMD_SET_SCREEN_POWER 倍の面を公開する
+	 * （bfm_video_frame の幅・高さはその大きさになる。
+	 * BFM_EVENT_SCREEN_MODE_CHANGED はコアの画面の大きさのまま）。
+	 * 範囲外は BFM_ERR_INVALID_ARGUMENT。
+	 *
+	 * BFM_CMD_SET_SCREEN_POWER: arg0 は横、arg1 は縦の倍率（1〜8）。
+	 * upstream の draw_screen() が表示の大きさから求める tmp_pow_x/y
+	 * （ceil(表示幅 / 画面幅)、ceil(表示高 / 画面高)）に当たり、表示側が
+	 * 同じ式で求めて渡す。範囲外は BFM_ERR_INVALID_ARGUMENT。既定は1。
+	 */
+	BFM_CMD_SET_SCREEN_FILTER = 0x0505,      /* VID-04 */
+	BFM_CMD_SET_SCREEN_POWER = 0x0506,       /* VID-04 */
 
 	/* 状態 */
 	BFM_CMD_SAVE_STATE = 0x0600,             /* M3 STA-01 */

@@ -128,16 +128,49 @@ void main() {
     expect(session.joystickStateCalls, [(0, 0x0f), (1, 0x30)]);
   });
 
-  test('VID-04 setHostFilterは即座にstateへ反映される（コアへは送らない）', () {
+  test('VID-04 setHostFilterはstateへ反映し、フィルターを掛けるセッションへ送る', () async {
     expect(state().hostFilter, HostScreenFilter.none);
-    controller().setHostFilter(HostScreenFilter.rgb);
+    await controller().setHostFilter(HostScreenFilter.rgb);
     expect(state().hostFilter, HostScreenFilter.rgb);
+    await controller().setHostFilter(HostScreenFilter.none);
+
+    expect(session.setRgbFilterEnabledCalls, [true, false]);
   });
 
-  test('VID-04 ホストフィルターは再起動後も復元される', () {
-    controller().setHostFilter(HostScreenFilter.rgb);
+  test('VID-04 ホストフィルターは再起動後も復元される', () async {
+    await controller().setHostFilter(HostScreenFilter.rgb);
 
     expect(restart().hostFilter, HostScreenFilter.rgb);
+  });
+
+  test('VID-04 setScreenPowerは倍率が変わったときだけセッションへ送る', () async {
+    await controller().setScreenPower(1, 1);
+    await controller().setScreenPower(3, 3);
+    await controller().setScreenPower(3, 3);
+    await controller().setScreenPower(2, 3);
+
+    expect(session.setScreenPowerCalls, [(3, 3), (2, 3)]);
+  });
+
+  test('VID-04 setScreenPowerの送信が失敗しても例外を出さず、次の通知で送り直す', () async {
+    session.nextScreenPowerError = EmulatorErrorCode.queueFull;
+    await controller().setScreenPower(3, 3);
+    await controller().setScreenPower(3, 3);
+
+    expect(session.setScreenPowerCalls, [(3, 3), (3, 3)]);
+  });
+
+  test('VID-04 停止中に変えたRGBフィルターと倍率を起動時にセッションへ送る', () async {
+    await controller().shutdown();
+    await controller().setHostFilter(HostScreenFilter.rgb);
+    await controller().setScreenPower(2, 2);
+
+    final relaunched = FakeEmulatorSession();
+    session = relaunched;
+    await controller().launch();
+
+    expect(relaunched.setScreenPowerCalls, [(2, 2)]);
+    expect(relaunched.setRgbFilterEnabledCalls, [true]);
   });
 
   test('SYS-04 bootModeを渡さないリセットはsetBootModeを呼ばない', () async {

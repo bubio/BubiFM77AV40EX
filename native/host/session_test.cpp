@@ -1156,6 +1156,67 @@ void test_video()
 	check(after.frames_dropped == 0, "面が尽きて捨てたフレームがない");
 	check(after.vm_access_violations == 0, "VM操作はCore threadに閉じている");
 
+	// RGBフィルター（VID-04）。範囲外は拒み、有効な間は画面×倍率の面を出す。
+	const uint32_t base_width = frame.width;
+	const uint32_t base_height = frame.height;
+	auto send = [session](uint32_t kind, int64_t arg0, int64_t arg1) {
+		bfm_command command{};
+		command.kind = kind;
+		command.arg0 = arg0;
+		command.arg1 = arg1;
+		uint64_t id = 0;
+		int32_t code = -1;
+		if (bfm_send_command(session, &command, &id) != BFM_OK ||
+		    !wait_for_completion(session, id, 5000, &code)) {
+			return static_cast<int32_t>(-1);
+		}
+		return code;
+	};
+	// 画面が変わらなくても掛け替え後の1枚は公開されるため、幅が
+	// 期待どおりの面が来るまで待つ。
+	auto wait_for_width = [session](uint32_t width, bfm_video_frame* out) {
+		for (int i = 0; i < 200; ++i) {
+			if (bfm_acquire_video_frame(session, out) == BFM_OK) {
+				if (out->width == width) {
+					return true;
+				}
+				bfm_release_video_frame(session, out->generation);
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
+		return false;
+	};
+	check(send(BFM_CMD_SET_SCREEN_FILTER, 2, 0) == BFM_ERR_INVALID_ARGUMENT,
+	      "未知のフィルターはinvalidArgument");
+	check(send(BFM_CMD_SET_SCREEN_POWER, 0, 1) == BFM_ERR_INVALID_ARGUMENT,
+	      "倍率0はinvalidArgument");
+	check(send(BFM_CMD_SET_SCREEN_POWER, 3, 9) == BFM_ERR_INVALID_ARGUMENT,
+	      "倍率9はinvalidArgument");
+	check(send(BFM_CMD_SET_SCREEN_POWER, 3, 3) == BFM_OK, "倍率3を設定できる");
+	check(send(BFM_CMD_SET_SCREEN_FILTER, BFM_SCREEN_FILTER_RGB, 0) == BFM_OK,
+	      "RGBフィルターを有効にできる");
+	bfm_video_frame filtered{};
+	const bool got_filtered = wait_for_width(base_width * 3, &filtered);
+	check(got_filtered, "RGBフィルター中は画面×3の幅の面が出る");
+	if (got_filtered) {
+		check(filtered.height == base_height * 3, "高さも画面×3");
+		// x3では1画素をR・G・B単色の3列へ分ける（apply_rgb_filter_x3_y3）。
+		check((filtered.pixels[0] & 0x00ffffu) == 0 && (filtered.pixels[0] >> 16 & 0xffu) >= 32,
+		      "先頭の列は赤だけ");
+		check((filtered.pixels[1] & 0xff00ffu) == 0 && (filtered.pixels[1] >> 8 & 0xffu) >= 32,
+		      "2列目は緑だけ");
+		check((filtered.pixels[0] & 0xff000000u) == 0xff000000u, "アルファは0xffで埋まっている");
+		bfm_release_video_frame(session, filtered.generation);
+	}
+	check(send(BFM_CMD_SET_SCREEN_FILTER, BFM_SCREEN_FILTER_NONE, 0) == BFM_OK,
+	      "RGBフィルターを無効にできる");
+	bfm_video_frame plain{};
+	const bool got_plain = wait_for_width(base_width, &plain);
+	check(got_plain, "無効にすると画面そのままの幅へ戻る");
+	if (got_plain) {
+		bfm_release_video_frame(session, plain.generation);
+	}
+
 	bfm_stop(session);
 	bfm_destroy(session);
 }

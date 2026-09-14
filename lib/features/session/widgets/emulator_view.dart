@@ -78,6 +78,7 @@ class EmulatorView extends ConsumerWidget {
                         fit: state.fit,
                         scanlineEnabled: state.scanlineEnabled,
                         filter: state.hostFilter,
+                        onScreenPowerChanged: controller.setScreenPower,
                       ),
                     ),
             ),
