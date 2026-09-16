@@ -72,10 +72,7 @@ class _CmtSoundVolumeDialogState extends State<CmtSoundVolumeDialog> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              _labelOf(kind),
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
+            Text(_labelOf(kind), style: Theme.of(context).textTheme.labelLarge),
             Text(percentage, style: Theme.of(context).textTheme.bodyMedium),
           ],
         ),
