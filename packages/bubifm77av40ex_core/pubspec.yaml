@@ -28,3 +28,9 @@ flutter:
       macos:
         ffiPlugin: true
         pluginClass: BubiFm77Av40ExCorePlugin
+      # Windowsはコアをプラグイン自身のDLLへ静的に取り込み、DartもそのDLLを
+      # 開く（M5）。macOSの-undefined,dynamic_lookup（実体はアプリ本体の
+      # 1つだけ）に当たる手段がないため、映像テクスチャと同じDLLに置いて
+      # プロセス内のコアを1つに保つ。
+      windows:
+        pluginClass: BubiFm77Av40ExCorePluginCApi

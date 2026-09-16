@@ -6,8 +6,13 @@
 # 各OSの macos/ linux/ windows/ … の CMakeLists.txt がこのファイルを
 # include() する。
 
+# Windows/LinuxのFlutterは、プラグインを flutter/ephemeral/.plugin_symlinks/
+# 配下のリンク経由でadd_subdirectoryする。リンクの位置から親を辿ると
+# リポジトリへ戻れないため、先に実体パスへ解決する（macOSは
+# build_cmake.sh が pwd -P で同じことをしている）。
+get_filename_component(BUBI_PLUGIN_SRC_REAL "${CMAKE_CURRENT_LIST_DIR}" REALPATH)
 get_filename_component(BUBI_NATIVE_ROOT
-  "${CMAKE_CURRENT_LIST_DIR}/../../../native" ABSOLUTE)
+  "${BUBI_PLUGIN_SRC_REAL}/../../../native" ABSOLUTE)
 
 if(NOT EXISTS "${BUBI_NATIVE_ROOT}/CMakeLists.txt")
   message(FATAL_ERROR

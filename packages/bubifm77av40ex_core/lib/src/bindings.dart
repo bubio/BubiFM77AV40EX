@@ -193,11 +193,18 @@ final class BubiCoreBindings {
   final int Function(Pointer<BfmSession>, int, int) setJoystickState;
 }
 
+/// Windowsでコアを含むプラグインDLLのファイル名。
+const String bubiCoreWindowsLibraryName = 'bubifm77av40ex_core_plugin.dll';
+
 /// ネイティブライブラリを開く。
 ///
 /// macOS ではプラグインの静的ライブラリがアプリ本体へ `-force_load` されるため、
 /// 別ファイルではなくプロセス自身からシンボルを引く。
-/// Linux/Windows/Android/iOS は担当マイルストーン（M4〜M6）で足す。
+/// Windows ではコアをプラグインのDLLへ取り込んでいるため、そのDLLを開く
+/// （packages/bubifm77av40ex_core/windows/CMakeLists.txt）。映像テクスチャも
+/// 同じDLLにあり、プロセス内のコアは1つになる。DLLは実行ファイルと同じ
+/// ディレクトリに置かれ、既にランナーが読み込み済みのため同じ実体が返る。
+/// Linux/Android/iOS は担当マイルストーン（M6〜M7）で足す。
 ///
 /// `BUBI_CORE_LIBRARY` が指す共有ライブラリがあればそれを優先する。
 /// Flutter を通さない Dart のテストや検査スクリプトから使う。
@@ -208,6 +215,9 @@ DynamicLibrary openBubiCoreLibrary() {
   }
   if (Platform.isMacOS) {
     return DynamicLibrary.process();
+  }
+  if (Platform.isWindows) {
+    return DynamicLibrary.open(bubiCoreWindowsLibraryName);
   }
   throw UnsupportedError('${Platform.operatingSystem} 向けのネイティブコアはまだ組み込んでいません。');
 }
