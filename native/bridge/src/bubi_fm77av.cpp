@@ -21,7 +21,12 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#if defined(_WIN32)
+#include <direct.h>
+#endif
+
 #include <atomic>
+#include <fstream>
 #include <cctype>
 #include <chrono>
 #include <condition_variable>
@@ -184,14 +189,61 @@ struct QueuedCommand {
 	uint64_t id;
 };
 
+#if defined(_WIN32)
+bool is_path_separator(char c)
+{
+	return c == '/' || c == '\\';
+}
+
+/*
+ * 作成を試みてはいけない接頭辞（ドライブ "C:\" やUNC "\\server\share\"）
+ * の長さを返す。UCRTのstat/_mkdirは "C:" や "\\server" を
+ * ディレクトリとして扱えず失敗するため、ここから先だけを1段ずつ作る。
+ * core_dir はコアの get_application_path() が "\" 区切り・末尾区切り付きで
+ * 返すため、"/" と "\" の両方を区切りとして扱う。
+ */
+std::string::size_type path_root_length(const std::string& path)
+{
+	if (path.size() >= 2 && path[1] == ':') {
+		return (path.size() >= 3 && is_path_separator(path[2])) ? 3 : 2;
+	}
+	if (path.size() >= 2 && is_path_separator(path[0]) && is_path_separator(path[1])) {
+		// \\server\share\ までを接頭辞とみなす。
+		std::string::size_type separators = 0;
+		for (std::string::size_type i = 2; i < path.size(); ++i) {
+			if (is_path_separator(path[i]) && ++separators == 2) {
+				return i + 1;
+			}
+		}
+		return path.size();
+	}
+	return 0;
+}
+#else
+bool is_path_separator(char c)
+{
+	return c == '/';
+}
+
+std::string::size_type path_root_length(const std::string&)
+{
+	return 0;
+}
+#endif
+
 // 親ディレクトリを含めて作る。既存なら何もしない。
 bool ensure_directory(const std::string& path)
 {
 	if (path.empty()) {
 		return false;
 	}
-	for (std::string::size_type i = 1; i <= path.size(); ++i) {
-		if (i != path.size() && path[i] != '/') {
+	const std::string::size_type root = path_root_length(path);
+	for (std::string::size_type i = (root > 0 ? root : 1); i <= path.size(); ++i) {
+		if (i != path.size() && !is_path_separator(path[i])) {
+			continue;
+		}
+		// 末尾の区切りは直前の段で作成済み。区切りの連続も同様に飛ばす。
+		if (is_path_separator(path[i - 1])) {
 			continue;
 		}
 		const std::string part = path.substr(0, i);
@@ -202,11 +254,32 @@ bool ensure_directory(const std::string& path)
 			}
 			continue;
 		}
+#if defined(_WIN32)
+		if (_mkdir(part.c_str()) != 0) {
+			return false;
+		}
+#else
 		if (mkdir(part.c_str(), 0700) != 0) {
 			return false;
 		}
+#endif
 	}
 	return true;
+}
+
+/*
+ * 一時ファイルを宛先へ置き換える。POSIXのrename()は既存の宛先を
+ * アトミックに置き換えるが、WindowsのUCRTのrename()は宛先が存在すると
+ * 失敗するため、MoveFileExのMOVEFILE_REPLACE_EXISTINGで同じ意味にする。
+ */
+bool replace_file(const std::string& from, const std::string& to)
+{
+#if defined(_WIN32)
+	return MoveFileExA(from.c_str(), to.c_str(),
+	                   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+	return rename(from.c_str(), to.c_str()) == 0;
+#endif
 }
 
 /*
@@ -240,19 +313,50 @@ std::string to_upper(const std::string& value)
 	return upper;
 }
 
+#if defined(_WIN32)
 /*
- * core_dir/name から from へのシンボリックリンクを1つ張る。
+ * WindowsはPOSIXのsymlink()に相当する無権限の操作を持たない
+ * （開発者モード未有効の環境ではCreateSymbolicLinkがSeCreateSymbolicLink
+ * Privilegeを要求し、一般利用者の起動を壊す）。そのためWindowsでは
+ * シンボリックリンクを試みず、最初から複製する。ROMは読込専用でしか
+ * 使わないため複製に副作用はない（利用者の指示）。
+ */
+bool copy_one(const std::string& from, const std::string& to)
+{
+	std::ifstream in(from, std::ios::binary);
+	if (!in) {
+		return false;
+	}
+	std::ofstream out(to, std::ios::binary | std::ios::trunc);
+	if (!out) {
+		return false;
+	}
+	out << in.rdbuf();
+	return static_cast<bool>(out);
+}
+#endif
+
+/*
+ * core_dir/name から from へのシンボリックリンク（Windowsは複製）を1つ作る。
  * 既に何かがある場合は触らない。実体ファイルを上書きしないため。
  */
 bool link_one(const std::string& core_dir, const std::string& from,
               const std::string& name)
 {
 	const std::string to = core_dir + name;
+#if defined(_WIN32)
+	struct stat st;
+	if (stat(to.c_str(), &st) == 0) {
+		return true; // 実体ファイルが既にある。上書きしない。
+	}
+	return copy_one(from, to);
+#else
 	struct stat st;
 	if (lstat(to.c_str(), &st) == 0) {
 		return true; // 実体ファイルか既存リンクがある。上書きしない。
 	}
 	return symlink(from.c_str(), to.c_str()) == 0;
+#endif
 }
 
 /*
@@ -265,11 +369,16 @@ bool link_one(const std::string& core_dir, const std::string& from,
  */
 bool wire_rom_directory(const std::string& core_dir, const std::string& rom_dir)
 {
+#if !defined(_WIN32)
+	// 先に古いリンクだけを外す。実体ファイルには触れない。
+	// Windowsはシンボリックリンクを作らず複製するため（link_one参照）、
+	// 判別して安全に消せる「古いリンクだけ」という対象が存在せず、
+	// この節はWindowsでは行わない。ROM切替えで前回分の複製が
+	// core_dir に残ってもlink_oneは既存ファイルへ触れないため実害はない。
 	DIR* core = opendir(core_dir.c_str());
 	if (core == nullptr) {
 		return false;
 	}
-	// 先に古いリンクだけを外す。実体ファイルには触れない。
 	for (struct dirent* entry = readdir(core); entry != nullptr; entry = readdir(core)) {
 		const std::string name = entry->d_name;
 		if (name == "." || name == "..") {
@@ -282,6 +391,7 @@ bool wire_rom_directory(const std::string& core_dir, const std::string& rom_dir)
 		}
 	}
 	closedir(core);
+#endif
 
 	if (rom_dir.empty()) {
 		return true; // ROM未設定。リンクなしで起動を試す。
@@ -726,7 +836,7 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 			code = BFM_ERR_INTERNAL;
 			break;
 		}
-		if (rename(tmp_path.c_str(), queued.text.c_str()) != 0) {
+		if (!replace_file(tmp_path, queued.text)) {
 			remove(tmp_path.c_str());
 			code = BFM_ERR_INTERNAL;
 			break;

@@ -13,7 +13,37 @@
 #define BUBI_COMPAT_IO_H_
 
 #if defined(_WIN32)
+#if defined(_MSC_VER) && !defined(__clang__)
+// MSVC（cl.exe）は #include_next を持たない。UCRTのincludeディレクトリ
+// （.../ucrt）基準の相対指定で実ヘッダーを直接選ぶ。compatディレクトリ
+// 基準では ../ucrt/ が存在しないため、本シム自身は再帰的に選ばれない。
+#include <../ucrt/io.h>
+#else
 #include_next <io.h>
+#endif
+
+// upstream fileio.cpp の IsFileProtected() は _USE_SDL 構成でも
+// struct stat / stat() / S_IWUSR を使うが、sys/stat.h の明示的な
+// includeは_USE_QT構成にしかない（コア側の既存の非対称、無改変のため
+// そのまま）。common.hが本ヘッダーを無条件includeするのを利用し、
+// UCRTのsys/stat.hとPOSIX名エイリアスをここで補う。
+#include <sys/stat.h>
+#ifndef S_IWUSR
+#define S_IWUSR _S_IWRITE
+#endif
+#ifndef S_IWGRP
+#define S_IWGRP _S_IWRITE
+#endif
+#ifndef S_IWOTH
+#define S_IWOTH _S_IWRITE
+#endif
+#ifndef S_ISDIR
+#define S_ISDIR(mode) (((mode) & _S_IFDIR) != 0)
+#endif
+#ifndef S_ISREG
+#define S_ISREG(mode) (((mode) & _S_IFREG) != 0)
+#endif
+
 #else
 
 #include <fcntl.h>

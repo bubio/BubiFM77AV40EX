@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Windows host test executables only (native/CMakeLists.txt).
+
+  The core and the bridge pass UTF-8 paths through char* APIs (fopen, stat,
+  MoveFileExA). Without this setting Windows interprets them in the ANSI code
+  page (e.g. CP932), so paths containing non-ASCII characters fail. The app
+  runner sets the same value in windows/runner/runner.exe.manifest.
+  Requires Windows 10 version 1903 or later.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>

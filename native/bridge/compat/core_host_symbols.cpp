@@ -20,6 +20,10 @@
 #include <cstdlib>
 #include <string>
 
+#if defined(_WIN32)
+#include <direct.h>
+#endif
+
 #include "core_host_symbols.h"
 
 std::string cpp_homedir;
@@ -29,7 +33,11 @@ void _my_mkdir(std::string t_dir)
 {
 	struct stat st;
 	if (stat(t_dir.c_str(), &st) != 0) {
+#if defined(_WIN32)
+		_mkdir(t_dir.c_str());
+#else
 		mkdir(t_dir.c_str(), 0700);
+#endif
 	}
 }
 

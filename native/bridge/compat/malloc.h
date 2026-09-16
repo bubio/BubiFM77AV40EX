@@ -8,7 +8,12 @@
 #ifndef BUBI_COMPAT_MALLOC_H_
 #define BUBI_COMPAT_MALLOC_H_
 
-#if defined(_WIN32) || defined(__linux__)
+#if defined(_MSC_VER) && !defined(__clang__)
+// MSVC（cl.exe）は #include_next を持たない。UCRTのincludeディレクトリ
+// （.../ucrt）基準の相対指定で実ヘッダーを直接選ぶ。compatディレクトリ
+// 基準では ../ucrt/ が存在しないため、本シム自身は再帰的に選ばれない。
+#include <../ucrt/malloc.h>
+#elif defined(_WIN32) || defined(__linux__)
 #include_next <malloc.h>
 #else
 #include <stdlib.h>

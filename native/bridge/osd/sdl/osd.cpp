@@ -130,10 +130,14 @@ void OSD::force_unlock_vm()
 
 void OSD::sleep(uint32_t ms)
 {
+#if defined(_WIN32)
+	Sleep(ms);
+#else
 	struct timespec ts;
 	ts.tv_sec = ms / 1000;
 	ts.tv_nsec = (long)(ms % 1000) * 1000000L;
 	nanosleep(&ts, NULL);
+#endif
 }
 
 #ifdef USE_DEBUGGER

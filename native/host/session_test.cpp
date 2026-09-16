@@ -15,6 +15,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -98,6 +103,59 @@ std::string read_file(const std::string& path)
 	return out;
 }
 
+// UTF-8のパスを、テスト対象（コアとbridgeの char* 経路）とは独立した方法で
+// 扱う。Windowsでは char* のAPIがANSIコードページで解釈するため、同じ経路で
+// 確かめると、名前を取り違えて作ったファイルも「ある」と判定してしまう。
+// そこでワイド文字APIへUTF-8から変換して呼ぶ。POSIXのパスはUTF-8のまま扱える。
+#if defined(_WIN32)
+std::wstring widen_utf8(const std::string& utf8)
+{
+	const int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.c_str(),
+	                                       static_cast<int>(utf8.size()), nullptr, 0);
+	std::wstring wide(static_cast<size_t>(length > 0 ? length : 0), L'\0');
+	if (length > 0) {
+		MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.c_str(),
+		                    static_cast<int>(utf8.size()), &wide[0], length);
+	}
+	return wide;
+}
+
+bool make_directory_utf8(const std::string& path)
+{
+	return CreateDirectoryW(widen_utf8(path).c_str(), nullptr) != 0
+	    || GetLastError() == ERROR_ALREADY_EXISTS;
+}
+
+bool is_regular_file_utf8(const std::string& path)
+{
+	const DWORD attributes = GetFileAttributesW(widen_utf8(path).c_str());
+	return attributes != INVALID_FILE_ATTRIBUTES
+	    && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+#else
+bool make_directory_utf8(const std::string& path)
+{
+	return mkdir(path.c_str(), 0700) == 0 || errno == EEXIST;
+}
+
+bool is_regular_file_utf8(const std::string& path)
+{
+	struct stat st;
+	return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+}
+#endif
+
+bool is_regular_file(const std::string& path)
+{
+	struct stat st;
+#if defined(_WIN32)
+	return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+#else
+	return lstat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+#endif
+}
+
+#if !defined(_WIN32)
 bool is_symlink_to(const std::string& path, const std::string& target)
 {
 	struct stat st;
@@ -112,11 +170,17 @@ bool is_symlink_to(const std::string& path, const std::string& target)
 	resolved[length] = '\0';
 	return target == resolved;
 }
+#endif
 
-bool is_regular_file(const std::string& path)
+// wire_rom_directory の結線先が source を写した結果であることを確かめる
+// （POSIXはシンボリックリンク、Windowsは複製。link_one参照）。
+bool is_wired_to(const std::string& path, const std::string& source)
 {
-	struct stat st;
-	return lstat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+#if defined(_WIN32)
+	return is_regular_file(path) && read_file(path) == read_file(source);
+#else
+	return is_symlink_to(path, source);
+#endif
 }
 
 /*
@@ -219,9 +283,18 @@ std::string core_directory_of(bfm_session* session)
 	return std::string(buffer);
 }
 
+// timeout_ms は実時間の期限として扱う。「1ms眠るのを timeout_ms 回」にすると、
+// Windowsの既定タイマー分解能（約15.6ms）でsleep_for(1ms)が伸び、
+// 5秒のつもりの待ちが1分以上になって、失敗がハングに見えてしまう。
+std::chrono::steady_clock::time_point deadline_after(int timeout_ms)
+{
+	return std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+}
+
 bool wait_for_state(bfm_session* session, bfm_state expected, int timeout_ms)
 {
-	for (int i = 0; i < timeout_ms; ++i) {
+	for (const auto deadline = deadline_after(timeout_ms);
+	     std::chrono::steady_clock::now() < deadline;) {
 		if (bfm_get_state(session) == static_cast<int32_t>(expected)) {
 			return true;
 		}
@@ -236,7 +309,8 @@ bool wait_for_state(bfm_session* session, bfm_state expected, int timeout_ms)
 // スケジューリングに負けて偽陽性になる。時間ではなく条件で待つ。
 bool wait_for_frames_beyond(bfm_session* session, uint64_t baseline, int timeout_ms)
 {
-	for (int i = 0; i < timeout_ms; ++i) {
+	for (const auto deadline = deadline_after(timeout_ms);
+	     std::chrono::steady_clock::now() < deadline;) {
 		bfm_stats stats{};
 		if (bfm_get_stats(session, &stats) == BFM_OK && stats.frames_run > baseline) {
 			return true;
@@ -249,7 +323,8 @@ bool wait_for_frames_beyond(bfm_session* session, uint64_t baseline, int timeout
 // 指定IDの completed イベントを待つ。見つかれば code を out_code へ返す。
 bool wait_for_completion(bfm_session* session, uint64_t id, int timeout_ms, int32_t* out_code)
 {
-	for (int i = 0; i < timeout_ms; ++i) {
+	for (const auto deadline = deadline_after(timeout_ms);
+	     std::chrono::steady_clock::now() < deadline;) {
 		bfm_event event{};
 		while (bfm_poll_event(session, &event) == BFM_OK) {
 			if (event.kind == BFM_EVENT_COMMAND_COMPLETED && event.command_id == id) {
@@ -695,19 +770,19 @@ void test_rom_wiring()
 	bfm_start(session);
 	check(wait_for_state(session, BFM_STATE_RUNNING, 5000), "running へ遷移する");
 
-	check(is_symlink_to(core_dir + "INITIATE.ROM", rom_a + "/INITIATE.ROM"),
-	      "ROMへシンボリックリンクを張る");
-	check(is_symlink_to(core_dir + "SUBSYS_A.ROM", rom_a + "/SUBSYS_A.ROM"),
-	      "複数のROMを張る");
-	check(!is_symlink_to(core_dir + "subdir", rom_a + "/subdir"),
-	      "ディレクトリは張らない");
+	check(is_wired_to(core_dir + "INITIATE.ROM", rom_a + "/INITIATE.ROM"),
+	      "ROMを結線する（POSIX: シンボリックリンク、Windows: 複製）");
+	check(is_wired_to(core_dir + "SUBSYS_A.ROM", rom_a + "/SUBSYS_A.ROM"),
+	      "複数のROMを結線する");
+	check(!is_wired_to(core_dir + "subdir", rom_a + "/subdir"),
+	      "ディレクトリは結線しない");
 	// 名前は大小文字を区別して確かめる。macOSの既定は区別しないため、
 	// パスで開く検査では大文字の別名がなくても通ってしまう。
 	check(directory_has_exact_name(core_dir, "SUBSYS_B.rom"),
-	      "小文字のROMを元の名前で張る");
+	      "小文字のROMを元の名前で結線する");
 	// コアは大文字の名前で開く。macOSでは小文字のリンク1本で解決でき、
 	// Linuxでは大文字の別名が要る。ここでは結果だけを見る。
-	check(is_symlink_to(core_dir + "SUBSYS_B.ROM", rom_a + "/SUBSYS_B.rom"),
+	check(is_wired_to(core_dir + "SUBSYS_B.ROM", rom_a + "/SUBSYS_B.rom"),
 	      "小文字のROMを大文字の名前で開ける");
 	// コアは USERDIC.DAT を自分で書き直す。守るべきなのは中身ではなく、
 	// 「リンクにしないこと」と「利用者のROMディレクトリへ書かせないこと」。
@@ -727,10 +802,18 @@ void test_rom_wiring()
 	bfm_start(second);
 	check(wait_for_state(second, BFM_STATE_RUNNING, 5000), "張り直し後も running になる");
 
+#if !defined(_WIN32)
 	check(!is_symlink_to(core_dir + "INITIATE.ROM", rom_a + "/INITIATE.ROM"),
 	      "古いリンクを外す");
-	check(is_symlink_to(core_dir + "EXTSUB.ROM", rom_b + "/EXTSUB.ROM"),
-	      "新しいリンクを張る");
+#else
+	// Windowsは複製のため張り直し時に古い複製を検出して消す手段がなく
+	// （link_one参照）、意図的に残す。利用者のROMディレクトリの内容は
+	// 変わらないため実害はない（利用者の指示、development_plan.md）。
+	check(is_regular_file(core_dir + "INITIATE.ROM"),
+	      "古い複製は消えずに残る（Windowsの既知の仕様）");
+#endif
+	check(is_wired_to(core_dir + "EXTSUB.ROM", rom_b + "/EXTSUB.ROM"),
+	      "新しいROMを結線する");
 	check(is_regular_file(learn_data), "張り直しでも USERDIC.DAT を消さない");
 	check(is_regular_file(keep_me) && read_file(keep_me) == keep_content,
 	      "張り直しで通常ファイルを消さない");
@@ -1550,6 +1633,27 @@ void test_media()
 	events.clear();
 	check(send_and_collect(create_blank_2d, &events) == BFM_OK, "空の2Dディスクを作成できる");
 	check(is_regular_file(blank_2d), "作成先に実ファイルが残る");
+	// 保存ダイアログで上書きを選んだ場合。Windowsのrename()は既存の宛先を
+	// 置き換えないため、ここで回帰を検出する（replace_file参照）。
+	events.clear();
+	check(send_and_collect(create_blank_2d, &events) == BFM_OK,
+	      "既存ファイルへ上書きして空ディスクを作成できる");
+	check(!is_regular_file(blank_2d + ".tmp"), "上書き後に一時ファイルが残らない");
+
+	// 利用者のパスに日本語が含まれる場合（Windowsの利用者名、フォルダー名）。
+	// Dartは文字列をUTF-8でC ABIへ渡す。コアのFILEIO（fopen）とbridgeの
+	// 置換（replace_file）の両方がUTF-8のパスをそのまま扱えることを、
+	// 独立した方法（is_regular_file_utf8）で確かめる。
+	const std::string japanese_dir = media_dir + "/\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E"; // 日本語
+	check(make_directory_utf8(japanese_dir), "日本語名のディレクトリを作れる");
+	const std::string japanese_blank =
+	    japanese_dir + "/\xE7\xA9\xBA\xE3\x81\x8D\xE3\x83\x87\xE3\x82\xA3\xE3\x82\xB9\xE3\x82\xAF.d88"; // 空きディスク.d88
+	bfm_command create_blank_japanese = create_blank_2d;
+	create_blank_japanese.text = japanese_blank.c_str();
+	events.clear();
+	check(send_and_collect(create_blank_japanese, &events) == BFM_OK,
+	      "日本語を含むパスへ空ディスクを作成できる");
+	check(is_regular_file_utf8(japanese_blank), "日本語を含むパスに正しい名前で作られる");
 
 	const std::string blank_2dd = media_dir + "/blank-2dd.d88";
 	bfm_command create_blank_2dd{};
@@ -2090,7 +2194,23 @@ int main(int argc, char** argv)
 
 	// home_dir を固定してしまう検査は別プロセスで行う。
 	if (argc >= 3 && std::strcmp(argv[2], "--unwritable-home") == 0) {
+#if defined(_WIN32)
+		// Windowsの "/dev/null/..." は現在のドライブ直下の普通のパス
+		// （C:\dev\null\...）として作れてしまう。POSIXと同じく「親が
+		// ディレクトリでない」状況を、通常ファイルの配下で再現する。
+		{
+			const std::string blocker = g_home + ".blocker";
+			FILE* fp = std::fopen(blocker.c_str(), "wb");
+			if (fp == nullptr) {
+				std::fprintf(stderr, "cannot create %s\n", blocker.c_str());
+				return 2;
+			}
+			std::fclose(fp);
+			g_home = blocker + "/bubi-unwritable";
+		}
+#else
 		g_home = "/dev/null/bubi-unwritable";
+#endif
 		test_unwritable_home();
 		std::printf("\n%s\n", failures == 0 ? "すべて合格" : "失敗あり");
 		return failures == 0 ? 0 : 1;

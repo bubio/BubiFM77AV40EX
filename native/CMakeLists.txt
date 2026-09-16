@@ -23,6 +23,20 @@ if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "13.5" CACHE STRING "" FORCE)
 endif()
 
+if(WIN32)
+  # FlutterのWindows runner（windows/CMakeLists.txt）はプロジェクト全体へ
+  # add_definitions(-DUNICODE -D_UNICODE) を置き、プラグイン経由で
+  # add_subdirectory() されたこのディレクトリにも引き継がれる。コアは
+  # _TCHAR を char として使う前提（macOS/Linuxと同じ経路）で、bridgeも
+  # char のパスを渡すため、このディレクトリでは外す。
+  get_directory_property(BUBI_INHERITED_DEFINITIONS COMPILE_DEFINITIONS)
+  if(BUBI_INHERITED_DEFINITIONS)
+    list(REMOVE_ITEM BUBI_INHERITED_DEFINITIONS UNICODE _UNICODE)
+    set_directory_properties(PROPERTIES
+      COMPILE_DEFINITIONS "${BUBI_INHERITED_DEFINITIONS}")
+  endif()
+endif()
+
 set(CORE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/core/upstream")
 set(CORE_SRC "${CORE_ROOT}/src")
 
@@ -127,6 +141,49 @@ target_include_directories(bubifm77av40ex_core
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/osd"
 )
 
+if(WIN32)
+  # common.h（無改変）は _WIN32 かつ _MSC_VER>=1500（clangのMSVC ABI互換
+  # モードも該当）で USE_ZLIB を自動定義し、fileio.cpp（無改変）が
+  # "zlib-1.2.11/zlib.h" 相対includeでgzip API一式を無条件に要求する。
+  # macOS/Linuxでは_MSC_VERが定義されずUSE_ZLIBが有効化されないため、
+  # コアのpinned revisionにはzlibのヘッダーだけがあり実装(.c)がない
+  # （development_plan.md M5の記録参照）。native/core/upstream/はGit
+  # サブモジュールで無改変方針のため、実装一式はサブモジュール外の
+  # bridge/third_party/へ独立して配置する
+  # （native/bridge/third_party/zlib-1.2.11/NOTICE.md参照）。
+  set(ZLIB_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/bridge/third_party/zlib-1.2.11")
+  set(ZLIB_SOURCES
+    adler32.c
+    compress.c
+    crc32.c
+    deflate.c
+    gzclose.c
+    gzlib.c
+    gzread.c
+    gzwrite.c
+    infback.c
+    inffast.c
+    inflate.c
+    inftrees.c
+    trees.c
+    uncompr.c
+    zutil.c
+  )
+  list(TRANSFORM ZLIB_SOURCES PREPEND "${ZLIB_ROOT}/")
+
+  add_library(bubifm77av40ex_zlib STATIC ${ZLIB_SOURCES})
+  target_compile_definitions(bubifm77av40ex_zlib PRIVATE _CRT_SECURE_NO_WARNINGS)
+
+  target_link_libraries(bubifm77av40ex_core PUBLIC bubifm77av40ex_zlib)
+  target_include_directories(bubifm77av40ex_core
+    PUBLIC
+      # fileio.cpp の #include "zlib-1.2.11/zlib.h" をこのディレクトリ
+      # 配下のzlib-1.2.11/から解決させる（bridge/osdをsdl/osd.h解決に
+      # 使うのと同じ手法）。
+      "${CMAKE_CURRENT_SOURCE_DIR}/bridge/third_party"
+  )
+endif()
+
 target_compile_definitions(bubifm77av40ex_core
   PUBLIC
     # 機種選択。vc++2017/fm77av40ex.vcxproj と同じ唯一の機種定義。
@@ -141,26 +198,51 @@ target_compile_definitions(bubifm77av40ex_core
 
 # コアはMSVC前提で書かれているため、clang/libc++ で不足する標準ヘッダーを
 # プリアンブルで強制インクルードする。upstreamのソースは変更しない。
-target_compile_options(bubifm77av40ex_core PUBLIC
-  -include "${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat/bubi_core_prelude.h"
-)
+if(MSVC)
+  # MSVC（cl.exe。Flutter Windows runnerが使うツールチェーン）は
+  # -include/-Wno-* を受け付けないため、同じ意味のオプションへ置き換える。
+  target_compile_options(bubifm77av40ex_core PUBLIC
+    "/FI${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat/bubi_core_prelude.h"
+  )
+  target_compile_definitions(bubifm77av40ex_core PRIVATE _CRT_SECURE_NO_WARNINGS)
 
-target_compile_options(bubifm77av40ex_core PRIVATE
-  -Wno-writable-strings       # MSVCが許す char* への文字列リテラル代入
-  -Wno-invalid-source-encoding # コメント中のShift-JIS
-  -Wno-register                # C++17で削除された register 指定子
-  -Wno-unused-value
-  -Wno-switch
-  -Wno-deprecated-declarations
-)
+  # 文字コードを実行環境のロケールに依存させず、macOS/Linuxのclangと同じく
+  # 全ソースをUTF-8として読む。bridge/hostとcompatヘッダーはUTF-8、upstreamは
+  # 一部Shift-JISだが、非ASCIIはコメント中にしかない（文字列リテラルと
+  # コードには無いことを確認済み、development_plan.md M5）。逆にコアを
+  # CP932として読ませると、強制includeされるUTF-8のcompatヘッダーの
+  # コメント行末の多バイト文字が改行を飲み込み、プリプロセッサ指令が
+  # 消える。コメント中の不正バイト警告（C4819/C4828）は抑止する。
+  target_compile_options(bubifm77av40ex_core PRIVATE /utf-8 /wd4819 /wd4828)
+
+  set(BUBI_FEATURE_SHIM_OPTIONS
+    "/FI${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat/core_feature_shim.h"
+  )
+else()
+  target_compile_options(bubifm77av40ex_core PUBLIC
+    -include "${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat/bubi_core_prelude.h"
+  )
+
+  target_compile_options(bubifm77av40ex_core PRIVATE
+    -Wno-writable-strings       # MSVCが許す char* への文字列リテラル代入
+    -Wno-invalid-source-encoding # コメント中のShift-JIS
+    -Wno-register                # C++17で削除された register 指定子
+    -Wno-unused-value
+    -Wno-switch
+    -Wno-deprecated-declarations
+  )
+
+  set(BUBI_FEATURE_SHIM_OPTIONS
+    "-include;${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat/core_feature_shim.h"
+  )
+endif()
 
 # 該当3ファイルだけに追加のシムを差し込む（理由はシムのヘッダーコメント参照）。
 set_source_files_properties(
   "${CORE_SRC}/vm/mc6809.cpp"
   "${CORE_SRC}/vm/mc6809_base.cpp"
   "${CORE_SRC}/vm/fm7/hd6844.cpp"
-  PROPERTIES COMPILE_OPTIONS
-    "-include;${CMAKE_CURRENT_SOURCE_DIR}/bridge/compat/core_feature_shim.h"
+  PROPERTIES COMPILE_OPTIONS "${BUBI_FEATURE_SHIM_OPTIONS}"
 )
 
 # upstream は USE_ZLIB 定義時だけ zlib を使う（fileio.h）。FM77AV40EX構成では
@@ -168,6 +250,13 @@ set_source_files_properties(
 # USE_ZLIB を明示的に定義し、そのときに ZLIB を追加する。
 
 if(BUBI_BUILD_HOST_TOOLS)
+  # host/ のソースはUTF-8（日本語の検査名を出力する）。以後に作る
+  # ターゲットだけへ効くため、上のコアライブラリの文字コード指定と衝突しない。
+  if(MSVC)
+    add_compile_options(/utf-8 /wd4819 /wd4828)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+  endif()
+
   # 最小ホスト: VMを生成して破棄できることだけを確認する（development_plan.md 5.2）。
   # ROMを1つも必要とせず、CIで実行できる。
   add_executable(core_smoke "${CMAKE_CURRENT_SOURCE_DIR}/host/core_smoke.cpp")
@@ -234,6 +323,16 @@ if(BUBI_BUILD_HOST_TOOLS)
   )
   set_target_properties(bubifm77av40ex_shared PROPERTIES OUTPUT_NAME bubifm77av40ex)
   target_link_libraries(bubifm77av40ex_shared PRIVATE bubifm77av40ex_core)
+
+  if(WIN32)
+    # コアとbridgeはUTF-8のパスを char* のAPIで扱う。Windowsではプロセスの
+    # ANSIコードページをUTF-8にしないと非ASCIIのパスが壊れる。アプリは
+    # windows/runner/runner.exe.manifest で同じ設定を持つ。
+    foreach(bubi_exe core_smoke session_test rom_boot_check)
+      target_sources(${bubi_exe} PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/host/windows_utf8.manifest")
+    endforeach()
+  endif()
 
   enable_testing()
   # 書込み先をビルドディレクトリ配下へ閉じ込め、ホームディレクトリを汚さない。
