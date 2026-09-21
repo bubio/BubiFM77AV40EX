@@ -1453,7 +1453,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       await resource.release();
       return false;
     }
-    if (_fddSlots.containsKey(drive)) {
+    if (state.fddMedia[drive] != null) {
       await ejectFdd(drive);
     }
     try {
@@ -1540,27 +1540,37 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   ///
   /// コアが排出を終えたことを確認してから、作業領域の複製を原本へ
   /// 原子的に書き戻す（design.md 16.1）。未挿入のドライブは何もしない。
+  ///
+  /// ステートロードで挿入された媒体（design.md「状態保存」、STA-02）は
+  /// アプリ側の`_FddSlot`（原本ファイルの参照）を持たない。コアの内部には
+  /// 媒体データが存在するため、`_fddSlots`が無いことだけを理由に何もせず
+  /// 戻ると、メニュー上は排出可能に見えるのにコア側の媒体が残り続け
+  /// （リセット後もそのディスクから起動できてしまう）不整合になる。
+  /// このため書き戻し対象がある場合のみそれを行い、コアへの排出要求
+  /// 自体は`_fddSlots`の有無に関わらず必ず送る。
   Future<void> ejectFdd(int drive) async {
     final session = _session;
-    final slot = _fddSlots[drive];
-    if (session == null || slot == null) {
+    if (session == null || state.fddMedia[drive] == null) {
       return;
     }
+    final slot = _fddSlots[drive];
     final commandId = await session.ejectFdd(drive);
     final error = await _awaitCommand(commandId);
     if (error != null) {
       state = state.copyWith(failureMessage: '$error');
       return;
     }
-    final workspace = _workspace;
-    if (workspace != null) {
-      await slot.resource.withAccess(
-        (nativePath) =>
-            workspace.exportAtomic(slot.workspaceFileName, nativePath),
-      );
+    if (slot != null) {
+      final workspace = _workspace;
+      if (workspace != null) {
+        await slot.resource.withAccess(
+          (nativePath) =>
+              workspace.exportAtomic(slot.workspaceFileName, nativePath),
+        );
+      }
+      await slot.resource.release();
+      _fddSlots.remove(drive);
     }
-    await slot.resource.release();
-    _fddSlots.remove(drive);
     final media = {...state.fddMedia}..remove(drive);
     final bankNum = {...state.fddBankNum}..remove(drive);
     final curBank = {...state.fddCurBank}..remove(drive);
