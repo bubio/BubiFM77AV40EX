@@ -115,6 +115,7 @@
   "hostSoundFddMechanismEnabled": "FDD機構音",
   "menuHostInput": "入力",
   "hostInputJoystick": "ジョイスティック…",
+  "hostInputCursorToNumpad": "カーソルキーをテンキーに割り当てる",
   "menuHostLanguage": "言語",
   "menuLanguageSystem": "システムに従う",
   "menuLanguageEnglish": "English",

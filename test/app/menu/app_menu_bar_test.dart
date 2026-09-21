@@ -99,6 +99,8 @@ void main() {
       onStopRecording: () {},
       onOpenSoundVolume: () {},
       onOpenJoystickAssignment: () {},
+      cursorToNumpad: false,
+      onCursorToNumpadChanged: (_) {},
       fddMechanicalSoundEnabled: true,
       onFddMechanicalSoundEnabledChanged: (_) {},
       isAutoKeying: false,

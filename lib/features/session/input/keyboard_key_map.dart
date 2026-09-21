@@ -153,14 +153,36 @@ final Map<LogicalKeyboardKey, int> _logicalKeyToVk = {
   LogicalKeyboardKey.arrowDown: Win32Vk.down,
 };
 
+/// ホストのカーソルキー4つを、それぞれ対応するテンキー方向
+/// （8=上/2=下/4=左/6=右）のwin32仮想キーコードへ差し替える対応表。
+///
+/// 「ホストのカーソルキーをエミュのテンキーへ割り当てる」モード
+/// （Host > Input）専用。矢印キー以外には一切影響しない。
+final Map<PhysicalKeyboardKey, int> _cursorToNumpadVk = {
+  PhysicalKeyboardKey.arrowUp: Win32Vk.numpad0 + 8,
+  PhysicalKeyboardKey.arrowDown: Win32Vk.numpad0 + 2,
+  PhysicalKeyboardKey.arrowLeft: Win32Vk.numpad0 + 4,
+  PhysicalKeyboardKey.arrowRight: Win32Vk.numpad0 + 6,
+};
+
 /// [physicalKey]をwin32仮想キーコードへ変換する。対応がなければnull。
 ///
 /// physical keyでの対応を優先し、取得できなかった場合だけ[logicalKey]を
 /// 使う（design.md 8「OS配列差はlogical keyで補助する」）。
+/// [cursorToNumpad]がtrueなら、矢印キー4つだけをテンキー方向へ差し替える
+/// （design.md 8、INP-01「ホストのカーソルキーをエミュのテンキーへ割り当てる
+/// モード」）。
 int? vkFromKeyEvent({
   required PhysicalKeyboardKey physicalKey,
   LogicalKeyboardKey? logicalKey,
+  bool cursorToNumpad = false,
 }) {
+  if (cursorToNumpad) {
+    final numpadVk = _cursorToNumpadVk[physicalKey];
+    if (numpadVk != null) {
+      return numpadVk;
+    }
+  }
   final byPhysical = _physicalKeyToVk[physicalKey];
   if (byPhysical != null) {
     return byPhysical;

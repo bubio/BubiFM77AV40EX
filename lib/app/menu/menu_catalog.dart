@@ -84,6 +84,8 @@ List<MenuGroup> buildMenuCatalog({
   required void Function() onStopRecording,
   required void Function() onOpenSoundVolume,
   required void Function() onOpenJoystickAssignment,
+  required bool cursorToNumpad,
+  required void Function(bool enabled) onCursorToNumpadChanged,
   required bool fddMechanicalSoundEnabled,
   required void Function(bool enabled) onFddMechanicalSoundEnabledChanged,
   required bool isAutoKeying,
@@ -586,6 +588,8 @@ List<MenuGroup> buildMenuCatalog({
         // 2台の物理ジョイスティック/ゲームパッドをJS1/JS2へ割り当てる
         // ダイアログを開く（M3 INP-04）。方向・ボタンの割当自体は固定
         // （INP-05のスコープ外）。原作に合わせHost>Inputへ置く。
+        // ホストのカーソルキーをエミュのテンキー方向へ割り当てるON/OFF
+        // （INP-01）もここへ置く。
         MenuSubmenu(
           'host.input',
           label: l10n.menuHostInput,
@@ -595,6 +599,14 @@ List<MenuGroup> buildMenuCatalog({
               label: l10n.hostInputJoystick,
               enabled: true,
               onSelected: onOpenJoystickAssignment,
+            ),
+            const MenuSeparator('host.input.sep0'),
+            MenuCheckbox(
+              'host.input.cursorToNumpad',
+              label: l10n.hostInputCursorToNumpad,
+              enabled: true,
+              checked: cursorToNumpad,
+              onChanged: onCursorToNumpadChanged,
             ),
           ],
         ),

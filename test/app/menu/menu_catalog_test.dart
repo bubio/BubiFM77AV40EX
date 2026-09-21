@@ -58,6 +58,8 @@ void main() {
     bool isRecording = false,
     void Function()? onOpenSoundVolume,
     void Function()? onOpenJoystickAssignment,
+    bool cursorToNumpad = false,
+    void Function(bool enabled)? onCursorToNumpadChanged,
     bool fddMechanicalSoundEnabled = true,
     void Function(bool enabled)? onFddMechanicalSoundEnabledChanged,
     bool isAutoKeying = false,
@@ -137,6 +139,8 @@ void main() {
       onStopRecording: () {},
       onOpenSoundVolume: onOpenSoundVolume ?? () {},
       onOpenJoystickAssignment: onOpenJoystickAssignment ?? () {},
+      cursorToNumpad: cursorToNumpad,
+      onCursorToNumpadChanged: onCursorToNumpadChanged ?? (_) {},
       fddMechanicalSoundEnabled: fddMechanicalSoundEnabled,
       onFddMechanicalSoundEnabledChanged:
           onFddMechanicalSoundEnabledChanged ?? (_) {},
@@ -710,9 +714,24 @@ void main() {
     final input =
         catalog().firstWhere((g) => g.id == MenuGroupId.host).entries[6]
             as MenuSubmenu;
-    expect(input.entries, hasLength(1));
+    expect(input.entries, hasLength(3));
     final joystick = input.entries[0] as MenuAction;
     expect(joystick.id, 'host.input.joystick');
+  });
+
+  test('Host > Input: カーソルキーをテンキーに割り当てるチェックボックスを持つ（INP-01）', () {
+    var changed = false;
+    final input =
+        catalog(
+              cursorToNumpad: true,
+              onCursorToNumpadChanged: (_) => changed = true,
+            ).firstWhere((g) => g.id == MenuGroupId.host).entries[6]
+            as MenuSubmenu;
+    final checkbox = input.entries[2] as MenuCheckbox;
+    expect(checkbox.id, 'host.input.cursorToNumpad');
+    expect(checkbox.checked, isTrue);
+    checkbox.onChanged(false);
+    expect(changed, isTrue);
   });
 
   test('Host > Input > JoystickはonOpenJoystickAssignmentを呼ぶ（INP-04）', () {

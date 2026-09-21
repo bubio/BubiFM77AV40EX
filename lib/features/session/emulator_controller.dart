@@ -113,6 +113,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   /// （`fddMechanicalSoundEnabled`と同じセッション限りの設定）。
   bool _romajiToKana = false;
 
+  /// ホストのカーソルキーをエミュのテンキー（方向）へ割り当てるモード
+  /// （INP-01）の有効・無効。既定OFF、`fit`等と同じく永続化する。
+  bool _cursorToNumpad = false;
+
   /// 自動キー入力中かどうか（INP-03）。`_isRecording`と同じ理由で
   /// `state`ではなくこの独立フィールドで判定する。
   bool _isAutoKeying = false;
@@ -188,6 +192,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     _optionSwitches = _readOptionSwitches();
     _soundVolumes = _readSoundVolumes();
     _fddMechanicalSoundEnabled = _readFddMechanicalSoundEnabled();
+    _cursorToNumpad = _readCursorToNumpad();
     _cmtDriveSettings = CmtDriveSettings(waveShaping: _readCmtWaveShaping());
     _cmtSoundSettings = _readCmtSoundSettings();
     for (var drive = 0; drive < 2; drive++) {
@@ -208,6 +213,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       fddMechanicalSoundEnabled: _fddMechanicalSoundEnabled,
       cmtDriveSettings: _cmtDriveSettings,
       cmtSoundSettings: _cmtSoundSettings,
+      cursorToNumpad: _cursorToNumpad,
     );
   }
 
@@ -358,6 +364,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   static const _optionSwitchesKey = 'device.optionSwitches';
   static const _soundVolumesKey = 'host.sound.volumes';
   static const _fddMechanicalSoundEnabledKey = 'host.sound.fddMechanismEnabled';
+  static const _cursorToNumpadKey = 'host.input.cursorToNumpad';
   static const _cmtWaveShapingKey = 'cmt.waveShaping';
   static const _cmtSoundKey = 'cmt.sound';
 
@@ -384,6 +391,9 @@ class EmulatorController extends Notifier<EmulatorViewState> {
 
   bool _readFddMechanicalSoundEnabled() =>
       preferences.getBool(_fddMechanicalSoundEnabledKey) ?? true;
+
+  bool _readCursorToNumpad() =>
+      preferences.getBool(_cursorToNumpadKey) ?? false;
 
   RunOptionSwitches _readOptionSwitches() {
     final raw = preferences.getString(_optionSwitchesKey);
@@ -882,6 +892,16 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     }
   }
 
+  /// ホストのカーソルキーをエミュのテンキー（方向）へ割り当てるモード
+  /// （INP-01）の有効・無効を変える。矢印キー4つのwin32仮想キーコードを
+  /// テンキー8/2/4/6へ差し替えるだけで、それ以外のキー入力経路
+  /// （ローマ字かな変換、Paste等）には影響しない。
+  void setCursorToNumpad(bool value) {
+    _cursorToNumpad = value;
+    state = state.copyWith(cursorToNumpad: value);
+    unawaited(preferences.setBool(_cursorToNumpadKey, value));
+  }
+
   bool _isAsciiLetterChar(String? ch) {
     if (ch == null || ch.length != 1) {
       return false;
@@ -1215,7 +1235,11 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       // 変換途中の断片が残ったまま英字以外のキーが来た＝そこで確定させる。
       _enqueueLiveType(_liveRomajiBuffer.flush());
     }
-    final vk = vkFromKeyEvent(physicalKey: physicalKey, logicalKey: logicalKey);
+    final vk = vkFromKeyEvent(
+      physicalKey: physicalKey,
+      logicalKey: logicalKey,
+      cursorToNumpad: _cursorToNumpad,
+    );
     if (vk != null) {
       unawaited(session.keyDown(vk));
     }
@@ -1237,7 +1261,11 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       // 送ってはならない）。
       return;
     }
-    final vk = vkFromKeyEvent(physicalKey: physicalKey, logicalKey: logicalKey);
+    final vk = vkFromKeyEvent(
+      physicalKey: physicalKey,
+      logicalKey: logicalKey,
+      cursorToNumpad: _cursorToNumpad,
+    );
     if (vk != null) {
       unawaited(session.keyUp(vk));
     }
@@ -1265,7 +1293,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
         // 送らない。
         continue;
       }
-      final vk = vkFromKeyEvent(physicalKey: key);
+      final vk = vkFromKeyEvent(
+        physicalKey: key,
+        cursorToNumpad: _cursorToNumpad,
+      );
       if (vk != null) {
         unawaited(session.keyUp(vk));
       }

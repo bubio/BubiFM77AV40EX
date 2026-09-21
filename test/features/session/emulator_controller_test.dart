@@ -318,6 +318,35 @@ void main() {
     expect(session.setFddMechanicalSoundEnabledCalls, isEmpty);
   });
 
+  test('INP-01 setCursorToNumpad(true)以降は矢印キーがテンキー方向のVKで送られる', () {
+    controller().setCursorToNumpad(true);
+
+    controller().handleKeyDown(PhysicalKeyboardKey.arrowUp);
+
+    expect(session.keyEvents, [Win32Vk.numpad0 + 8]);
+    expect(state().cursorToNumpad, isTrue);
+  });
+
+  test('INP-01 setCursorToNumpad(true)でも矢印キー以外は通常どおり送られる', () {
+    controller().setCursorToNumpad(true);
+
+    controller().handleKeyDown(PhysicalKeyboardKey.keyA);
+
+    expect(session.keyEvents, [Win32Vk.keyA]);
+  });
+
+  test('INP-01 既定（OFF）では矢印キーは通常どおり送られる', () {
+    controller().handleKeyDown(PhysicalKeyboardKey.arrowUp);
+
+    expect(session.keyEvents, [Win32Vk.up]);
+  });
+
+  test('INP-01 カーソル→テンキー割当は再起動後も復元される', () {
+    controller().setCursorToNumpad(true);
+
+    expect(restart().cursorToNumpad, isTrue);
+  });
+
   test('AUD-06 startRecordingは保存先を取得してセッションへ渡し、状態を更新する', () async {
     await controller().startRecording();
 

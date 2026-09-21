@@ -101,6 +101,56 @@ void main() {
     });
   });
 
+  group('cursorToNumpad（ホストのカーソルキーをテンキーへ割り当てるモード）', () {
+    test('ON中は矢印キー4つをテンキー8/2/4/6へ差し替える', () {
+      expect(
+        vkFromKeyEvent(
+          physicalKey: PhysicalKeyboardKey.arrowUp,
+          cursorToNumpad: true,
+        ),
+        Win32Vk.numpad0 + 8,
+      );
+      expect(
+        vkFromKeyEvent(
+          physicalKey: PhysicalKeyboardKey.arrowDown,
+          cursorToNumpad: true,
+        ),
+        Win32Vk.numpad0 + 2,
+      );
+      expect(
+        vkFromKeyEvent(
+          physicalKey: PhysicalKeyboardKey.arrowLeft,
+          cursorToNumpad: true,
+        ),
+        Win32Vk.numpad0 + 4,
+      );
+      expect(
+        vkFromKeyEvent(
+          physicalKey: PhysicalKeyboardKey.arrowRight,
+          cursorToNumpad: true,
+        ),
+        Win32Vk.numpad0 + 6,
+      );
+    });
+
+    test('ON中でも矢印キー以外には影響しない', () {
+      expect(
+        vkFromKeyEvent(
+          physicalKey: PhysicalKeyboardKey.keyA,
+          cursorToNumpad: true,
+        ),
+        Win32Vk.keyA,
+      );
+    });
+
+    test('OFF中（既定）は通常どおりWin32Vk.upを返す', () {
+      expect(
+        vkFromKeyEvent(physicalKey: PhysicalKeyboardKey.arrowUp),
+        Win32Vk.up,
+      );
+    });
+  });
+
   group('logical keyによる補い', () {
     test('physical keyが対応表にない場合はlogical keyへ落ちる', () {
       expect(

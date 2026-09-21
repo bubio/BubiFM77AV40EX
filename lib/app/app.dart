@@ -272,6 +272,8 @@ class _HomeState extends ConsumerState<_Home> {
       onStopRecording: emulatorController.stopRecording,
       onOpenSoundVolume: _openSoundVolumeDialog,
       onOpenJoystickAssignment: _openJoystickAssignmentDialog,
+      cursorToNumpad: emulator.cursorToNumpad,
+      onCursorToNumpadChanged: emulatorController.setCursorToNumpad,
       fddMechanicalSoundEnabled: emulator.fddMechanicalSoundEnabled,
       onFddMechanicalSoundEnabledChanged:
           emulatorController.setFddMechanicalSoundEnabled,

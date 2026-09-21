@@ -43,6 +43,7 @@ class EmulatorViewState {
     this.isRecording = false,
     this.isAutoKeying = false,
     this.romajiToKana = false,
+    this.cursorToNumpad = false,
     this.viewFps = 0,
     this.coreFps = 0,
   });
@@ -167,6 +168,12 @@ class EmulatorViewState {
   /// 状態（[fddMechanicalSoundEnabled]と同じ扱い）。
   final bool romajiToKana;
 
+  /// ホストのカーソルキーをエミュのテンキー（方向）へ割り当てるモードの
+  /// 有効・無効（INP-01）。ON中は矢印キー4つだけをテンキー8/2/4/6へ
+  /// 差し替え、それ以外のキーには影響しない。[fit]等と同じく
+  /// `EmulatorController`が永続化し、次回起動時も復元する。
+  final bool cursorToNumpad;
+
   /// 直近1秒間に描画側へ公開したフレーム数（design.md 12.4 View FPS）。
   final double viewFps;
 
@@ -214,6 +221,7 @@ class EmulatorViewState {
     bool? isRecording,
     bool? isAutoKeying,
     bool? romajiToKana,
+    bool? cursorToNumpad,
     double? viewFps,
     double? coreFps,
   }) {
@@ -255,6 +263,7 @@ class EmulatorViewState {
       isRecording: isRecording ?? this.isRecording,
       isAutoKeying: isAutoKeying ?? this.isAutoKeying,
       romajiToKana: romajiToKana ?? this.romajiToKana,
+      cursorToNumpad: cursorToNumpad ?? this.cursorToNumpad,
       viewFps: viewFps ?? this.viewFps,
       coreFps: coreFps ?? this.coreFps,
     );

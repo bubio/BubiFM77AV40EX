@@ -460,6 +460,10 @@
   "@hostInputJoystick": {
     "description": "Action opening the joystick assignment dialog (INP-04)."
   },
+  "hostInputCursorToNumpad": "Map Cursor Keys to Numpad",
+  "@hostInputCursorToNumpad": {
+    "description": "Checkbox toggling the mode that maps the host arrow keys to the emulated numeric keypad's cursor directions (INP-01)."
+  },
   "menuHostLanguage": "Language",
   "@menuHostLanguage": {
     "description": "Host submenu for the UI language."
