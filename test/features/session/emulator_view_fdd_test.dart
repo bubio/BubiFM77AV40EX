@@ -97,7 +97,6 @@ class _LaunchingHomeState extends ConsumerState<_LaunchingHome> {
       onCmtClearRecentFiles: emulatorController.clearCmtRecentFiles,
       cmtSoundSettings: emulator.cmtSoundSettings,
       onCmtSoundEnabledChanged: emulatorController.setCmtSoundEnabled,
-      onOpenCmtSoundVolume: () {},
       screenFit: emulator.fit,
       onScreenFitChanged: emulatorController.setFit,
       scanlineEnabled: emulator.scanlineEnabled,

@@ -80,7 +80,6 @@ void main() {
       onCmtClearRecentFiles: () {},
       cmtSoundSettings: const CmtSoundSettings(),
       onCmtSoundEnabledChanged: (_, _) {},
-      onOpenCmtSoundVolume: () {},
       screenFit: ScreenFit.aspect,
       onScreenFitChanged: onScreenFitChanged ?? (_) {},
       scanlineEnabled: false,

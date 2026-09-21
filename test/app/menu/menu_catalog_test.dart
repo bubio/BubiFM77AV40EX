@@ -46,7 +46,6 @@ void main() {
     void Function()? onCmtClearRecentFiles,
     CmtSoundSettings cmtSoundSettings = const CmtSoundSettings(),
     void Function(CmtSoundKind kind, bool enabled)? onCmtSoundEnabledChanged,
-    void Function()? onOpenCmtSoundVolume,
     ScreenFit screenFit = ScreenFit.aspect,
     bool scanlineEnabled = false,
     HostScreenFilter hostFilter = HostScreenFilter.none,
@@ -119,7 +118,6 @@ void main() {
       onCmtClearRecentFiles: onCmtClearRecentFiles ?? () {},
       cmtSoundSettings: cmtSoundSettings,
       onCmtSoundEnabledChanged: onCmtSoundEnabledChanged ?? (_, _) {},
-      onOpenCmtSoundVolume: onOpenCmtSoundVolume ?? () {},
       screenFit: screenFit,
       onScreenFitChanged: (_) {},
       scanlineEnabled: scanlineEnabled,
@@ -220,43 +218,38 @@ void main() {
     );
   });
 
-  test('Device: Sound、Display、区切り、CPU Type、Boot Mode、'
-      'オプションスイッチ3件を持つ（Bubilator88準拠でControlから移動）', () {
+  test('Device: CPU Type、Boot Mode、Scanline、オプションスイッチ3件の順'
+      '（Bubilator88準拠でControlから移動、SoundとCMT音声3種はHostへ集約）', () {
     final entries = catalog()
         .firstWhere((g) => g.id == MenuGroupId.device)
         .entries;
-    expect(entries, hasLength(8));
-    expect(
-      entries[0],
-      isA<MenuSubmenu>().having((e) => e.id, 'id', 'device.sound'),
-    );
-    expect(
-      entries[1],
-      isA<MenuSubmenu>().having((e) => e.id, 'id', 'device.display'),
-    );
-    expect(entries[2], isA<MenuSeparator>());
-    final cpuTypeGroup = entries[3] as MenuRadioGroup<CpuType>;
+    expect(entries, hasLength(6));
+    final cpuTypeGroup = entries[0] as MenuRadioGroup<CpuType>;
     expect(cpuTypeGroup.id, 'device.cpuType');
     expect(cpuTypeGroup.options.map((o) => o.value), [
       CpuType.fast,
       CpuType.slow,
     ]);
-    final bootModeGroup = entries[4] as MenuRadioGroup<BootMode>;
+    final bootModeGroup = entries[1] as MenuRadioGroup<BootMode>;
     expect(bootModeGroup.id, 'device.bootMode');
     expect(bootModeGroup.options.map((o) => o.value), [
       BootMode.basic,
       BootMode.dos,
     ]);
     expect(
-      entries[5],
+      entries[2],
+      isA<MenuCheckbox>().having((e) => e.id, 'id', 'device.display.scanline'),
+    );
+    expect(
+      entries[3],
       isA<MenuCheckbox>().having((e) => e.id, 'id', 'device.cycleSteal'),
     );
     expect(
-      entries[6],
+      entries[4],
       isA<MenuCheckbox>().having((e) => e.id, 'id', 'device.extendedRam'),
     );
     expect(
-      entries[7],
+      entries[5],
       isA<MenuCheckbox>().having((e) => e.id, 'id', 'device.syncToHsync'),
     );
   });
@@ -312,9 +305,9 @@ void main() {
         syncToHsync: true,
       ),
     ).firstWhere((g) => g.id == MenuGroupId.device).entries;
+    expect((entries[3] as MenuCheckbox).checked, isTrue);
+    expect((entries[4] as MenuCheckbox).checked, isTrue);
     expect((entries[5] as MenuCheckbox).checked, isTrue);
-    expect((entries[6] as MenuCheckbox).checked, isTrue);
-    expect((entries[7] as MenuCheckbox).checked, isTrue);
   });
 
   test('Full Speedのチェック状態は引数に従う', () {
@@ -528,44 +521,12 @@ void main() {
     expect((withHistory.entries[2] as MenuAction).enabled, isTrue);
   });
 
-  test('Device: Sound、Displayの順で持つ（Bubilator88準拠でSoundはOPNのみ＋CMT音声3種）', () {
-    final entries = catalog()
-        .firstWhere((g) => g.id == MenuGroupId.device)
-        .entries;
-    final sound = entries[0] as MenuSubmenu;
-    expect(sound.id, 'device.sound');
-    // OPNラジオ、区切り、CMTノイズ/信号/音声、CMT音量ダイアログ。
-    expect(sound.entries, hasLength(6));
-    final radio = sound.entries[0] as MenuRadioGroup<String>;
-    expect(radio.options.map((o) => o.label), ['OPN']);
-    expect(sound.entries[1], isA<MenuSeparator>());
-    expect(
-      sound.entries[2],
-      isA<MenuCheckbox>().having((e) => e.id, 'id', 'device.sound.cmtNoise'),
-    );
-    expect(
-      sound.entries[3],
-      isA<MenuCheckbox>().having((e) => e.id, 'id', 'device.sound.cmtSignal'),
-    );
-    expect(
-      sound.entries[4],
-      isA<MenuCheckbox>().having((e) => e.id, 'id', 'device.sound.cmtVoice'),
-    );
-    expect(
-      sound.entries[5],
-      isA<MenuAction>().having((e) => e.id, 'id', 'device.sound.cmtVolume'),
-    );
-    final display = entries[1] as MenuSubmenu;
-    expect(display.id, 'device.display');
-  });
-
-  test('Device > Displayは走査線チェックボックスを持つ（VID-04）', () {
-    final display =
+  test('Device > Scanlineはチェック状態が引数に従う（VID-04）', () {
+    final scanline =
         catalog(scanlineEnabled: true)
                 .firstWhere((g) => g.id == MenuGroupId.device)
-                .entries[1]
-            as MenuSubmenu;
-    final scanline = display.entries.single as MenuCheckbox;
+                .entries[2]
+            as MenuCheckbox;
     expect(scanline.id, 'device.display.scanline');
     expect(scanline.checked, isTrue);
   });
@@ -671,28 +632,60 @@ void main() {
     expect(unchecked.checked, isFalse);
   });
 
+  test('Host > Sound: FDD Mechanism Sound、CMT Noise/Signal/Voice、Volumeの順'
+      '（Bubilator88準拠でDeviceから移動、AUD-07統合）', () {
+    final sound =
+        catalog().firstWhere((g) => g.id == MenuGroupId.host).entries[5]
+            as MenuSubmenu;
+    expect(sound.entries, hasLength(5));
+    final fddMechanismEnabled = sound.entries[0] as MenuCheckbox;
+    expect(fddMechanismEnabled.id, 'host.sound.fddMechanismEnabled');
+    final cmtNoise = sound.entries[1] as MenuCheckbox;
+    expect(cmtNoise.id, 'device.sound.cmtNoise');
+    final cmtSignal = sound.entries[2] as MenuCheckbox;
+    expect(cmtSignal.id, 'device.sound.cmtSignal');
+    final cmtVoice = sound.entries[3] as MenuCheckbox;
+    expect(cmtVoice.id, 'device.sound.cmtVoice');
+    final volume = sound.entries[4] as MenuAction;
+    expect(volume.id, 'host.sound.volume');
+  });
+
   test(
-    'Host > Sound: FDD Mechanism Sound、Volumeの順（Bubilator88準拠でDeviceから移動）',
+    'Host > Sound > CMT Noise/Signal/Voiceはチェック状態が引数に従いonCmtSoundEnabledChanged'
+    'を呼ぶ（AUD-07）',
     () {
+      (CmtSoundKind, bool)? changed;
       final sound =
-          catalog().firstWhere((g) => g.id == MenuGroupId.host).entries[5]
+          catalog(
+                cmtSoundSettings: const CmtSoundSettings(
+                  noiseEnabled: true,
+                  signalEnabled: false,
+                  voiceEnabled: true,
+                ),
+                onCmtSoundEnabledChanged: (kind, enabled) =>
+                    changed = (kind, enabled),
+              ).firstWhere((g) => g.id == MenuGroupId.host).entries[5]
               as MenuSubmenu;
-      expect(sound.entries, hasLength(2));
-      final fddMechanismEnabled = sound.entries[0] as MenuCheckbox;
-      expect(fddMechanismEnabled.id, 'host.sound.fddMechanismEnabled');
-      final volume = sound.entries[1] as MenuAction;
-      expect(volume.id, 'host.sound.volume');
+      final cmtNoise = sound.entries[1] as MenuCheckbox;
+      final cmtSignal = sound.entries[2] as MenuCheckbox;
+      final cmtVoice = sound.entries[3] as MenuCheckbox;
+      expect(cmtNoise.checked, isTrue);
+      expect(cmtSignal.checked, isFalse);
+      expect(cmtVoice.checked, isTrue);
+
+      cmtSignal.onChanged(true);
+      expect(changed, (CmtSoundKind.signal, true));
     },
   );
 
-  test('Host > Sound > VolumeはonOpenSoundVolumeを呼ぶ（AUD-03）', () {
+  test('Host > Sound > VolumeはonOpenSoundVolumeを呼ぶ（AUD-03、AUD-07統合）', () {
     var called = false;
     final sound =
         catalog(onOpenSoundVolume: () => called = true)
                 .firstWhere((g) => g.id == MenuGroupId.host)
                 .entries[5]
             as MenuSubmenu;
-    final volume = sound.entries[1] as MenuAction;
+    final volume = sound.entries[4] as MenuAction;
     expect(volume.enabled, isTrue);
     volume.onSelected();
     expect(called, isTrue);

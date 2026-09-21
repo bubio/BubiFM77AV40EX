@@ -316,15 +316,15 @@
   "@cmtClearRecentFiles": {
     "description": "Clears the recent tape image history."
   },
-  "cmtSoundNoise": "Play CMT Noise",
+  "cmtSoundNoise": "CMT Noise",
   "@cmtSoundNoise": {
     "description": "Checkbox toggling CMT relay/fast-forward noise (AUD-07). Matches the original \"Play CMT Noise\" menu item."
   },
-  "cmtSoundSignal": "Play CMT Signal",
+  "cmtSoundSignal": "CMT Signal",
   "@cmtSoundSignal": {
     "description": "Checkbox toggling audible playback of the raw CMT signal (AUD-07). Matches the original \"Play CMT Signal\" menu item."
   },
-  "cmtSoundVoice": "Play CMT Voice",
+  "cmtSoundVoice": "CMT Voice",
   "@cmtSoundVoice": {
     "description": "Checkbox toggling audible playback of the CMT voice/PCM path (AUD-07). Matches the original \"Play CMT Voice\" menu item. Volume is not independently adjustable (upstream limitation)."
   },

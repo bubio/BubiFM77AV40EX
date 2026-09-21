@@ -65,7 +65,6 @@ List<MenuGroup> buildMenuCatalog({
   required CmtSoundSettings cmtSoundSettings,
   required void Function(CmtSoundKind kind, bool enabled)
   onCmtSoundEnabledChanged,
-  required void Function() onOpenCmtSoundVolume,
   required ScreenFit screenFit,
   required void Function(ScreenFit fit) onScreenFitChanged,
   required bool scanlineEnabled,
@@ -382,74 +381,6 @@ List<MenuGroup> buildMenuCatalog({
       id: MenuGroupId.device,
       label: l10n.menuDevice,
       entries: [
-        // OPNしか選べないため、選択済みで無効の単一ラジオとして出す
-        // （design.md 12.2の`Sound > OPN [P0]`）。標準OPNの個別チャンネル
-        // 音量とFDD機構音の有効・無効はHost>Soundにある
-        // （design.md「メニュー整理（Control/Device/Host、Bubilator88
-        // 準拠）」）。
-        MenuSubmenu(
-          'device.sound',
-          label: l10n.menuDeviceSound,
-          entries: [
-            const MenuRadioGroup<String>(
-              'device.sound.chip',
-              label: '',
-              groupValue: 'opn',
-              options: [MenuRadioOption(value: 'opn', label: 'OPN')],
-              onChanged: _noopStringChanged,
-            ),
-            const MenuSeparator('device.sound.sep0'),
-            // CMTノイズ・CMT信号・CMT音声の個別有効化（AUD-07）。原作の
-            // "Play CMT Noise"/"Play CMT Signal"/"Play CMT Voice"
-            // （fm77av40ex.rc）と同じ位置（Device > Sound）に置く。
-            // 標準OPN音量（AUD-03）とは別区分のまま混在させない
-            // （design.md 7.1）。
-            MenuCheckbox(
-              'device.sound.cmtNoise',
-              label: l10n.cmtSoundNoise,
-              enabled: true,
-              checked: cmtSoundSettings.noiseEnabled,
-              onChanged: (value) =>
-                  onCmtSoundEnabledChanged(CmtSoundKind.noise, value),
-            ),
-            MenuCheckbox(
-              'device.sound.cmtSignal',
-              label: l10n.cmtSoundSignal,
-              enabled: true,
-              checked: cmtSoundSettings.signalEnabled,
-              onChanged: (value) =>
-                  onCmtSoundEnabledChanged(CmtSoundKind.signal, value),
-            ),
-            MenuCheckbox(
-              'device.sound.cmtVoice',
-              label: l10n.cmtSoundVoice,
-              enabled: true,
-              checked: cmtSoundSettings.voiceEnabled,
-              onChanged: (value) =>
-                  onCmtSoundEnabledChanged(CmtSoundKind.voice, value),
-            ),
-            MenuAction(
-              'device.sound.cmtVolume',
-              label: l10n.cmtSoundVolumeDialogTitle,
-              enabled: true,
-              onSelected: onOpenCmtSoundVolume,
-            ),
-          ],
-        ),
-        MenuSubmenu(
-          'device.display',
-          label: l10n.menuDeviceDisplay,
-          entries: [
-            MenuCheckbox(
-              'device.display.scanline',
-              label: l10n.deviceDisplayScanline,
-              enabled: true,
-              checked: scanlineEnabled,
-              onChanged: onScanlineChanged,
-            ),
-          ],
-        ),
-        const MenuSeparator('device.sep0'),
         MenuRadioGroup<CpuType>(
           'device.cpuType',
           label: l10n.deviceCpuType,
@@ -472,6 +403,13 @@ List<MenuGroup> buildMenuCatalog({
             MenuRadioOption(value: BootMode.dos, label: l10n.romBootModeDos),
           ],
           onChanged: onBootModeChanged,
+        ),
+        MenuCheckbox(
+          'device.display.scanline',
+          label: l10n.deviceDisplayScanline,
+          enabled: true,
+          checked: scanlineEnabled,
+          onChanged: onScanlineChanged,
         ),
         MenuCheckbox(
           'device.cycleSteal',
@@ -613,6 +551,30 @@ List<MenuGroup> buildMenuCatalog({
               checked: fddMechanicalSoundEnabled,
               onChanged: onFddMechanicalSoundEnabledChanged,
             ),
+            MenuCheckbox(
+              'device.sound.cmtNoise',
+              label: l10n.cmtSoundNoise,
+              enabled: true,
+              checked: cmtSoundSettings.noiseEnabled,
+              onChanged: (value) =>
+                  onCmtSoundEnabledChanged(CmtSoundKind.noise, value),
+            ),
+            MenuCheckbox(
+              'device.sound.cmtSignal',
+              label: l10n.cmtSoundSignal,
+              enabled: true,
+              checked: cmtSoundSettings.signalEnabled,
+              onChanged: (value) =>
+                  onCmtSoundEnabledChanged(CmtSoundKind.signal, value),
+            ),
+            MenuCheckbox(
+              'device.sound.cmtVoice',
+              label: l10n.cmtSoundVoice,
+              enabled: true,
+              checked: cmtSoundSettings.voiceEnabled,
+              onChanged: (value) =>
+                  onCmtSoundEnabledChanged(CmtSoundKind.voice, value),
+            ),
             MenuAction(
               'host.sound.volume',
               label: l10n.hostSoundVolume,
@@ -674,5 +636,3 @@ List<MenuGroup> buildMenuCatalog({
     ),
   ];
 }
-
-void _noopStringChanged(String value) {}

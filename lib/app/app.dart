@@ -26,7 +26,6 @@ import 'l10n/generated/app_localizations.dart';
 import 'l10n/generated/app_localizations_en.dart';
 import 'l10n/generated/app_localizations_ja.dart';
 import 'menu/app_menu_bar.dart';
-import 'menu/cmt_sound_volume_dialog.dart';
 import 'menu/menu_catalog.dart';
 import 'menu/platform_application_menu.dart';
 import 'menu/settings_dialog.dart';
@@ -254,7 +253,6 @@ class _HomeState extends ConsumerState<_Home> {
       onCmtClearRecentFiles: emulatorController.clearCmtRecentFiles,
       cmtSoundSettings: emulator.cmtSoundSettings,
       onCmtSoundEnabledChanged: emulatorController.setCmtSoundEnabled,
-      onOpenCmtSoundVolume: _openCmtSoundVolumeDialog,
       screenFit: emulator.fit,
       onScreenFitChanged: emulatorController.setFit,
       scanlineEnabled: emulator.scanlineEnabled,
@@ -422,7 +420,7 @@ class _HomeState extends ConsumerState<_Home> {
     }
   }
 
-  /// 標準音声チャンネルの音量ダイアログを開く（AUD-03）。
+  /// 標準音声チャンネルの音量ダイアログを開く（AUD-03、AUD-07統合）。
   ///
   /// [SettingsDialog]（マスター音量）と同じく、開いた時点の値を渡すだけの
   /// `StatelessWidget`にする。スライダーを動かすたびに`_HomeState`が
@@ -438,20 +436,8 @@ class _HomeState extends ConsumerState<_Home> {
         onChanged: (channel, volume) {
           controller.setSoundChannelVolume(channel, volume);
         },
-      ),
-    );
-  }
-
-  /// CMTノイズ・CMT信号の音量ダイアログを開く（AUD-07）。
-  /// [_openSoundVolumeDialog]と同じ制約（開いた時点の値を渡すだけ）。
-  void _openCmtSoundVolumeDialog() {
-    final controller = ref.read(emulatorControllerProvider.notifier);
-    showDialog<void>(
-      context: context,
-      builder: (context) => CmtSoundVolumeDialog(
-        l10n: AppLocalizations.of(context),
-        settings: ref.read(emulatorControllerProvider).cmtSoundSettings,
-        onChanged: (kind, volume) {
+        cmtSettings: ref.read(emulatorControllerProvider).cmtSoundSettings,
+        onCmtChanged: (kind, volume) {
           controller.setCmtSoundVolume(kind, volume);
         },
       ),
