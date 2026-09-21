@@ -20,18 +20,27 @@ namespace bubi {
 // design.md 7「音声設計」で固定した出力フォーマット。
 constexpr int kAudioSampleRate = 48000;   // emu.cpp sound_frequency_table[6]
 constexpr int kAudioChannels = 2;
-constexpr double kAudioLatencySeconds = 0.1; // emu.cpp sound_latency_table[1]
+
+// Host > Sound の「オーディオバッファ」設定（bfm_audio_latency、
+// bubi_fm77av.h）が選べる4値。emu.cpp sound_latency_table[0..3]と同じ値
+// （[4]=0.4秒は使わない）。既定は[0]の50ms。
+constexpr double kAudioLatencyOptionsSeconds[4] = {0.05, 0.1, 0.2, 0.3};
 
 // EMU::EMU()がconfig.sound_frequency/sound_latencyから計算するのと
 // 同じ式（emu.cpp）。bridgeがこの2つのconfigフィールドを明示的に
 // 設定するため、bridge側でも同じ値を再現できる（native/bridge/src/
 // bubi_fm77av.cppのcore_thread_main参照）。
-constexpr int kAudioSamplesPerCall =
-    static_cast<int>(kAudioSampleRate * kAudioLatencySeconds + 0.5);
+constexpr int kAudioSamplesForLatency(int latency_index)
+{
+	return static_cast<int>(
+	    kAudioSampleRate * kAudioLatencyOptionsSeconds[latency_index] + 0.5);
+}
 
-// 500ms分。生産と消費の速度差を吸収するための上限で、無制限には増やさない。
+// 1秒分。生産と消費の速度差を吸収するための上限で、無制限には増やさない。
+// 最大のバッファ設定（300ms）でも十分な余裕を残すため、既定（100ms）の
+// 500msから引き上げた。
 constexpr std::size_t kAudioRingCapacityFrames =
-    static_cast<std::size_t>(kAudioSampleRate) / 2;
+    static_cast<std::size_t>(kAudioSampleRate);
 
 // ステレオ16bit PCMの有界リング。オーバーラン（書き手が読み手より速い）時は
 // 最古のフレームを破棄する（design.md 4.3のイベントキューと同じ方針）。

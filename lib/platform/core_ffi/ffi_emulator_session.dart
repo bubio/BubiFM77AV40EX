@@ -36,6 +36,9 @@ class FfiEmulatorSession implements EmulatorSession {
   /// `~/CommonSourceCodeProject/` を作ってしまい design.md 11.3 と食い違う。
   ///
   /// [pollInterval] はイベントを引き取る間隔。画面描画周期には結合させない。
+  /// [audioBufferSize] はHost > Soundの「オーディオバッファ」設定。
+  /// コアが起動時に1度だけ読むため、変更しても次回のセッション生成まで
+  /// 反映されない。
   /// [romDir] は利用者が選んだROMディレクトリのOSパス。
   /// null なら結線せず、コアは読めるROMがないまま起動を試みる。
   /// ROMの検証は `RomInventory` の責務で、ここでは行わない。
@@ -59,6 +62,7 @@ class FfiEmulatorSession implements EmulatorSession {
     required String homeDir,
     String? romDir,
     BootMode bootMode = BootMode.basic,
+    AudioBufferSize audioBufferSize = AudioBufferSize.ms50,
     BubiCoreBindings? bindings,
     int commandQueueCapacity = 0,
     int eventQueueCapacity = 0,
@@ -90,6 +94,7 @@ class FfiEmulatorSession implements EmulatorSession {
       options.ref.bootMode = bootModeToNative(bootMode);
       options.ref.commandQueueCapacity = commandQueueCapacity;
       options.ref.eventQueueCapacity = eventQueueCapacity;
+      options.ref.audioLatency = audioBufferSizeToNative(audioBufferSize);
 
       final result = resolved.create(options, out);
       if (result != BfmResult.ok) {

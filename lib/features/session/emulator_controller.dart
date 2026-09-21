@@ -95,6 +95,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   CpuType _cpuType = CpuType.fast;
   RunOptionSwitches _optionSwitches = const RunOptionSwitches();
 
+  /// オーディオバッファ（Host > Sound）。コアが起動時に1度だけ読むため、
+  /// 変更は次回[launch]（セッションの作り直し）まで反映されない。
+  AudioBufferSize _audioBufferSize = AudioBufferSize.ms50;
+
   /// 直近に指定された標準音声チャンネル音量（AUD-03）。停止中に
   /// 変更されても次回[launch]時に適用できるよう覚えておく。
   SoundChannelVolumes _soundVolumes = const SoundChannelVolumes();
@@ -189,6 +193,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   EmulatorViewState build() {
     ref.onDispose(_teardown);
     _cpuType = _readCpuType();
+    _audioBufferSize = _readAudioBufferSize();
     _optionSwitches = _readOptionSwitches();
     _soundVolumes = _readSoundVolumes();
     _fddMechanicalSoundEnabled = _readFddMechanicalSoundEnabled();
@@ -208,6 +213,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       fddDriveSettings: Map.of(_fddDriveSettings),
       cmtRecentFiles: _readCmtRecentFiles(),
       cpuType: _cpuType,
+      audioBufferSize: _audioBufferSize,
       optionSwitches: _optionSwitches,
       soundVolumes: _soundVolumes,
       fddMechanicalSoundEnabled: _fddMechanicalSoundEnabled,
@@ -367,6 +373,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   static const _cursorToNumpadKey = 'host.input.cursorToNumpad';
   static const _cmtWaveShapingKey = 'cmt.waveShaping';
   static const _cmtSoundKey = 'cmt.sound';
+  static const _audioBufferSizeKey = 'host.sound.audioBufferSize';
 
   String _fddDriveSettingsKey(int drive) => 'fdd.driveSettings.fd$drive';
 
@@ -386,6 +393,14 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     'slow' => CpuType.slow,
     _ => CpuType.fast,
   };
+
+  AudioBufferSize _readAudioBufferSize() =>
+      switch (preferences.getString(_audioBufferSizeKey)) {
+        'ms100' => AudioBufferSize.ms100,
+        'ms200' => AudioBufferSize.ms200,
+        'ms300' => AudioBufferSize.ms300,
+        _ => AudioBufferSize.ms50,
+      };
 
   bool _readScanlineEnabled() => preferences.getBool(_scanlineKey) ?? false;
 
@@ -532,6 +547,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
         homeDir: homeDir,
         romDir: romDir,
         bootMode: bootMode,
+        audioBufferSize: _audioBufferSize,
       );
       _session = session;
       _events = session.events.listen(_onEvent);
@@ -792,6 +808,17 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     state = state.copyWith(cpuType: type);
     await preferences.setString(_cpuTypeKey, type.name);
     await _session?.setCpuType(type);
+  }
+
+  /// オーディオバッファ（Host > Sound）を変える。
+  ///
+  /// コアが起動時に1度だけ読むため、起動中に呼んでも実行中のセッションには
+  /// 反映されない。設定は即座に永続化し、次回[launch]（セッションの
+  /// 作り直し）から使う。
+  Future<void> setAudioBufferSize(AudioBufferSize size) async {
+    _audioBufferSize = size;
+    state = state.copyWith(audioBufferSize: size);
+    await preferences.setString(_audioBufferSizeKey, size.name);
   }
 
   /// サイクルスチール・拡張RAM・HSYNC同期を変える（SYS-06）。

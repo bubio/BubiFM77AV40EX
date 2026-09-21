@@ -60,6 +60,7 @@ Future<Widget> buildApp({
                 required String homeDir,
                 String? romDir,
                 BootMode bootMode = BootMode.basic,
+                AudioBufferSize audioBufferSize = AudioBufferSize.ms50,
               }) {
                 // FDD内部機構音（AUD-04）はBubiAudioSinkを包む
                 // デコレーターとして混ぜ込む。同一インスタンスをPCM出力先
@@ -73,6 +74,7 @@ Future<Widget> buildApp({
                   homeDir: homeDir,
                   romDir: romDir,
                   bootMode: bootMode,
+                  audioBufferSize: audioBufferSize,
                   textures: const BubiVideoTextureAttacher(),
                   audio: recordingSink,
                   fddMechanicalSound: fddSink,

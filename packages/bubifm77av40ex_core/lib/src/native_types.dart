@@ -48,6 +48,15 @@ abstract final class BfmBootMode {
   static const int dos = 1;
 }
 
+/// `bfm_audio_latency`。Host > Sound の「オーディオバッファ」設定。
+/// セッション生成後は変更できない。
+abstract final class BfmAudioLatency {
+  static const int ms50 = 0;
+  static const int ms100 = 1;
+  static const int ms200 = 2;
+  static const int ms300 = 3;
+}
+
 /// `bfm_cpu_type`。値は upstream の `config.cpu_type` と同じ。
 /// [BfmCommandKind.setCpuType] はコアの `update_config()` を呼ぶため、
 /// リセットを待たずに反映される。
@@ -192,6 +201,10 @@ final class BfmCreateOptions extends Struct {
   external int commandQueueCapacity;
   @Uint32()
   external int eventQueueCapacity;
+
+  /// `bfm_audio_latency`。既定は0（BFM_AUDIO_LATENCY_50MS、ゼロ初期化と一致）。
+  @Int32()
+  external int audioLatency;
 }
 
 /// `bfm_command`

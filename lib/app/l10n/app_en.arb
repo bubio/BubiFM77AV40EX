@@ -452,6 +452,26 @@
   "@hostSoundFddMechanismEnabled": {
     "description": "Checkbox toggling the host-synthesized FDD mechanical sound (AUD-04, read/write only)."
   },
+  "hostSoundAudioBufferSize": "Audio Buffer",
+  "@hostSoundAudioBufferSize": {
+    "description": "Radio group selecting the audio output buffer size (design.md 7). Takes effect on the next session launch, not immediately."
+  },
+  "hostSoundAudioBufferSize50": "50 ms",
+  "@hostSoundAudioBufferSize50": {
+    "description": "Audio buffer size option: 50 milliseconds (default)."
+  },
+  "hostSoundAudioBufferSize100": "100 ms",
+  "@hostSoundAudioBufferSize100": {
+    "description": "Audio buffer size option: 100 milliseconds."
+  },
+  "hostSoundAudioBufferSize200": "200 ms",
+  "@hostSoundAudioBufferSize200": {
+    "description": "Audio buffer size option: 200 milliseconds."
+  },
+  "hostSoundAudioBufferSize300": "300 ms",
+  "@hostSoundAudioBufferSize300": {
+    "description": "Audio buffer size option: 300 milliseconds."
+  },
   "menuHostInput": "Input",
   "@menuHostInput": {
     "description": "Host submenu for joystick assignment and other input options."

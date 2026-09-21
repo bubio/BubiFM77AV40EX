@@ -87,6 +87,20 @@ typedef enum {
 } bfm_boot_mode;
 
 /*
+ * Host > Sound の「オーディオバッファ」設定（design.md 7）。値は
+ * upstreamの sound_latency_table（emu.cpp）先頭4エントリの添字と同じ
+ * （[4]=400msは選択肢として出さない）。セッション生成後は変更できない。
+ * EMU::EMU()がconfig.sound_latencyを起動時に1度だけ読むため、変更するには
+ * セッションを作り直す必要がある。
+ */
+typedef enum {
+	BFM_AUDIO_LATENCY_50MS = 0,
+	BFM_AUDIO_LATENCY_100MS = 1,
+	BFM_AUDIO_LATENCY_200MS = 2,
+	BFM_AUDIO_LATENCY_300MS = 3
+} bfm_audio_latency;
+
+/*
  * CPU種別（specification.md SYS-05）。値はupstreamの config.cpu_type と
  * 同じ。BFM_CMD_SET_CPU_TYPE はコアの update_config() を呼ぶため、
  * リセットを待たずに反映される（design.md 16.1「実行設定の即時反映と
@@ -478,6 +492,12 @@ typedef struct {
 	/* キュー上限。0なら既定値（コマンド64、イベント256）。 */
 	uint32_t command_queue_capacity;
 	uint32_t event_queue_capacity;
+
+	/*
+	 * オーディオバッファ（bfm_audio_latency）。既定は BFM_AUDIO_LATENCY_50MS
+	 * （ゼロ初期化と一致）。範囲外の値は BFM_ERR_INVALID_ARGUMENT。
+	 */
+	int32_t audio_latency;
 } bfm_create_options;
 
 /* 確保側が bfm_destroy で解放する。out は成功時だけ書き換える。 */

@@ -504,6 +504,15 @@ struct bfm_session {
 	std::string rom_dir;  // 利用者が選んだROMディレクトリ（空なら未設定）
 	int32_t boot_mode = BFM_BOOT_BASIC;
 
+	// Host > Sound の「オーディオバッファ」設定（bfm_create_optionsから
+	// 複製）。core_thread_mainがEMU生成直前にconfig.sound_latencyへ写す。
+	int32_t audio_latency = BFM_AUDIO_LATENCY_50MS;
+	// audio_latencyに対応する1回あたりのサンプル数。core_thread_mainが
+	// EMU生成時に確定させ、publish_audio_if_readyが読む
+	// （pcm_ring.h kAudioSamplesForLatency）。
+	int audio_samples_per_call =
+	    bubi::kAudioSamplesForLatency(BFM_AUDIO_LATENCY_50MS);
+
 	// VM操作を許されたスレッド。Core threadの起動直後に確定する。
 	std::atomic<bool> core_thread_id_valid{false};
 	std::thread::id core_thread_id;
@@ -1378,15 +1387,16 @@ void publish_cmt_status_if_changed(bfm_session* session, VM_TEMPLATE* vm)
 void publish_audio_if_ready(bfm_session* session, VM_TEMPLATE* vm)
 {
 	session->note_vm_access();
-	if (vm->get_sound_buffer_ptr() < bubi::kAudioSamplesPerCall) {
+	const int samples_per_call = session->audio_samples_per_call;
+	if (vm->get_sound_buffer_ptr() < samples_per_call) {
 		return;
 	}
 	int extra_frames = 0;
 	uint16_t* buffer = vm->create_sound(&extra_frames);
 	session->audio.push(reinterpret_cast<const int16_t*>(buffer),
-	                    static_cast<std::size_t>(bubi::kAudioSamplesPerCall));
+	                    static_cast<std::size_t>(samples_per_call));
 	session->audio_frames_produced.fetch_add(
-	    static_cast<uint64_t>(bubi::kAudioSamplesPerCall));
+	    static_cast<uint64_t>(samples_per_call));
 }
 
 void core_thread_main(bfm_session* session)
@@ -1417,11 +1427,13 @@ void core_thread_main(bfm_session* session)
 		 * design.md 7。configは既定で0初期化のままだと
 		 * sound_frequency_table[0]=2000Hzになる（emu.cpp）。48kHz固定
 		 * （pcm_ring.h kAudioSampleRate）を明示し、latencyは
-		 * kAudioSamplesPerCallと同じ式になるsound_latency_table[1]
-		 * （0.1秒）を選ぶ。
+		 * Host > Sound の「オーディオバッファ」設定（bfm_create_options.
+		 * audio_latency）をそのままsound_latency_table（emu.cpp）の添字
+		 * として渡す。session->audio_samples_per_callはbfm_create済み
+		 * （同じ値をここでも使う）。
 		 */
 		config.sound_frequency = 6; // 48kHz
-		config.sound_latency = 1;   // 0.1秒
+		config.sound_latency = session->audio_latency;
 		session->note_vm_access();
 		session->emu = new EMU();
 		VM_TEMPLATE* vm = session->emu->get_vm();
@@ -1584,6 +1596,11 @@ bfm_result bfm_create(const bfm_create_options* options, bfm_session** out)
 			return BFM_ERR_INVALID_ARGUMENT;
 		}
 
+		if (options->audio_latency < BFM_AUDIO_LATENCY_50MS
+			|| options->audio_latency > BFM_AUDIO_LATENCY_300MS) {
+			return BFM_ERR_INVALID_ARGUMENT;
+		}
+
 		// 生存セッションは1つに限る（理由は g_live_sessions のコメント）。
 		int expected = 0;
 		if (!g_live_sessions.compare_exchange_strong(expected, 1)) {
@@ -1618,6 +1635,9 @@ bfm_result bfm_create(const bfm_create_options* options, bfm_session** out)
 		session->home_dir = options->home_dir;
 		session->core_dir = core_dir;
 		session->boot_mode = options->boot_mode;
+		session->audio_latency = options->audio_latency;
+		session->audio_samples_per_call =
+		    bubi::kAudioSamplesForLatency(options->audio_latency);
 		if (options->rom_dir != nullptr) {
 			session->rom_dir = options->rom_dir;
 		}

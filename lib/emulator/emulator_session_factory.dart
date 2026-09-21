@@ -9,4 +9,5 @@ typedef EmulatorSessionFactory = EmulatorSession Function({
   required String homeDir,
   String? romDir,
   BootMode bootMode,
+  AudioBufferSize audioBufferSize,
 });

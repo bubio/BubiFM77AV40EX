@@ -53,6 +53,14 @@ int bootModeToNative(BootMode mode) => switch (mode) {
   BootMode.dos => BfmBootMode.dos,
 };
 
+/// [AudioBufferSize] を `bfm_audio_latency` へ変換する。
+int audioBufferSizeToNative(AudioBufferSize size) => switch (size) {
+  AudioBufferSize.ms50 => BfmAudioLatency.ms50,
+  AudioBufferSize.ms100 => BfmAudioLatency.ms100,
+  AudioBufferSize.ms200 => BfmAudioLatency.ms200,
+  AudioBufferSize.ms300 => BfmAudioLatency.ms300,
+};
+
 /// [CpuType] を `bfm_cpu_type` へ変換する。
 int cpuTypeToNative(CpuType type) => switch (type) {
   CpuType.fast => BfmCpuType.fast,

@@ -103,6 +103,8 @@ void main() {
       onCursorToNumpadChanged: (_) {},
       fddMechanicalSoundEnabled: true,
       onFddMechanicalSoundEnabledChanged: (_) {},
+      audioBufferSize: AudioBufferSize.ms50,
+      onAudioBufferSizeChanged: (_) {},
       isAutoKeying: false,
       onStartAutoKey: () {},
       onStopAutoKey: () {},

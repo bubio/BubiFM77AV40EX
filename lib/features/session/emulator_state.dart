@@ -35,6 +35,7 @@ class EmulatorViewState {
     this.cmtRecentFiles = const [],
     this.bootMode = BootMode.basic,
     this.cpuType = CpuType.fast,
+    this.audioBufferSize = AudioBufferSize.ms50,
     this.speedMultiplier = SpeedMultiplier.x1,
     this.fullSpeed = false,
     this.optionSwitches = const RunOptionSwitches(),
@@ -137,6 +138,13 @@ class EmulatorViewState {
   /// されるため、選択値と実際の値は常に一致する（design.md 12.4）。
   final CpuType cpuType;
 
+  /// オーディオバッファ（design.md 7、Host > Sound）。選択値であり、
+  /// 実行中セッションの実際の値とは食い違いうる。コアが起動時に1度だけ
+  /// 読むため、変更は次回のセッション起動から反映される（[bootMode]と
+  /// 同じ「選択値≠実際の値」の扱いだが、こちらは起動していなくても
+  /// 一致しうる点が異なる）。
+  final AudioBufferSize audioBufferSize;
+
   /// 現在のCPU速度倍率（SYS-03）。[SpeedMultiplier]の値。
   final int speedMultiplier;
 
@@ -213,6 +221,7 @@ class EmulatorViewState {
     List<CmtRecentFile>? cmtRecentFiles,
     BootMode? bootMode,
     CpuType? cpuType,
+    AudioBufferSize? audioBufferSize,
     int? speedMultiplier,
     bool? fullSpeed,
     RunOptionSwitches? optionSwitches,
@@ -254,6 +263,7 @@ class EmulatorViewState {
       cmtRecentFiles: cmtRecentFiles ?? this.cmtRecentFiles,
       bootMode: bootMode ?? this.bootMode,
       cpuType: cpuType ?? this.cpuType,
+      audioBufferSize: audioBufferSize ?? this.audioBufferSize,
       speedMultiplier: speedMultiplier ?? this.speedMultiplier,
       fullSpeed: fullSpeed ?? this.fullSpeed,
       optionSwitches: optionSwitches ?? this.optionSwitches,

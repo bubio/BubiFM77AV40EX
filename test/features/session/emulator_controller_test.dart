@@ -60,6 +60,7 @@ void main() {
           required String homeDir,
           String? romDir,
           BootMode bootMode = BootMode.basic,
+          AudioBufferSize audioBufferSize = AudioBufferSize.ms50,
         }) => session,
       ),
     );
@@ -86,6 +87,7 @@ void main() {
               required String homeDir,
               String? romDir,
               BootMode bootMode = BootMode.basic,
+              AudioBufferSize audioBufferSize = AudioBufferSize.ms50,
             }) => restartSession,
           ),
         );
@@ -490,6 +492,7 @@ void main() {
                 required String homeDir,
                 String? romDir,
                 BootMode bootMode = BootMode.basic,
+                AudioBufferSize audioBufferSize = AudioBufferSize.ms50,
               }) => liveSession,
             ),
           );
@@ -542,6 +545,7 @@ void main() {
                 required String homeDir,
                 String? romDir,
                 BootMode bootMode = BootMode.basic,
+                AudioBufferSize audioBufferSize = AudioBufferSize.ms50,
               }) => liveSession,
             ),
           );
@@ -586,6 +590,7 @@ void main() {
                 required String homeDir,
                 String? romDir,
                 BootMode bootMode = BootMode.basic,
+                AudioBufferSize audioBufferSize = AudioBufferSize.ms50,
               }) => liveSession,
             ),
           );
@@ -1460,6 +1465,7 @@ void main() {
                 required String homeDir,
                 String? romDir,
                 BootMode bootMode = BootMode.basic,
+                AudioBufferSize audioBufferSize = AudioBufferSize.ms50,
               }) => fpsSession,
             ),
           );

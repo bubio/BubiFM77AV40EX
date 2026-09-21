@@ -49,6 +49,7 @@ void main() {
               required String homeDir,
               String? romDir,
               BootMode bootMode = BootMode.basic,
+              AudioBufferSize audioBufferSize = AudioBufferSize.ms50,
             }) => session,
           ),
         ),

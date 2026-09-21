@@ -277,6 +277,8 @@ class _HomeState extends ConsumerState<_Home> {
       fddMechanicalSoundEnabled: emulator.fddMechanicalSoundEnabled,
       onFddMechanicalSoundEnabledChanged:
           emulatorController.setFddMechanicalSoundEnabled,
+      audioBufferSize: emulator.audioBufferSize,
+      onAudioBufferSizeChanged: emulatorController.setAudioBufferSize,
       isAutoKeying: emulator.isAutoKeying,
       onStartAutoKey: emulatorController.startAutoKey,
       onStopAutoKey: emulatorController.stopAutoKey,

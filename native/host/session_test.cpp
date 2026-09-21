@@ -55,13 +55,15 @@ void group(const char* name)
 std::string g_home;
 
 bfm_session* make_session(const char* home = nullptr, uint32_t command_capacity = 0,
-                          uint32_t event_capacity = 0, const char* rom_dir = nullptr)
+                          uint32_t event_capacity = 0, const char* rom_dir = nullptr,
+                          int32_t audio_latency = BFM_AUDIO_LATENCY_50MS)
 {
 	bfm_create_options options{};
 	options.home_dir = (home != nullptr) ? home : g_home.c_str();
 	options.rom_dir = rom_dir;
 	options.command_queue_capacity = command_capacity;
 	options.event_queue_capacity = event_capacity;
+	options.audio_latency = audio_latency;
 
 	bfm_session* session = nullptr;
 	if (bfm_create(&options, &session) != BFM_OK) {
@@ -1372,6 +1374,47 @@ void test_input()
 void test_audio()
 {
 	group("音声");
+
+	{
+		bfm_create_options options{};
+		options.home_dir = g_home.c_str();
+		options.audio_latency = -1;
+		bfm_session* invalid = nullptr;
+		check(bfm_create(&options, &invalid) == BFM_ERR_INVALID_ARGUMENT,
+		      "audio_latencyが範囲外（負）なら invalidArgument");
+		options.audio_latency = BFM_AUDIO_LATENCY_300MS + 1;
+		check(bfm_create(&options, &invalid) == BFM_ERR_INVALID_ARGUMENT,
+		      "audio_latencyが範囲外（超過）なら invalidArgument");
+	}
+
+	// 「オーディオバッファ」設定（Host > Sound）を既定以外にしても、
+	// フォーマットとPCM生成そのものは変わらない（design.md 7）。
+	{
+		bfm_session* wide = make_session(nullptr, 0, 0, nullptr,
+		                                 BFM_AUDIO_LATENCY_200MS);
+		check(wide != nullptr, "audio_latency=200msでも生成できる");
+		if (wide != nullptr) {
+			uint32_t sample_rate = 0;
+			uint32_t channels = 0;
+			check(bfm_get_audio_format(wide, &sample_rate, &channels) == BFM_OK
+			          && sample_rate == 48000 && channels == 2,
+			      "audio_latencyを変えてもフォーマットは48kHz/ステレオ固定");
+			bfm_start(wide);
+			check(wait_for_state(wide, BFM_STATE_RUNNING, 5000),
+			      "audio_latency=200msでも running へ遷移する");
+			std::vector<int16_t> wide_buffer(9600 * 2, 0);
+			for (int i = 0; i < 10; ++i) {
+				bfm_read_audio(wide, wide_buffer.data(), 1920);
+				std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			}
+			bfm_stats wide_stats{};
+			check(bfm_get_stats(wide, &wide_stats) == BFM_OK
+			          && wide_stats.audio_frames_produced > 0,
+			      "audio_latency=200msでもコアがPCMを生成している");
+			bfm_stop(wide);
+			bfm_destroy(wide);
+		}
+	}
 
 	bfm_session* session = make_session();
 	if (session == nullptr) {

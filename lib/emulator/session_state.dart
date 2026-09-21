@@ -38,6 +38,25 @@ enum BootMode {
   dos,
 }
 
+/// オーディオバッファ（design.md 7、Host > Sound）。
+///
+/// コアが起動時（`EMU`のコンストラクタ）に1度だけ読むため、変更は次回の
+/// セッション起動（アプリの再起動、またはセッションの作り直し）まで
+/// 反映されない。
+enum AudioBufferSize {
+  /// 50ms（既定）。
+  ms50,
+
+  /// 100ms。
+  ms100,
+
+  /// 200ms。
+  ms200,
+
+  /// 300ms。
+  ms300,
+}
+
 /// CPU種別（specification.md SYS-05）。
 ///
 /// コアの`update_config()`が読み直すため、選択すると即座に切り替わる。

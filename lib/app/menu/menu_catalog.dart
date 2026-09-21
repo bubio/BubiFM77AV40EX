@@ -88,6 +88,8 @@ List<MenuGroup> buildMenuCatalog({
   required void Function(bool enabled) onCursorToNumpadChanged,
   required bool fddMechanicalSoundEnabled,
   required void Function(bool enabled) onFddMechanicalSoundEnabledChanged,
+  required AudioBufferSize audioBufferSize,
+  required void Function(AudioBufferSize size) onAudioBufferSizeChanged,
   required bool isAutoKeying,
   required void Function() onStartAutoKey,
   required void Function() onStopAutoKey,
@@ -582,6 +584,30 @@ List<MenuGroup> buildMenuCatalog({
               label: l10n.hostSoundVolume,
               enabled: true,
               onSelected: onOpenSoundVolume,
+            ),
+            MenuRadioGroup<AudioBufferSize>(
+              'host.sound.audioBufferSize',
+              label: l10n.hostSoundAudioBufferSize,
+              groupValue: audioBufferSize,
+              options: [
+                MenuRadioOption(
+                  value: AudioBufferSize.ms50,
+                  label: l10n.hostSoundAudioBufferSize50,
+                ),
+                MenuRadioOption(
+                  value: AudioBufferSize.ms100,
+                  label: l10n.hostSoundAudioBufferSize100,
+                ),
+                MenuRadioOption(
+                  value: AudioBufferSize.ms200,
+                  label: l10n.hostSoundAudioBufferSize200,
+                ),
+                MenuRadioOption(
+                  value: AudioBufferSize.ms300,
+                  label: l10n.hostSoundAudioBufferSize300,
+                ),
+              ],
+              onChanged: onAudioBufferSizeChanged,
             ),
           ],
         ),

@@ -62,6 +62,8 @@ void main() {
     void Function(bool enabled)? onCursorToNumpadChanged,
     bool fddMechanicalSoundEnabled = true,
     void Function(bool enabled)? onFddMechanicalSoundEnabledChanged,
+    AudioBufferSize audioBufferSize = AudioBufferSize.ms50,
+    void Function(AudioBufferSize size)? onAudioBufferSizeChanged,
     bool isAutoKeying = false,
     void Function()? onStartAutoKey,
     void Function()? onStopAutoKey,
@@ -144,6 +146,8 @@ void main() {
       fddMechanicalSoundEnabled: fddMechanicalSoundEnabled,
       onFddMechanicalSoundEnabledChanged:
           onFddMechanicalSoundEnabledChanged ?? (_) {},
+      audioBufferSize: audioBufferSize,
+      onAudioBufferSizeChanged: onAudioBufferSizeChanged ?? (_) {},
       isAutoKeying: isAutoKeying,
       onStartAutoKey: onStartAutoKey ?? () {},
       onStopAutoKey: onStopAutoKey ?? () {},
@@ -636,12 +640,12 @@ void main() {
     expect(unchecked.checked, isFalse);
   });
 
-  test('Host > Sound: FDD Mechanism Sound、CMT Noise/Signal/Voice、Volumeの順'
-      '（Bubilator88準拠でDeviceから移動、AUD-07統合）', () {
+  test('Host > Sound: FDD Mechanism Sound、CMT Noise/Signal/Voice、Volume、'
+      'オーディオバッファの順（Bubilator88準拠でDeviceから移動、AUD-07統合）', () {
     final sound =
         catalog().firstWhere((g) => g.id == MenuGroupId.host).entries[5]
             as MenuSubmenu;
-    expect(sound.entries, hasLength(5));
+    expect(sound.entries, hasLength(6));
     final fddMechanismEnabled = sound.entries[0] as MenuCheckbox;
     expect(fddMechanismEnabled.id, 'host.sound.fddMechanismEnabled');
     final cmtNoise = sound.entries[1] as MenuCheckbox;
@@ -652,6 +656,22 @@ void main() {
     expect(cmtVoice.id, 'device.sound.cmtVoice');
     final volume = sound.entries[4] as MenuAction;
     expect(volume.id, 'host.sound.volume');
+    final audioBufferSize = sound.entries[5] as MenuRadioGroup<AudioBufferSize>;
+    expect(audioBufferSize.id, 'host.sound.audioBufferSize');
+  });
+
+  test('Host > Sound > オーディオバッファは選択値に従いonAudioBufferSizeChangedを呼ぶ', () {
+    AudioBufferSize? changed;
+    final sound =
+        catalog(
+              audioBufferSize: AudioBufferSize.ms200,
+              onAudioBufferSizeChanged: (size) => changed = size,
+            ).firstWhere((g) => g.id == MenuGroupId.host).entries[5]
+            as MenuSubmenu;
+    final audioBufferSize = sound.entries[5] as MenuRadioGroup<AudioBufferSize>;
+    expect(audioBufferSize.groupValue, AudioBufferSize.ms200);
+    audioBufferSize.onChanged(AudioBufferSize.ms300);
+    expect(changed, AudioBufferSize.ms300);
   });
 
   test(
