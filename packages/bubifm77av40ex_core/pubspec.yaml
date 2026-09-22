@@ -34,3 +34,7 @@ flutter:
       # プロセス内のコアを1つに保つ。
       windows:
         pluginClass: BubiFm77Av40ExCorePluginCApi
+      # LinuxもWindowsと同じく、コアをプラグイン自身の共有ライブラリへ
+      # 静的に取り込み、Dartもその共有ライブラリを開く（M6）。
+      linux:
+        pluginClass: BubiFm77Av40ExCorePlugin

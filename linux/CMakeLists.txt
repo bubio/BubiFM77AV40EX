@@ -70,6 +70,13 @@ set_target_properties(${BINARY_NAME}
 )
 
 
+# flutter_soloud は既定で同梱のOpus/Ogg/Vorbis/FLACをリンクするが、同梱物は
+# x86-64専用でarm64ではリンクできない。アプリはコアのPCM（s16le）を
+# バッファーストリームで流すだけでこれらのコーデックを使わないため、
+# 全アーキテクチャでリンクしない（lib/platform/core_ffi/bubi_audio_sink.dart）。
+# 環境変数で判定されるため、ここで設定して flutter run/build の両方に効かせる。
+set(ENV{NO_XIPH_LIBS} 1)
+
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
 include(flutter/generated_plugins.cmake)
