@@ -43,14 +43,35 @@ void main() {
   // （`CircularProgressIndicator`のような常時アニメーションが無くても
   // Futureそのものが解決しない）。`runAsync`のコールバック内でtap/pumpまで
   // 行うことで、実I/Oを実イベントループ上で完了させてから描画を反映する。
-  Future<void> tapAndWaitRealIo(WidgetTester tester, String key) async {
+  //
+  // 固定時間の待機だけでは、全テストを並列実行して負荷が高いときに実I/Oが
+  // 間に合わず失敗する。[until]を渡した場合はそれが満たされるまで（上限
+  // 付きで）待つ。渡さない場合は「何も起きないこと」の確認用に一定時間待つ。
+  Future<void> tapAndWaitRealIo(
+    WidgetTester tester,
+    String key, {
+    bool Function()? until,
+  }) async {
     await tester.runAsync(() async {
       await tester.tap(find.byKey(Key(key)));
       await tester.pump();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      if (until == null) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        return;
+      }
+      for (var i = 0; i < 250 && !until(); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await tester.pump();
+      }
     });
     await tester.pump();
   }
+
+  // ダイアログはスロット一覧を実I/Oで読んでからセルを描くため、セルの
+  // 出現をもって開き終わったとみなす。
+  bool slotsLoaded() =>
+      find.byKey(const Key('stateSlotCell_0')).evaluate().isNotEmpty;
+  bool dialogClosed() => find.byType(StateSlotDialog).evaluate().isEmpty;
 
   Future<ProviderContainer> wrap(
     WidgetTester tester,
@@ -109,7 +130,7 @@ void main() {
         ),
       ),
     );
-    await tapAndWaitRealIo(tester, 'openStateSlotDialog');
+    await tapAndWaitRealIo(tester, 'openStateSlotDialog', until: slotsLoaded);
     return container;
   }
 
@@ -149,7 +170,7 @@ void main() {
     writeSlot(4, diskNames: ['GAME.D88']);
 
     final container = await wrap(tester, StateSlotDialogMode.load);
-    await tapAndWaitRealIo(tester, 'stateSlotCell_4');
+    await tapAndWaitRealIo(tester, 'stateSlotCell_4', until: dialogClosed);
 
     expect(session.loadStateCalls, ['${tempDir.path}/slot-4/state.bin']);
     expect(find.byType(StateSlotDialog), findsNothing);
@@ -159,7 +180,7 @@ void main() {
   testWidgets('Saveモードでセルをタップすると保存してダイアログを閉じる', (tester) async {
     final container = await wrap(tester, StateSlotDialogMode.save);
 
-    await tapAndWaitRealIo(tester, 'stateSlotCell_2');
+    await tapAndWaitRealIo(tester, 'stateSlotCell_2', until: dialogClosed);
 
     expect(session.saveStateCalls, ['${tempDir.path}/slot-2/state.bin']);
     expect(find.byType(StateSlotDialog), findsNothing);
@@ -169,7 +190,11 @@ void main() {
   testWidgets('Cancelボタンは何もせずダイアログを閉じる', (tester) async {
     final container = await wrap(tester, StateSlotDialogMode.save);
 
-    await tapAndWaitRealIo(tester, 'stateSlotDialogCancel');
+    await tapAndWaitRealIo(
+      tester,
+      'stateSlotDialogCancel',
+      until: dialogClosed,
+    );
 
     expect(session.saveStateCalls, isEmpty);
     expect(session.loadStateCalls, isEmpty);
