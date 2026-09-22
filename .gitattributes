@@ -1,0 +1,12 @@
+# 改行コードはOSやcore.autocrlfの設定に関わらずLFへ固定する。
+# Flutterのツールが生成するファイル（windows/flutter/generated_*など）は
+# Windowsでも常にLFで書かれるため、作業ツリーをCRLFにすると内容が同じでも
+# 変更ありと表示される。
+* text=auto eol=lf
+
+# Windowsのバッチファイルは改行がCRLFでないと正しく動かない。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.ico binary
