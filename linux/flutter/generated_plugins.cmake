@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   bubifm77av40ex_core
+  bubifm77av40ex_platform
   file_selector_linux
   gamepads_linux
   screen_retriever_linux

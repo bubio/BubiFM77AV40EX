@@ -33,3 +33,7 @@ flutter:
       # 指定するAPIがないための自前実装（design.mdへ理由を記録）。
       windows:
         pluginClass: BubiFm77Av40ExPlatformPlugin
+      # Windowsと同じチャンネル。GTKのヘッダーバーの有無で`window_manager`の
+      # 換算がずれるため、Flutterの描画面の大きさを直接扱う。
+      linux:
+        pluginClass: BubiFm77Av40ExPlatformPlugin

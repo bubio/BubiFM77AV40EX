@@ -17,17 +17,24 @@ import 'window_scale.dart';
 /// `getSize`/`setSize`はWindowsではタイトルバーに加え、見た目には出ない
 /// 左右下のリサイズ枠まで含む外形を扱い、これを求める公開APIがない
 /// （macOSは`NSWindow.setContentSize:`があるため`window_manager`だけで
-/// 足りる）。そのためWindowsだけ[WindowContentSizeChannel]（Win32の
+/// 足りる）。そのためWindowsは[WindowContentSizeChannel]（Win32の
 /// `AdjustWindowRectExForDpi`を使う自前実装）へ委譲する（design.md
 /// 「x1ウィンドウの大きさの調査」、利用者からの報告：「Windowsでx1が
 /// 624x389になる」）。
+///
+/// Linuxも同じチャンネルへ委譲する。`window_manager`はタイトルバー
+/// （GTKのヘッダーバー）の高さを足し引きして換算するが、ウィンドウの
+/// 大きさにヘッダーバーが含まれるかは装飾の方式で変わり、x1のゲスト画面が
+/// 640x447になった（利用者からの報告）。ネイティブ側はFlutterの描画面
+/// （FlView）の実際の大きさを扱う。
 class OsWindowScale implements WindowScale {
   OsWindowScale({this.windowContentSize = const WindowContentSizeChannel()}) {
     if (_supported) {
       windowManager.addListener(_listener);
-      if (Platform.isWindows) {
-        // Windowsではネイティブ側のWM_SIZE通知（正確なクライアント領域の
-        // サイズ付き）をそのまま公開窓口へ橋渡しする。
+      if (_usesContentSizeChannel) {
+        // ネイティブ側の通知（WindowsはWM_SIZE、LinuxはFlViewの
+        // size-allocate。正確な内容領域のサイズ付き）をそのまま公開窓口へ
+        // 橋渡しする。
         windowContentSize.contentSizeChanges.listen(_controller.add);
       }
     }
@@ -38,13 +45,17 @@ class OsWindowScale implements WindowScale {
   static bool get _supported =>
       Platform.isMacOS || Platform.isLinux || Platform.isWindows;
 
+  /// 内容領域の操作を[windowContentSize]へ委譲するOS。
+  static bool get _usesContentSizeChannel =>
+      Platform.isWindows || Platform.isLinux;
+
   final _controller = StreamController<Size>.broadcast();
   late final _listener = _WindowResizeListener(onResized: _emitCurrentSize);
 
   Future<void> _emitCurrentSize() async {
-    if (Platform.isWindows) {
-      // Windowsでは[windowContentSize.contentSizeChanges]（ネイティブの
-      // WM_SIZE）から直接届くため、window_managerの通知はここでは使わない。
+    if (_usesContentSizeChannel) {
+      // [windowContentSize.contentSizeChanges]（ネイティブの通知）から
+      // 直接届くため、window_managerの通知はここでは使わない。
       return;
     }
     _controller.add(await getContentSize());
@@ -55,7 +66,7 @@ class OsWindowScale implements WindowScale {
 
   @override
   Future<Size> getContentSize() {
-    if (Platform.isWindows) {
+    if (_usesContentSizeChannel) {
       return windowContentSize.getContentSize();
     }
     return _getContentSizeViaWindowManager();
@@ -73,7 +84,7 @@ class OsWindowScale implements WindowScale {
 
   @override
   Future<void> setContentSize(Size size) async {
-    if (Platform.isWindows) {
+    if (_usesContentSizeChannel) {
       await windowContentSize.setContentSize(size);
       return;
     }
@@ -86,7 +97,7 @@ class OsWindowScale implements WindowScale {
 
   @override
   Future<void> setMinimumContentSize(Size size) async {
-    if (Platform.isWindows) {
+    if (_usesContentSizeChannel) {
       await windowContentSize.setMinimumContentSize(size);
       return;
     }
