@@ -652,31 +652,25 @@ List<MenuGroup> buildMenuCatalog({
           checked: showStatusBar,
           onChanged: onShowStatusBarChanged,
         ),
-        MenuSubmenu(
+        MenuRadioGroup<AppLocaleMode>(
           'host.language',
           label: l10n.menuHostLanguage,
-          entries: [
-            MenuRadioGroup<AppLocaleMode>(
-              'host.language.mode',
-              label: '',
-              groupValue: localeMode,
-              options: [
-                MenuRadioOption(
-                  value: AppLocaleMode.system,
-                  label: l10n.menuLanguageSystem,
-                ),
-                MenuRadioOption(
-                  value: AppLocaleMode.english,
-                  label: l10n.menuLanguageEnglish,
-                ),
-                MenuRadioOption(
-                  value: AppLocaleMode.japanese,
-                  label: l10n.menuLanguageJapanese,
-                ),
-              ],
-              onChanged: onLocaleModeChanged,
+          groupValue: localeMode,
+          options: [
+            MenuRadioOption(
+              value: AppLocaleMode.system,
+              label: l10n.menuLanguageSystem,
+            ),
+            MenuRadioOption(
+              value: AppLocaleMode.english,
+              label: l10n.menuLanguageEnglish,
+            ),
+            MenuRadioOption(
+              value: AppLocaleMode.japanese,
+              label: l10n.menuLanguageJapanese,
             ),
           ],
+          onChanged: onLocaleModeChanged,
         ),
       ],
     ),

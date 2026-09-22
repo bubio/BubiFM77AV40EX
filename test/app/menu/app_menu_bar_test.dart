@@ -275,7 +275,7 @@ void main() {
     expect(changedTo, isTrue);
   });
 
-  testWidgets('Host > Language > System > Englishで選択が伝わる', (tester) async {
+  testWidgets('Host > Language > Englishで選択が伝わる', (tester) async {
     AppLocaleMode? changedTo;
 
     final groups = buildCatalog(
@@ -292,10 +292,6 @@ void main() {
     await tester.tap(find.text('Host'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Language'));
-    await tester.pumpAndSettle();
-    // ラジオ群のlabelは空のため、サブメニューの表示名は現在の選択値
-    // （既定はSystem）になる（design.md 12.3、menu_catalog.dart）。
-    await tester.tap(find.text('System'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('English'));
     await tester.pumpAndSettle();

@@ -647,7 +647,11 @@ void main() {
     );
     expect(
       entries[9],
-      isA<MenuSubmenu>().having((e) => e.id, 'id', 'host.language'),
+      isA<MenuRadioGroup<AppLocaleMode>>().having(
+        (e) => e.id,
+        'id',
+        'host.language',
+      ),
     );
   });
 
@@ -863,8 +867,7 @@ void main() {
 
   test('Host > Languageのラジオはsystem/english/japaneseの順', () {
     final host = catalog().firstWhere((g) => g.id == MenuGroupId.host).entries;
-    final language = host[9] as MenuSubmenu;
-    final mode = language.entries.single as MenuRadioGroup<AppLocaleMode>;
+    final mode = host[9] as MenuRadioGroup<AppLocaleMode>;
     expect(mode.options.map((o) => o.value), [
       AppLocaleMode.system,
       AppLocaleMode.english,
