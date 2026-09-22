@@ -28,14 +28,12 @@ import 'l10n/generated/app_localizations_ja.dart';
 import 'menu/app_menu_bar.dart';
 import 'menu/menu_catalog.dart';
 import 'menu/platform_application_menu.dart';
-import 'menu/settings_dialog.dart';
 import 'menu/sound_volume_dialog.dart';
 import 'pause_on_popup_observer.dart';
 
 /// アプリケーションのルート。
 ///
-/// macOS標準Applicationメニュー（About、Settings、Services、Hide系、
-/// Quit）は[PlatformApplicationMenu]がここで一度だけ組み立てる
+/// macOS標準Applicationメニュー（About、Services、Hide系、Quit）は[PlatformApplicationMenu]がここで一度だけ組み立てる
 /// （design.md 12.1）。`Control / Disk / Device / Host`のアプリ内メニューは
 /// [_Home]が[buildMenuCatalog]から組み立てる。featureは`app`へ依存しない
 /// （design.md 3.1）ため、カタログの組み立ては`app`側に置く。
@@ -59,7 +57,6 @@ class _BubiFm77Av40ExAppState extends ConsumerState<BubiFm77Av40ExApp> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsControllerProvider);
-    final settingsController = ref.read(settingsControllerProvider.notifier);
     final l10n = _syncLocalizationsFor(settings.localeMode);
 
     final materialApp = MaterialApp(
@@ -85,22 +82,6 @@ class _BubiFm77Av40ExAppState extends ConsumerState<BubiFm77Av40ExApp> {
     }
     return PlatformApplicationMenu(
       l10n: l10n,
-      onSettings: () {
-        final dialogContext = _navigatorKey.currentContext;
-        if (dialogContext == null) {
-          return;
-        }
-        showDialog<void>(
-          context: dialogContext,
-          builder: (context) => SettingsDialog(
-            l10n: AppLocalizations.of(context),
-            localeMode: settings.localeMode,
-            onLocaleModeChanged: settingsController.setLocaleMode,
-            masterVolume: settings.masterVolume,
-            onMasterVolumeChanged: settingsController.setMasterVolume,
-          ),
-        );
-      },
       onQuit: () async {
         await ref.read(emulatorControllerProvider.notifier).shutdown();
         exit(0);
@@ -239,6 +220,13 @@ class _HomeState extends ConsumerState<_Home> {
     // JoystickAssignmentControllerはコアを知らず、EmulatorControllerも
     // 物理コントローラーを知らないため、他のcontroller間連携
     // （_syncWithRomSettings）と同じくここで橋渡しする（design.md 3.1）。
+    // マスター音量（ステータスバーのスライダー）の変更をコアの音声出力へ
+    // 転送する。起動時の初期値は_syncWithRomSettingsがlaunch前に渡す。
+    ref.listen(
+      settingsControllerProvider.select((s) => s.masterVolume),
+      (previous, next) => emulatorController.setVolume(next),
+    );
+
     ref.listen(joystickAssignmentControllerProvider, (previous, next) {
       for (final entry in next.bits.entries) {
         if (previous?.bits[entry.key] != entry.value) {
@@ -360,6 +348,8 @@ class _HomeState extends ConsumerState<_Home> {
           _applyCliRuntimeOverrides(controller, cli);
         }
         final bootMode = cli.bootMode ?? next.bootMode;
+        // 保存済みのマスター音量を最初の音から効かせる。
+        controller.setVolume(ref.read(settingsControllerProvider).masterVolume);
         unawaited(
           controller.launch(bootMode: bootMode).then((_) {
             if (mounted) {
@@ -470,10 +460,9 @@ class _HomeState extends ConsumerState<_Home> {
 
   /// 標準音声チャンネルの音量ダイアログを開く（AUD-03、AUD-07統合）。
   ///
-  /// [SettingsDialog]（マスター音量）と同じく、開いた時点の値を渡すだけの
-  /// `StatelessWidget`にする。スライダーを動かすたびに`_HomeState`が
-  /// 再構築されても、すでに開いているダイアログ自体は作り直さない
-  /// （design.md 12.3、既存のマスター音量ダイアログと同じ制約）。
+  /// 開いた時点の値を渡すだけの`StatelessWidget`にする。スライダーを
+  /// 動かすたびに`_HomeState`が再構築されても、すでに開いているダイアログ
+  /// 自体は作り直さない（design.md 12.3）。
   void _openSoundVolumeDialog() {
     final controller = ref.read(emulatorControllerProvider.notifier);
     showDialog<void>(

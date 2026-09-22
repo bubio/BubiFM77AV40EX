@@ -87,6 +87,9 @@ class EmulatorView extends ConsumerWidget {
                 state: state,
                 l10n: l10n,
                 masterVolume: settings.masterVolume,
+                onMasterVolumeChanged: ref
+                    .read(settingsControllerProvider.notifier)
+                    .setMasterVolume,
               ),
           ],
         ),

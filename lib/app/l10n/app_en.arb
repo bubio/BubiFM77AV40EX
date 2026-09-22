@@ -498,20 +498,12 @@
   },
   "menuLanguageEnglish": "English",
   "menuLanguageJapanese": "日本語",
-  "menuAppSettings": "Settings…",
-  "@menuAppSettings": {
-    "description": "Application menu item that opens the settings dialog."
-  },
   "menuAppQuit": "Quit BubiFM77AV40EX",
   "@menuAppQuit": {
     "description": "Application menu item that shuts down and exits."
   },
-  "settingsMasterVolume": "Master volume",
-  "@settingsMasterVolume": {
-    "description": "Label for the master volume slider in the settings dialog."
-  },
   "settingsClose": "Close",
   "@settingsClose": {
-    "description": "Button that closes the settings dialog."
+    "description": "Button that closes a dialog."
   }
 }

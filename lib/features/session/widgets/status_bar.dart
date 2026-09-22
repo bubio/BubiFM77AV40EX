@@ -25,6 +25,7 @@ class StatusBar extends StatelessWidget {
     required this.state,
     required this.l10n,
     required this.masterVolume,
+    required this.onMasterVolumeChanged,
   });
 
   final EmulatorViewState state;
@@ -33,11 +34,19 @@ class StatusBar extends StatelessWidget {
   /// 0.0〜1.0（design.md 12.4）。
   final double masterVolume;
 
+  /// ステータスバーのスライダーでマスター音量を変えたときに呼ぶ。
+  final ValueChanged<double> onMasterVolumeChanged;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final textStyle = theme.textTheme.labelSmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
+    );
+    // 毎秒変わるFPSや音量の%は、数字ごとの字幅差で位置が揺れないよう
+    // 等幅数字にする。
+    final fpsStyle = textStyle?.copyWith(
+      fontFeatures: const [FontFeature.tabularFigures()],
     );
     return Container(
       height: statusBarHeight,
@@ -63,9 +72,13 @@ class StatusBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Text(
-            l10n.statusMasterVolume((masterVolume * 100).round()),
-            style: textStyle,
+          _VolumeControl(
+            volume: masterVolume,
+            semanticsLabel: l10n.statusMasterVolume(
+              (masterVolume * 100).round(),
+            ),
+            onChanged: onMasterVolumeChanged,
+            textStyle: fpsStyle,
           ),
           const SizedBox(width: 14),
           _LedChip(label: l10n.ledInsert, lit: state.ledState.insert),
@@ -81,9 +94,15 @@ class StatusBar extends StatelessWidget {
             style: textStyle,
           ),
           const SizedBox(width: 10),
-          Text(l10n.statusViewFps(state.viewFps.round()), style: textStyle),
+          GrowOnlyText(
+            l10n.statusViewFps(state.viewFps.round()),
+            style: fpsStyle,
+          ),
           const SizedBox(width: 10),
-          Text(l10n.statusCoreFps(state.coreFps.round()), style: textStyle),
+          GrowOnlyText(
+            l10n.statusCoreFps(state.coreFps.round()),
+            style: fpsStyle,
+          ),
         ],
       ),
     );
@@ -171,6 +190,110 @@ class _CmtIndicator extends StatelessWidget {
   }
 }
 
+/// 表示幅をこれまでの最大幅より縮めない右寄せテキスト。
+///
+/// 右寄せ行の末尾にある値（FPSなど）の桁数が一時的に減ると、行全体が
+/// 左右に揺れる。固定幅を決め打ちせず、実際に表示した最大幅だけを
+/// 保持して桁の増減による位置ずれを抑える。
+class GrowOnlyText extends StatefulWidget {
+  const GrowOnlyText(this.text, {super.key, this.style});
+
+  final String text;
+  final TextStyle? style;
+
+  @override
+  State<GrowOnlyText> createState() => _GrowOnlyTextState();
+}
+
+class _GrowOnlyTextState extends State<GrowOnlyText> {
+  double _maxWidth = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: widget.text,
+        style: DefaultTextStyle.of(context).style.merge(widget.style),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final width = painter.width.ceilToDouble();
+    painter.dispose();
+    if (width > _maxWidth) {
+      _maxWidth = width;
+    }
+    return SizedBox(
+      width: _maxWidth,
+      child: Text(
+        widget.text,
+        style: widget.style,
+        textAlign: TextAlign.right,
+        maxLines: 1,
+        softWrap: false,
+      ),
+    );
+  }
+}
+
+/// マスター音量のスライダー（design.md 12.4）。
+///
+/// 音量はSoLoudのグローバル音量としてかかり、コアPCMとFDD機構音の
+/// 両方を含むアプリ全体の出力に効く。高さ[statusBarHeight]に収まるよう、
+/// トラックとつまみを小さくしてoverlayを出さない。
+class _VolumeControl extends StatelessWidget {
+  const _VolumeControl({
+    required this.volume,
+    required this.semanticsLabel,
+    required this.onChanged,
+    required this.textStyle,
+  });
+
+  final double volume;
+  final String semanticsLabel;
+  final ValueChanged<double> onChanged;
+  final TextStyle? textStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          volume == 0 ? Icons.volume_off : Icons.volume_up,
+          size: 14,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        SizedBox(
+          width: 96,
+          height: statusBarHeight,
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 2,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+              overlayShape: SliderComponentShape.noOverlay,
+            ),
+            child: Slider(
+              key: const Key('statusMasterVolumeSlider'),
+              value: volume,
+              onChanged: onChanged,
+              semanticFormatterCallback: (_) => semanticsLabel,
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        GrowOnlyText('${(volume * 100).round()}%', style: textStyle),
+      ],
+    );
+  }
+}
+
+/// INS/KANA/CAPSのLED表示。
+///
+/// 点灯中は太字にするが、太字と通常とで字幅が違うため、見えない太字の
+/// ラベルを重ねて常に太字の幅を確保し、点灯の切り替えで周囲を動かさない。
 class _LedChip extends StatelessWidget {
   const _LedChip({required this.label, required this.lit});
 
@@ -180,12 +303,25 @@ class _LedChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Text(
-      label,
-      style: theme.textTheme.labelSmall?.copyWith(
-        color: lit ? theme.colorScheme.primary : theme.disabledColor,
-        fontWeight: lit ? FontWeight.bold : FontWeight.normal,
-      ),
+    final style = theme.textTheme.labelSmall;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Opacity(
+          opacity: 0,
+          child: Text(
+            label,
+            style: style?.copyWith(fontWeight: FontWeight.bold),
+          ),
+        ),
+        Text(
+          label,
+          style: style?.copyWith(
+            color: lit ? theme.colorScheme.primary : theme.disabledColor,
+            fontWeight: lit ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ],
     );
   }
 }
