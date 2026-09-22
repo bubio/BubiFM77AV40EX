@@ -54,7 +54,7 @@
   "statusCmt": "CMT : {message}",
   "statusMasterVolume": "音量 {percent}%",
   "menuControl": "Control",
-  "menuControlSpecialReset": "特殊リセット（BREAK）",
+  "menuControlSpecialReset": "ホットリセット（BREAK+RESET）",
   "menuControlSpeed": "CPU速度",
   "menuControlFullSpeed": "フルスピード",
   "controlPaste": "貼り付け",

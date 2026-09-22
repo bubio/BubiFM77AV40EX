@@ -216,9 +216,9 @@
   "@menuControl": {
     "description": "In-app menu group: VM execution, reset, boot mode."
   },
-  "menuControlSpecialReset": "Special Reset (BREAK)",
+  "menuControlSpecialReset": "Hot Reset (BREAK+RESET)",
   "@menuControlSpecialReset": {
-    "description": "Control menu item that resets with BREAK held."
+    "description": "Control menu item that performs a hot reset (F-BASIC warm start) by resetting with BREAK held."
   },
   "menuControlSpeed": "CPU Speed",
   "@menuControlSpeed": {

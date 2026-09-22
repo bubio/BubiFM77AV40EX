@@ -23,7 +23,7 @@ enum ResetKind {
   /// 通常リセット。
   normal,
 
-  /// BREAK付き特殊リセット。
+  /// BREAKを押したままのホットリセット（F-BASICウォームスタート）。
   special,
 }
 

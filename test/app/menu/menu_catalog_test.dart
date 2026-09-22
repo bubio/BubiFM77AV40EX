@@ -173,7 +173,7 @@ void main() {
     ]);
   });
 
-  test('Control: Reset、Special Reset、区切り、CPU Speed、Full Speed、'
+  test('Control: Reset、Hot Reset、区切り、CPU Speed、Full Speed、'
       '区切り、Paste、Stop Paste、Romaji to Kana、区切り、'
       'Save State、Load Stateの順', () {
     final entries = catalog()
