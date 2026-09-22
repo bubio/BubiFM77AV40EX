@@ -10,6 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  path_provider_windows: 2.3.0
 
 dev_dependencies:
   flutter_test:
