@@ -43,7 +43,7 @@ class StatusBar extends StatelessWidget {
     final textStyle = theme.textTheme.labelSmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
-    // 毎秒変わるFPSや音量の%は、数字ごとの字幅差で位置が揺れないよう
+    // 毎秒変わるFPSやCMTの走行位置は、数字ごとの字幅差で位置が揺れないよう
     // 等幅数字にする。
     final fpsStyle = textStyle?.copyWith(
       fontFeatures: const [FontFeature.tabularFigures()],
@@ -54,39 +54,50 @@ class StatusBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          _FddLamp(
-            label: l10n.fddDriveLabel(2),
-            lastAccessed: state.fddLastAccessed[1],
-          ),
-          const SizedBox(width: 10),
-          _FddLamp(
-            label: l10n.fddDriveLabel(1),
-            lastAccessed: state.fddLastAccessed[0],
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            flex: 8,
-            child: _CmtIndicator(
-              text: l10n.statusCmt(shortenCmtMessage(state.cmtMessage)),
-              running: state.cmtPlaying || state.cmtRecording,
+          // 左側のまとまりが残りの幅をすべて受け持ち、幅が足りないときは
+          // CMT表示だけが縮む。余った幅はまとまりの右側に空くため、
+          // 右側の起動モードとFPSは常にステータスバーの右端へ寄る。
+          Expanded(
+            child: Row(
+              children: [
+                _FddLamp(
+                  label: l10n.fddDriveLabel(2),
+                  lastAccessed: state.fddLastAccessed[1],
+                ),
+                const SizedBox(width: 10),
+                _FddLamp(
+                  label: l10n.fddDriveLabel(1),
+                  lastAccessed: state.fddLastAccessed[0],
+                ),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: _CmtIndicator(
+                    message: state.cmtMessage,
+                    fullText: l10n.statusCmt(
+                      shortenCmtMessage(state.cmtMessage),
+                    ),
+                    running: state.cmtPlaying || state.cmtRecording,
+                    textStyle: fpsStyle,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _VolumeControl(
+                  volume: masterVolume,
+                  semanticsLabel: l10n.statusMasterVolume(
+                    (masterVolume * 100).round(),
+                  ),
+                  onChanged: onMasterVolumeChanged,
+                ),
+                const SizedBox(width: 14),
+                _LedChip(label: l10n.ledInsert, lit: state.ledState.insert),
+                const SizedBox(width: 6),
+                _LedChip(label: l10n.ledKana, lit: state.ledState.kana),
+                const SizedBox(width: 6),
+                _LedChip(label: l10n.ledCaps, lit: state.ledState.caps),
+              ],
             ),
           ),
           const SizedBox(width: 10),
-          _VolumeControl(
-            volume: masterVolume,
-            semanticsLabel: l10n.statusMasterVolume(
-              (masterVolume * 100).round(),
-            ),
-            onChanged: onMasterVolumeChanged,
-            textStyle: fpsStyle,
-          ),
-          const SizedBox(width: 14),
-          _LedChip(label: l10n.ledInsert, lit: state.ledState.insert),
-          const SizedBox(width: 6),
-          _LedChip(label: l10n.ledKana, lit: state.ledState.kana),
-          const SizedBox(width: 6),
-          _LedChip(label: l10n.ledCaps, lit: state.ledState.caps),
-          const Spacer(),
           Text(
             state.bootMode == BootMode.basic
                 ? l10n.romBootModeBasic
@@ -147,45 +158,110 @@ String shortenCmtMessage(String message) => switch (message) {
   _ => message,
 };
 
+/// CMTの走行状態（upstream `DATAREC`の状態文字列の種類）。
+enum CmtTransport { stop, play, record, fastForward, fastRewind }
+
+/// コアのCMT状態文字列を走行状態と走行位置（%）に分ける。
+///
+/// upstream `DATAREC::update_event`/`event_callback`
+/// （native/core/upstream/src/vm/datarec.cpp）が生成する
+/// `Play (NN %)`/`Stop (NN %)`/`Stop`/`Record`/`Fast Forward (NN %)`/
+/// `Fast Rewind (NN %)`を対象にし、テープ端の停止は[shortenCmtMessage]で
+/// `0 %`/`100 %`へそろえてから解釈する。未知の文字列はnullを返す。
+({CmtTransport transport, int? percent})? parseCmtMessage(String message) {
+  final match = _cmtMessagePattern.firstMatch(shortenCmtMessage(message));
+  if (match == null) return null;
+  final transport = switch (match.group(1)!) {
+    'Play' => CmtTransport.play,
+    'Record' => CmtTransport.record,
+    'Fast Forward' => CmtTransport.fastForward,
+    'Fast Rewind' => CmtTransport.fastRewind,
+    _ => CmtTransport.stop,
+  };
+  final percent = match.group(2);
+  return (
+    transport: transport,
+    percent: percent == null ? null : int.parse(percent),
+  );
+}
+
+final _cmtMessagePattern = RegExp(
+  r'^(Play|Stop|Record|Fast Forward|Fast Rewind)(?: \((\d+) %\))?$',
+);
+
 /// CMT走行状態の表示（specification.md CMT-05、design.md 12.4、M4）。
 ///
-/// 原作Windows版のステータスバーと同様に「CMT : Play (3 %)」のように
-/// 状態と走行位置を1つの文字列で表示する。[text]は
-/// [EmulatorSession.getCmtStatus]の`message`（コアの
-/// `DATAREC::update_event`/`event_callback`が生成する状態文字列、
-/// native/core/upstream/src/vm/datarec.cpp）をそのまま使う。
+/// ステータスバーの幅を節約するため、「CMT ▶ 3 %」のように走行状態を
+/// アイコンで、走行位置を数字で示す。状態文字列の全文（原作Windows版の
+/// 「CMT : Play (3 %)」）はツールチップと読み上げに残す。[message]は
+/// [EmulatorSession.getCmtStatus]の`message`をそのまま受け取り、解釈
+/// できない文字列ならアイコンにせず全文を表示する。
 ///
 /// FDDのアクセスランプ（read-and-clearの一過性通知）とは性質が異なり、
 /// `playing`/`recording`は走行中ずっとtrueであり続ける継続的な状態のため、
 /// [AccessLamp]のような自前のタイムアウトは持たず、値をそのまま表示する。
 class _CmtIndicator extends StatelessWidget {
-  const _CmtIndicator({required this.text, required this.running});
+  const _CmtIndicator({
+    required this.message,
+    required this.fullText,
+    required this.running,
+    required this.textStyle,
+  });
 
-  final String text;
+  final String message;
+  final String fullText;
   final bool running;
+  final TextStyle? textStyle;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Row(
-      children: [
-        Icon(
-          Icons.circle,
-          size: 8,
-          color: running ? Colors.red : theme.disabledColor,
-        ),
-        const SizedBox(width: 4),
-        Flexible(
-          child: Text(
-            text,
-            overflow: TextOverflow.ellipsis,
-            softWrap: false,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+    final parsed = parseCmtMessage(message);
+    final color = running ? Colors.red : theme.colorScheme.onSurfaceVariant;
+    final Widget content;
+    if (parsed == null) {
+      content = Text(
+        fullText,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
+        style: textStyle,
+      );
+    } else {
+      content = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('CMT', style: textStyle),
+          const SizedBox(width: 4),
+          Icon(
+            switch (parsed.transport) {
+              CmtTransport.stop => Icons.stop,
+              CmtTransport.play => Icons.play_arrow,
+              CmtTransport.record => Icons.fiber_manual_record,
+              CmtTransport.fastForward => Icons.fast_forward,
+              CmtTransport.fastRewind => Icons.fast_rewind,
+            },
+            size: 14,
+            color: color,
           ),
-        ),
-      ],
+          if (parsed.percent case final percent?) ...[
+            const SizedBox(width: 2),
+            // 桁数が変わっても後ろの音量スライダーが動かないよう、
+            // 3桁（100 %）の幅を常に確保して右寄せにする。
+            Stack(
+              alignment: Alignment.centerRight,
+              children: [
+                Opacity(opacity: 0, child: Text('100 %', style: textStyle)),
+                Text('$percent %', style: textStyle),
+              ],
+            ),
+          ],
+        ],
+      );
+    }
+    return Tooltip(
+      message: fullText,
+      excludeFromSemantics: true,
+      child: Semantics(label: fullText, excludeSemantics: true, child: content),
     );
   }
 }
@@ -247,13 +323,11 @@ class _VolumeControl extends StatelessWidget {
     required this.volume,
     required this.semanticsLabel,
     required this.onChanged,
-    required this.textStyle,
   });
 
   final double volume;
   final String semanticsLabel;
   final ValueChanged<double> onChanged;
-  final TextStyle? textStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -267,7 +341,7 @@ class _VolumeControl extends StatelessWidget {
           color: theme.colorScheme.onSurfaceVariant,
         ),
         SizedBox(
-          width: 96,
+          width: 68,
           height: statusBarHeight,
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
@@ -283,8 +357,6 @@ class _VolumeControl extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 4),
-        GrowOnlyText('${(volume * 100).round()}%', style: textStyle),
       ],
     );
   }
