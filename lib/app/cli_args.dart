@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import '../emulator/session_state.dart';
 
@@ -249,22 +250,29 @@ CliParseResult parseCliArgs(List<String> args) {
 
 /// 相対パスの解決（プロセスの作業ディレクトリ基準）と`~`展開
 /// （specification.md 7.9）。副作用なし・ファイルI/Oなし。
+///
+/// [windows]がtrueならWindowsの規則で解決する。`C:\`や`C:/`、UNCパスを
+/// 絶対パスと認め、区切り文字を`\`へそろえる。区切り文字が混ざったままだと、
+/// 表示名（最後の`\`以降）に`/`が残り、作業領域への複製が失敗する。
 String resolveCliPath(
   String raw, {
   required String workingDirectory,
   String? homeDirectory,
+  bool windows = false,
 }) {
+  final context = p.Context(
+    style: windows ? p.Style.windows : p.Style.posix,
+    current: workingDirectory,
+  );
   var path = raw;
   if (path == '~') {
     return homeDirectory ?? path;
   }
-  if (path.startsWith('~/') && homeDirectory != null) {
-    path = '$homeDirectory${path.substring(1)}';
+  if (homeDirectory != null &&
+      (path.startsWith('~/') || (windows && path.startsWith(r'~\')))) {
+    path = context.join(homeDirectory, path.substring(2));
   }
-  if (path.startsWith('/')) {
-    return path;
-  }
-  return '$workingDirectory/$path';
+  return context.normalize(context.absolute(path));
 }
 
 /// `main()`が起動前に組み立てたCLIオプション。`app`が[buildApp]経由で

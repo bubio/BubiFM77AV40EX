@@ -59,13 +59,16 @@ void _scheduleShowWindowFallback() {
 /// ここでは検証しない（GUI起動後の挿入時にexit(3)する、既知の制約）。
 Future<CliOptions> _resolveAndValidate(CliOptions options) async {
   final workingDirectory = Directory.current.path;
-  final homeDirectory = Platform.environment['HOME'];
+  // Windowsは通常HOMEを持たないため、USERPROFILEを`~`の展開先にする。
+  final homeDirectory =
+      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
   final resolvedMedia = <CliMediaSpec>[];
   for (final spec in options.media) {
     final path = resolveCliPath(
       spec.path,
       workingDirectory: workingDirectory,
       homeDirectory: homeDirectory,
+      windows: Platform.isWindows,
     );
     if (!File(path).existsSync()) {
       stderr.writeln('Media error: file not found "${spec.path}".');

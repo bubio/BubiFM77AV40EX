@@ -52,6 +52,9 @@ dependencies:
   # 上記のウィンドウ倍率の上限を決めるための、現在のディスプレイ作業領域
   # 取得に使う（window_managerの推移的依存を明示化）。
   screen_retriever: 0.2.2
+  # CLI（APP-05）の媒体パスをOSごとの規則（Windowsのドライブ名や区切り
+  # 文字）で解決する（Dart SDK公式チームのパッケージ、推移的依存の明示化）。
+  path: 1.9.1
 
 dev_dependencies:
   flutter_test:

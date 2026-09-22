@@ -148,5 +148,60 @@ void main() {
         '/home/user/Disks/game.d88',
       );
     });
+
+    test('Windowsのドライブ付き絶対パスは作業ディレクトリを前置しない', () {
+      expect(
+        resolveCliPath(
+          r'E:\roms\イース\Ys (Disk A).d77',
+          workingDirectory: r'C:\Users\user\work',
+          windows: true,
+        ),
+        r'E:\roms\イース\Ys (Disk A).d77',
+      );
+      expect(
+        resolveCliPath(
+          'E:/roms/game.d77',
+          workingDirectory: r'C:\Users\user\work',
+          windows: true,
+        ),
+        r'E:\roms\game.d77',
+      );
+    });
+
+    test('WindowsのUNCパスは絶対パスとして扱う', () {
+      expect(
+        resolveCliPath(
+          r'\\server\share\game.d77',
+          workingDirectory: r'C:\Users\user\work',
+          windows: true,
+        ),
+        r'\\server\share\game.d77',
+      );
+    });
+
+    test('Windowsの相対パスは区切り文字を\\へそろえて解決する', () {
+      expect(
+        resolveCliPath(
+          'disks/game.d77',
+          workingDirectory: r'C:\Users\user\work',
+          windows: true,
+        ),
+        r'C:\Users\user\work\disks\game.d77',
+      );
+    });
+
+    test('Windowsでも~と~\\はホームディレクトリへ展開する', () {
+      for (final raw in [r'~\Disks\game.d77', '~/Disks/game.d77']) {
+        expect(
+          resolveCliPath(
+            raw,
+            workingDirectory: r'C:\Users\user\work',
+            homeDirectory: r'C:\Users\user',
+            windows: true,
+          ),
+          r'C:\Users\user\Disks\game.d77',
+        );
+      }
+    });
   });
 }
