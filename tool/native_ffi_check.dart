@@ -293,6 +293,10 @@ Future<void> _checkEmulatorSession(
     '範囲外のジョイスティックindexはinvalidArgumentで拒否される（INP-04）',
   );
 
+  session.setPaused(true);
+  session.setPaused(false);
+  check(true, '一時停止・再開を投入できる（bfm_set_paused）');
+
   Future<CommandCompleted?> waitForCompletion(int commandId) async {
     for (var waited = 0; waited < 500; waited++) {
       await Future<void>.delayed(const Duration(milliseconds: 10));

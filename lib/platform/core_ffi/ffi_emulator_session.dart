@@ -138,6 +138,9 @@ class FfiEmulatorSession implements EmulatorSession {
   // （[_pollInterval] と同じ理由）。
   static const Duration _audioPullInterval = Duration(milliseconds: 20);
   Timer? _audioTimer;
+
+  /// 一時停止中か（[setPaused]）。一時停止中は音声を引き出さない。
+  bool _paused = false;
   Pointer<Int16>? _audioScratch;
   int _audioScratchFrames = 0;
   int _audioChannels = 2;
@@ -230,7 +233,9 @@ class FfiEmulatorSession implements EmulatorSession {
   void _pullAudio() {
     final scratch = _audioScratch;
     final audio = _audio;
-    if (_disposed || scratch == null || audio == null) {
+    // 一時停止中はコアがPCMを作らない。引き出すとアンダーランの無音が
+    // 再生と録音（AUD-06）へ流れ込むため、何も渡さず再生側を枯らす。
+    if (_disposed || _paused || scratch == null || audio == null) {
       return;
     }
     final result = _bindings.readAudio(_handle, scratch, _audioScratchFrames);
@@ -772,6 +777,17 @@ class FfiEmulatorSession implements EmulatorSession {
       final code = errorCodeFromNative(result);
       throw EmulatorException(code, describeErrorCode(code));
     }
+  }
+
+  @override
+  void setPaused(bool paused) {
+    _ensureUsable();
+    final result = _bindings.setPaused(_handle, paused ? 1 : 0);
+    if (result != BfmResult.ok) {
+      final code = errorCodeFromNative(result);
+      throw EmulatorException(code, describeErrorCode(code));
+    }
+    _paused = paused;
   }
 
   @override

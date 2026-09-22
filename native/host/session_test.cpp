@@ -995,6 +995,46 @@ void test_run_settings()
 		check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
 	}
 
+	// 一時停止（bfm_set_paused）。0/1以外はinvalid。一時停止中は
+	// frames_runが進まず、コマンドの取込みは続き、解除すると再開する。
+	// Full Speed中でもポーズが優先することを併せて確かめる。
+	check(bfm_set_paused(session, 2) == BFM_ERR_INVALID_ARGUMENT, "0/1以外はinvalidArgument");
+	check(bfm_set_paused(nullptr, 1) == BFM_ERR_INVALID_ARGUMENT, "セッションnullはinvalidArgument");
+	{
+		command = bfm_command{};
+		command.kind = BFM_CMD_SET_FULL_SPEED;
+		command.arg0 = 1;
+		check(bfm_send_command(session, &command, &id) == BFM_OK, "ポーズ検査用にFull Speedを有効化できる");
+		check(wait_for_completion(session, id, 5000, &code), "完了通知が届く");
+
+		check(bfm_set_paused(session, 1) == BFM_OK, "一時停止できる");
+		// 取込み途中のtickを除くため、一度落ち着かせてから数える。
+		std::this_thread::sleep_for(std::chrono::milliseconds(50));
+		bfm_stats before_pause{};
+		check(bfm_get_stats(session, &before_pause) == BFM_OK, "一時停止中の統計を取得できる");
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		bfm_stats after_pause{};
+		check(bfm_get_stats(session, &after_pause) == BFM_OK, "一時停止中の統計を再取得できる");
+		check(after_pause.frames_run == before_pause.frames_run,
+		      "一時停止中はFull Speedでもframes_runが進まない");
+
+		command = bfm_command{};
+		command.kind = BFM_CMD_SET_FULL_SPEED;
+		command.arg0 = 0;
+		check(bfm_send_command(session, &command, &id) == BFM_OK, "一時停止中もコマンドを受理する");
+		code = -1;
+		check(wait_for_completion(session, id, 5000, &code), "一時停止中もコマンドが完了する");
+		check(code == BFM_OK, "一時停止中のコマンドが成功で完了する");
+
+		check(bfm_set_paused(session, 0) == BFM_OK, "一時停止を解除できる");
+		bfm_stats before_resume{};
+		check(bfm_get_stats(session, &before_resume) == BFM_OK, "再開直後の統計を取得できる");
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		bfm_stats after_resume{};
+		check(bfm_get_stats(session, &after_resume) == BFM_OK, "再開後の統計を取得できる");
+		check(after_resume.frames_run > before_resume.frames_run, "解除するとframes_runが再び進む");
+	}
+
 	// CPU種別（SYS-05）。
 	command = bfm_command{};
 	command.kind = BFM_CMD_SET_CPU_TYPE;

@@ -666,6 +666,17 @@ BFM_API bfm_result bfm_set_joystick_state(bfm_session* session, int32_t index,
                                           uint32_t bits);
 
 /*
+ * 一時停止（ホスト側UIの都合によるポーズ）。どのスレッドからでも呼べる。
+ * paused は0または1（それ以外は BFM_ERR_INVALID_ARGUMENT）。1の間、
+ * Core threadは`vm->run()`を呼ばず、壁時計の1周期ごとにコマンドの取込み
+ * だけを続ける（FDD挿入・状態保存などは一時停止中でも完了する）。ゲスト
+ * 時間は進まず、音声は生成されないため再生側はアンダーランの無音埋めに
+ * なる。Full Speedより優先する。呼ぶたびに即座に値を更新するだけで、
+ * Core threadの起動前後どちらから呼んでも安全（値は次の起動にも残る）。
+ */
+BFM_API bfm_result bfm_set_paused(bfm_session* session, int32_t paused);
+
+/*
  * 音声（design.md 7、16.1「音声はVMの駆動源にしない」）。
  *
  * コアのPCMをブリッジが所有する有界リングへ蓄え、ここから複製で渡す。

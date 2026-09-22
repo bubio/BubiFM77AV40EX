@@ -15,6 +15,7 @@ class AppMenuBar extends StatefulWidget {
     required this.groups,
     required this.child,
     this.onHeightChanged,
+    this.onMenuOpenChanged,
   });
 
   final List<MenuGroup> groups;
@@ -29,6 +30,13 @@ class AppMenuBar extends StatefulWidget {
   /// （design.md「Window x1/x2/…の実装方式」）。
   final void Function(double height)? onHeightChanged;
 
+  /// いずれかのメニューが開いた（true）・すべて閉じた（false）ときに呼ぶ。
+  ///
+  /// 表示中にエミュレーターを一時停止するために使う。上位メニューを
+  /// 横へ渡り歩くと閉じると開くの順序が前後しうるため、開いている上位
+  /// メニューの数で判定し、0との境を跨いだときだけ呼ぶ。
+  final void Function(bool open)? onMenuOpenChanged;
+
   @override
   State<AppMenuBar> createState() => _AppMenuBarState();
 }
@@ -36,6 +44,29 @@ class AppMenuBar extends StatefulWidget {
 class _AppMenuBarState extends State<AppMenuBar> {
   final _menuBarKey = GlobalKey();
   double? _lastReportedHeight;
+  final Set<int> _openGroups = {};
+
+  @override
+  void dispose() {
+    if (_openGroups.isNotEmpty) {
+      _openGroups.clear();
+      widget.onMenuOpenChanged?.call(false);
+    }
+    super.dispose();
+  }
+
+  void _setGroupOpen(int index, bool open) {
+    final wasOpen = _openGroups.isNotEmpty;
+    if (open) {
+      _openGroups.add(index);
+    } else {
+      _openGroups.remove(index);
+    }
+    final isOpen = _openGroups.isNotEmpty;
+    if (isOpen != wasOpen) {
+      widget.onMenuOpenChanged?.call(isOpen);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,8 +99,10 @@ class _AppMenuBarState extends State<AppMenuBar> {
               padding: const WidgetStatePropertyAll(EdgeInsets.zero),
             ),
             children: [
-              for (final group in widget.groups)
+              for (final (index, group) in widget.groups.indexed)
                 SubmenuButton(
+                  onOpen: () => _setGroupOpen(index, true),
+                  onClose: () => _setGroupOpen(index, false),
                   menuChildren: [
                     for (final entry in group.entries) _build(entry),
                   ],

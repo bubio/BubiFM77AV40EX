@@ -149,6 +149,11 @@ final class BubiCoreBindings {
           .lookup<
             NativeFunction<Int32 Function(Pointer<BfmSession>, Int32, Uint32)>
           >('bfm_set_joystick_state')
+          .asFunction(),
+      setPaused = library
+          .lookup<NativeFunction<Int32 Function(Pointer<BfmSession>, Int32)>>(
+            'bfm_set_paused',
+          )
           .asFunction();
 
   /// 既定のライブラリを開いて束縛する。
@@ -191,6 +196,9 @@ final class BubiCoreBindings {
 
   /// ジョイスティックの直接入力（bfm_set_joystick_state、M3 INP-04）。
   final int Function(Pointer<BfmSession>, int, int) setJoystickState;
+
+  /// 一時停止（bfm_set_paused）。
+  final int Function(Pointer<BfmSession>, int) setPaused;
 }
 
 /// Windowsでコアを含むプラグインDLLのファイル名。

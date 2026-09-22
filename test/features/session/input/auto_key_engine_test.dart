@@ -215,4 +215,60 @@ void main() {
       expect(session.keyEvents, [0x41, -0x41, 0x42, -0x42]);
     });
   });
+
+  test('一時停止中は打鍵を進めず、再開後に段取りの待ち時間を数え直す', () {
+    fakeAsync((async) {
+      final session = FakeEmulatorSession();
+      final engine = AutoKeyEngine();
+
+      engine.run(
+        session,
+        'ab',
+        romajiToKana: false,
+        initialKanaLock: false,
+        initialCapsLock: false,
+      );
+      async.elapse(const Duration(milliseconds: 10));
+      expect(session.keyEvents, [0x41]);
+
+      engine.setPaused(true);
+      async.elapse(const Duration(seconds: 1));
+      // 押下中の'a'は解放されず、次の文字へも進まない。
+      expect(session.keyEvents, [0x41]);
+
+      engine.setPaused(false);
+      // 再開直後は押下の待ち時間（83ms）を最初から数え直す。
+      async.elapse(const Duration(milliseconds: 50));
+      expect(session.keyEvents, [0x41]);
+      async.elapse(const Duration(milliseconds: 400));
+      expect(session.keyEvents, [0x41, -0x41, 0x42, -0x42]);
+      expect(engine.isRunning, isFalse);
+    });
+  });
+
+  test('一時停止中のcancel()は保留中のキーを離して終わる', () {
+    fakeAsync((async) {
+      final session = FakeEmulatorSession();
+      final engine = AutoKeyEngine();
+
+      engine.run(
+        session,
+        'ab',
+        romajiToKana: false,
+        initialKanaLock: false,
+        initialCapsLock: false,
+      );
+      async.elapse(const Duration(milliseconds: 10));
+      engine.setPaused(true);
+      async.elapse(const Duration(milliseconds: 200));
+
+      var cancelled = false;
+      engine.cancel().then((_) => cancelled = true);
+      async.elapse(const Duration(milliseconds: 200));
+
+      expect(cancelled, isTrue);
+      expect(session.keyEvents, [0x41, -0x41]);
+      expect(engine.isRunning, isFalse);
+    });
+  });
 }

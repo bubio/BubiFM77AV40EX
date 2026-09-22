@@ -126,6 +126,12 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   bool _isAutoKeying = false;
   final AutoKeyEngine _autoKeyEngine = AutoKeyEngine();
 
+  /// 一時停止を求めている要求の数（メニュー・ダイアログ・OSのファイル選択
+  /// など、[acquirePause]）。ダイアログからファイル選択を開くように入れ子に
+  /// なるため真偽値ではなく数で持ち、0→1で止め、1→0で再開する。停止中に
+  /// 求められても次回[launch]で適用する。
+  int _pauseRequests = 0;
+
   /// ローマ字かな変換（INP-03）のライブ入力（通常のキー入力自体を
   /// リアルタイムに変換する側）が使う、未確定ローマ字断片のバッファ。
   ///
@@ -551,6 +557,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       );
       _session = session;
       _events = session.events.listen(_onEvent);
+      // 起動前に渡せば最初のフレームから止まる（ダイアログ表示中の起動）。
+      if (_pauseRequests > 0) {
+        session.setPaused(true);
+      }
       await session.start();
       final textureId = await session.attachVideoTexture();
       session.setVolume(_masterVolume);
@@ -665,6 +675,59 @@ class EmulatorController extends Notifier<EmulatorViewState> {
         failureMessage: '$error',
       );
       await _teardown();
+    }
+  }
+
+  /// エミュレーターを一時停止し、その要求を取り下げる関数を返す。
+  ///
+  /// メニュー・ダイアログ・OSのファイル選択を表示している間、ゲストを
+  /// 進めないために使う。要求が1つでも残っている間は止まったままで、
+  /// すべて取り下げられると再開する。返した関数は2回目以降何もしない。
+  VoidCallback acquirePause() {
+    var released = false;
+    _pauseRequests++;
+    if (_pauseRequests == 1) {
+      _applyPaused(true);
+    }
+    return () {
+      if (released) {
+        return;
+      }
+      released = true;
+      _pauseRequests--;
+      if (_pauseRequests == 0) {
+        _applyPaused(false);
+      }
+    };
+  }
+
+  /// [body]の実行中だけ一時停止する（[acquirePause]）。
+  Future<T> _whilePaused<T>(Future<T> Function() body) async {
+    final release = acquirePause();
+    try {
+      return await body();
+    } finally {
+      release();
+    }
+  }
+
+  void _applyPaused(bool paused) {
+    if (paused) {
+      // 押したまま止めると、再開時にゲストから見て押されっぱなしになる。
+      releaseAllKeys();
+    }
+    // 自動キー入力（INP-03）も止めないと、押下と解放がゲスト時間0で届き
+    // 文字を取りこぼす。
+    _autoKeyEngine.setPaused(paused);
+    _liveTypeEngine.setPaused(paused);
+    final session = _session;
+    if (session == null) {
+      return;
+    }
+    try {
+      session.setPaused(paused);
+    } on EmulatorException catch (error) {
+      debugPrint('EmulatorController.setPaused failed: $error');
     }
   }
 
@@ -1341,11 +1404,13 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     if (_session == null) {
       return;
     }
-    final resource = await externalFileAccess.pickFile(
-      allowedExtensions: [
-        ...fddNativeContainerExtensions,
-        ...fddConvertedExtensions,
-      ],
+    final resource = await _whilePaused(
+      () => externalFileAccess.pickFile(
+        allowedExtensions: [
+          ...fddNativeContainerExtensions,
+          ...fddConvertedExtensions,
+        ],
+      ),
     );
     if (resource == null) {
       return;
@@ -1375,10 +1440,12 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     if (session == null) {
       return;
     }
-    final resource = await externalFileAccess.pickSaveLocation(
-      suggestedFileName: mediaType == FddMediaType.d2
-          ? 'blank-2d.d88'
-          : 'blank-2dd.d88',
+    final resource = await _whilePaused(
+      () => externalFileAccess.pickSaveLocation(
+        suggestedFileName: mediaType == FddMediaType.d2
+            ? 'blank-2d.d88'
+            : 'blank-2dd.d88',
+      ),
     );
     if (resource == null) {
       return;
@@ -1442,8 +1509,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     if (session == null || slot == null || workspace == null) {
       return;
     }
-    final destination = await externalFileAccess.pickSaveLocation(
-      suggestedFileName: '${slot.resource.displayName}.d88',
+    final destination = await _whilePaused(
+      () => externalFileAccess.pickSaveLocation(
+        suggestedFileName: '${slot.resource.displayName}.d88',
+      ),
     );
     if (destination == null) {
       return;
@@ -1621,8 +1690,8 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     if (_session == null) {
       return;
     }
-    final resource = await externalFileAccess.pickFile(
-      allowedExtensions: cmtNativeExtensions,
+    final resource = await _whilePaused(
+      () => externalFileAccess.pickFile(allowedExtensions: cmtNativeExtensions),
     );
     if (resource == null) {
       return;
@@ -1637,8 +1706,8 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     if (session == null) {
       return;
     }
-    final destination = await externalFileAccess.pickSaveLocation(
-      suggestedFileName: 'tape.t77',
+    final destination = await _whilePaused(
+      () => externalFileAccess.pickSaveLocation(suggestedFileName: 'tape.t77'),
     );
     if (destination == null) {
       return;

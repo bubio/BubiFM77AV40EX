@@ -588,6 +588,14 @@ class FakeEmulatorSession implements EmulatorSession {
     joystickStateCalls.add((index, bits));
   }
 
+  /// `setPaused`で渡された値の記録。
+  final List<bool> setPausedCalls = [];
+
+  @override
+  void setPaused(bool paused) {
+    setPausedCalls.add(paused);
+  }
+
   /// `keyDown`/`keyUp`で呼ばれたVKコードの記録（INP-01・INP-03のテスト用）。
   /// downは`+vk`、upは`-vk`として1本の列に記録する（呼出し順を1つの
   /// リストで検証できるようにする）。
@@ -705,6 +713,10 @@ class FakeExternalFileAccess implements ExternalFileAccess {
   final Map<String, ExternalResource?> resourceForPathResultByPath = {};
   final List<String> resourceForPathCalls = [];
 
+  /// [pickFile]・[pickSaveLocation]が選択画面を開いている間に呼ぶ
+  /// （選択画面の表示中の状態をテストから確かめる）。
+  void Function()? onPick;
+
   @override
   Future<ExternalResource?> pickDirectory({String? dialogTitle}) =>
       throw UnimplementedError();
@@ -714,6 +726,7 @@ class FakeExternalFileAccess implements ExternalFileAccess {
     String? dialogTitle,
     List<String> allowedExtensions = const [],
   }) async {
+    onPick?.call();
     final result = nextPickResult;
     nextPickResult = null;
     return result;
@@ -724,6 +737,7 @@ class FakeExternalFileAccess implements ExternalFileAccess {
     String? dialogTitle,
     String? suggestedFileName,
   }) async {
+    onPick?.call();
     pickSaveLocationSuggestedNames.add(suggestedFileName);
     final result = nextSaveLocationResult;
     nextSaveLocationResult = null;

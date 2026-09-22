@@ -30,6 +30,7 @@ import 'menu/menu_catalog.dart';
 import 'menu/platform_application_menu.dart';
 import 'menu/settings_dialog.dart';
 import 'menu/sound_volume_dialog.dart';
+import 'pause_on_popup_observer.dart';
 
 /// アプリケーションのルート。
 ///
@@ -38,19 +39,32 @@ import 'menu/sound_volume_dialog.dart';
 /// （design.md 12.1）。`Control / Disk / Device / Host`のアプリ内メニューは
 /// [_Home]が[buildMenuCatalog]から組み立てる。featureは`app`へ依存しない
 /// （design.md 3.1）ため、カタログの組み立ては`app`側に置く。
-class BubiFm77Av40ExApp extends ConsumerWidget {
+class BubiFm77Av40ExApp extends ConsumerStatefulWidget {
   const BubiFm77Av40ExApp({super.key});
 
+  @override
+  ConsumerState<BubiFm77Av40ExApp> createState() => _BubiFm77Av40ExAppState();
+}
+
+class _BubiFm77Av40ExAppState extends ConsumerState<BubiFm77Av40ExApp> {
   static final _navigatorKey = GlobalKey<NavigatorState>();
 
+  /// ダイアログ・アラートの表示中はエミュレーターを一時停止する。
+  /// 表示中の要求を持つため、再構築のたびに作り直さず1つを使い続ける。
+  late final _pauseOnPopupObserver = PauseOnPopupObserver(
+    acquirePause: () =>
+        ref.read(emulatorControllerProvider.notifier).acquirePause(),
+  );
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final settings = ref.watch(settingsControllerProvider);
     final settingsController = ref.read(settingsControllerProvider.notifier);
     final l10n = _syncLocalizationsFor(settings.localeMode);
 
     final materialApp = MaterialApp(
       navigatorKey: _navigatorKey,
+      navigatorObservers: [_pauseOnPopupObserver],
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
       theme: ThemeData(brightness: Brightness.light, useMaterial3: true),
       darkTheme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
@@ -138,6 +152,9 @@ class _HomeState extends ConsumerState<_Home> {
   /// 実装方式」）。
   double _menuBarHeight = 0;
 
+  /// アプリ内メニューの表示中に持つ一時停止の要求を取り下げる関数。
+  VoidCallback? _releaseMenuPause;
+
   /// [_menuBarHeight]が一度でも実測値へ更新されたか。起動直後の自動x1
   /// 適用（`applyInitialMultiplierIfNeeded`）を、まだ0のままの
   /// [_menuBarHeight]で行ってしまわないためのガード。
@@ -151,6 +168,31 @@ class _HomeState extends ConsumerState<_Home> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(romSettingsControllerProvider.notifier).restore();
     });
+  }
+
+  @override
+  void dispose() {
+    _releaseMenuPause?.call();
+    super.dispose();
+  }
+
+  void _onMenuOpenChanged(bool open) {
+    if (open) {
+      _releaseMenuPause ??= ref
+          .read(emulatorControllerProvider.notifier)
+          .acquirePause();
+      return;
+    }
+    final release = _releaseMenuPause;
+    _releaseMenuPause = null;
+    if (release == null) {
+      return;
+    }
+    // メニュー項目がダイアログやファイル選択を開く場合、メニューが閉じて
+    // からそれらが一時停止を求めるまでの隙間でゲストが進まないよう、
+    // 取り下げを次のフレームまで遅らせる。
+    WidgetsBinding.instance.addPostFrameCallback((_) => release());
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   @override
@@ -298,6 +340,7 @@ class _HomeState extends ConsumerState<_Home> {
         _menuBarHeight = height;
         _menuBarHeightKnown = true;
       }),
+      onMenuOpenChanged: _onMenuOpenChanged,
       child: const EmulatorView(),
     );
   }

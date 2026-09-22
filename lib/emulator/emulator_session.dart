@@ -212,6 +212,14 @@ abstract class EmulatorSession {
   /// （getFddBankInfo/getFddWriteProtectと同型の直接アクセサ）。
   void setJoystickState(int index, int bits);
 
+  /// ゲスト時間の進行を一時停止・再開する。
+  ///
+  /// 一時停止中もコマンドは受理・完了する（媒体挿入や状態保存は通る）が、
+  /// VMは進まず音声も生成されない。[setJoystickState]と同型の直接
+  /// アクセサで、コマンドの連番は持たない。起動前後どちらから呼んでも
+  /// よく、値は次の[start]にも残る。
+  void setPaused(bool paused);
+
   /// 観測値を読み出す。
   EmulatorStats readStats();
 

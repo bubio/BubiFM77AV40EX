@@ -476,6 +476,13 @@ struct bfm_session {
 	std::atomic<bool> full_speed{false};
 
 	/*
+	 * 一時停止（bfm_set_paused）。trueの間、Core threadのtickループは
+	 * コマンドの取込みだけを行い、`vm->run()`を呼ばずに壁時計の1周期を
+	 * 待つ。full_speedより優先し、一時停止中にホットスピンさせない。
+	 */
+	std::atomic<bool> paused{false};
+
+	/*
 	 * CPU速度倍率の指数。0=x1〜4=x16。`speed_mode`（下記）によって
 	 * 2通りの実装のどちらへ使うかが変わる（design.md 16.1「CPU速度倍率の
 	 * 仕様」参照。比較検証のため両方を残してある）。
@@ -1469,6 +1476,15 @@ void core_thread_main(bfm_session* session)
 			// 状態保存機能が無くても本来必要だった安全性修正。
 			vm = session->emu->get_vm();
 
+			// bfm_session::pausedのコメント参照。VMの取り直しより後、
+			// Full Speedの判定より前に置く。deadlineは再開時に大きな
+			// 遅れとして扱われないよう、その都度いま基準へ置き直す。
+			if (session->paused.load()) {
+				std::this_thread::sleep_for(frame_period);
+				deadline = clock::now() + frame_period;
+				continue;
+			}
+
 			/*
 			 * ジョイスティックの直接入力（M3 INP-04）。EMU::get_joy_buffer()の
 			 * 返す配列はEMU側では読み取り専用だが、実体はconstではないため
@@ -1882,6 +1898,19 @@ BFM_API bfm_result bfm_set_joystick_state(bfm_session* session, int32_t index,
 		return BFM_ERR_INVALID_ARGUMENT;
 	}
 	session->joystick_bits[index].store(bits & 0x3fu);
+	return BFM_OK;
+}
+
+/*
+ * 一時停止（bfm_session::pausedのコメント参照）。bfm_set_joystick_stateと
+ * 同じく状態チェックを行わない単純アクセサ。
+ */
+BFM_API bfm_result bfm_set_paused(bfm_session* session, int32_t paused)
+{
+	if (session == nullptr || (paused != 0 && paused != 1)) {
+		return BFM_ERR_INVALID_ARGUMENT;
+	}
+	session->paused.store(paused != 0);
 	return BFM_OK;
 }
 

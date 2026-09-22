@@ -639,6 +639,51 @@ void main() {
     expect(state().isRunning, isFalse);
   });
 
+  test('一時停止の要求は入れ子にでき、すべて取り下げると再開する', () {
+    final releaseMenu = controller().acquirePause();
+    final releaseDialog = controller().acquirePause();
+    expect(session.setPausedCalls, [true]);
+
+    releaseMenu();
+    releaseMenu(); // 2回目は何もしない
+    expect(session.setPausedCalls, [true]);
+
+    releaseDialog();
+    expect(session.setPausedCalls, [true, false]);
+  });
+
+  test('一時停止すると押下中のキーを離す', () {
+    controller().handleKeyDown(PhysicalKeyboardKey.keyA);
+    final release = controller().acquirePause();
+
+    expect(session.keyEvents, [Win32Vk.keyA, -Win32Vk.keyA]);
+    release();
+  });
+
+  test('停止中に求めた一時停止は次回launchで適用する', () async {
+    await controller().shutdown();
+    final release = controller().acquirePause();
+    session = FakeEmulatorSession();
+    await controller().launch();
+
+    expect(session.setPausedCalls, [true]);
+    release();
+    expect(session.setPausedCalls, [true, false]);
+  });
+
+  test('ファイル選択画面を開いている間は一時停止する', () async {
+    final pausedDuringPick = <bool>[];
+    externalFileAccess.onPick = () =>
+        pausedDuringPick.add(session.setPausedCalls.lastOrNull ?? false);
+
+    await controller().insertFdd(0);
+    await controller().cmtPlay();
+    await controller().insertBlankFdd(0, FddMediaType.d2);
+
+    expect(pausedDuringPick, [true, true, true]);
+    expect(session.setPausedCalls.last, isFalse);
+  });
+
   test('FDD-01 挿入は原本を作業領域へ複製し、複製先パスをコアへ渡す', () async {
     externalFileAccess.nextPickResult = FakeExternalResource(
       '/Volumes/USB/GAME.D88',

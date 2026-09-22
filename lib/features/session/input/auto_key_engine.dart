@@ -78,7 +78,28 @@ class AutoKeyEngine {
   Completer<void>? _completer;
   bool _cancelled = false;
 
+  /// エミュレーターの一時停止中か（[setPaused]）。
+  bool _paused = false;
+
+  /// 一時停止中に期限を迎えた次の段取り。再開時に呼ぶ。
+  void Function()? _parked;
+
   bool get isRunning => _completer != null;
+
+  /// エミュレーターの一時停止に合わせて打鍵の進行を止める・再開する。
+  ///
+  /// 一時停止中はコアが進まないため、そのまま打鍵を続けると押下と解放が
+  /// ゲスト時間0で届き、文字を取りこぼす。一時停止中に期限を迎えた段取りは
+  /// 保留し、再開後にその段取りの待ち時間を最初から数え直す（押下中の
+  /// キーはゲストから見て少なくとも規定の時間押され続ける）。
+  void setPaused(bool paused) {
+    _paused = paused;
+    if (!paused) {
+      final parked = _parked;
+      _parked = null;
+      parked?.call();
+    }
+  }
 
   /// [text]を1文字ずつ打鍵する。既に実行中なら何もしない。
   ///
@@ -133,7 +154,20 @@ class AutoKeyEngine {
       }
     }
 
-    Future<void> step(Timer _) async {
+    late final Future<void> Function() step;
+
+    void schedule(Duration delay) {
+      _timer?.cancel();
+      _timer = Timer(delay, () {
+        if (_paused && !_cancelled) {
+          _parked = () => schedule(delay);
+          return;
+        }
+        step();
+      });
+    }
+
+    step = () async {
       if (_cancelled) {
         if (pending != null) {
           await session.keyUp(pending!.vk);
@@ -154,8 +188,7 @@ class AutoKeyEngine {
         pending = null;
         pendingShift = false;
         awaitingRelease = false;
-        _timer?.cancel();
-        _timer = Timer(_releaseDuration, () => step(_timer!));
+        schedule(_releaseDuration);
         return;
       }
       if (index >= steps.length) {
@@ -179,11 +212,10 @@ class AutoKeyEngine {
       pending = s.chord;
       pendingShift = effectiveShift;
       awaitingRelease = true;
-      _timer?.cancel();
-      _timer = Timer(_pressDuration, () => step(_timer!));
-    }
+      schedule(_pressDuration);
+    };
 
-    _timer = Timer(Duration.zero, () => step(_timer!));
+    schedule(Duration.zero);
     return completer.future;
   }
 
@@ -196,6 +228,10 @@ class AutoKeyEngine {
       return;
     }
     _cancelled = true;
+    // 一時停止中に保留した段取りがあれば進め、取消し処理まで到達させる。
+    final parked = _parked;
+    _parked = null;
+    parked?.call();
     final future = _completer!.future;
     await future;
   }
@@ -211,6 +247,7 @@ class AutoKeyEngine {
   void disposeNow() {
     _timer?.cancel();
     _timer = null;
+    _parked = null;
     _cancelled = true;
     final completer = _completer;
     _completer = null;
