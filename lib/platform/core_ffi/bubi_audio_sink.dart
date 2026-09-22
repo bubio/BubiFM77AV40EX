@@ -29,10 +29,16 @@ class BubiAudioSink implements AudioSink {
     }
     // 生存中ずっと続く無音混じりのライブ入力であり、シークバックはしない
     // ため、再生済みデータを溜めずに解放する BufferingType.released を使う。
+    //
+    // bufferingTimeNeedsは再生開始（とアンダーラン後の再開）までに溜める量で、
+    // そのまま定常の音声遅延になる。供給は20ms周期（FfiEmulatorSessionの
+    // _audioPullInterval）で一定量ずつ届くため、その2周期分あれば途切れない。
+    // 0.1秒では、コア側の50ms単位の生成遅延と合わせて映像より音が約150〜200ms
+    // 遅れ、曲に同期した演出（イースのOP等）で画像の先行が目に見えていた。
     final source = _soloud.setBufferStream(
       maxBufferSizeDuration: const Duration(seconds: 2),
       bufferingType: BufferingType.released,
-      bufferingTimeNeeds: 0.1,
+      bufferingTimeNeeds: 0.02,
       sampleRate: sampleRate,
       channels: channelsEnum,
       format: BufferType.s16le,
