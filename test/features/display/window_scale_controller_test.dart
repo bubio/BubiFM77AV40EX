@@ -216,6 +216,21 @@ void main() {
     expect(windowScale.setContentSizeCalls, isEmpty);
   });
 
+  test('applyInitialMultiplierIfNeededは初期サイズがx1と一致していても'
+      '保存済みの倍率へ合わせる', () async {
+    // Linuxはネイティブ側の既定サイズをx1にしてある。
+    preferences.values['settings.windowMultiplier'] = 2;
+    windowScale.contentSize = const Size(640, 400);
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    final controller = container.read(windowScaleControllerProvider.notifier);
+    await controller.applyInitialMultiplierIfNeeded();
+
+    expect(windowScale.setContentSizeCalls, [const Size(1280, 800)]);
+    expect(container.read(windowScaleControllerProvider).currentMultiplier, 2);
+  });
+
   test('applyInitialMultiplierIfNeededは一度しか実行しない', () async {
     windowScale.contentSize = const Size(800, 600);
     container.read(windowScaleControllerProvider);

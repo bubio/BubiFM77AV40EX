@@ -75,6 +75,12 @@ class WindowScaleController extends Notifier<WindowScaleState> {
   /// 640x400にならない（design.md「Window x1/x2/…の実装方式」）。
   double _chromeHeight = 0;
 
+  /// 起動時点で保存されていた倍率。[_refresh]は一致した倍率を保存するため、
+  /// 初期フレームが偶然x1と一致すると（Linuxはネイティブ側の既定サイズを
+  /// x1にしてある）保存済みの値が上書きされる。その前に読んでおき、
+  /// [applyInitialMultiplierIfNeeded]で使う。
+  int? _storedMultiplierAtStartup;
+
   /// [applyInitialMultiplierIfNeeded]を一度だけ実行するためのガード。
   bool _initialMultiplierApplied = false;
 
@@ -94,6 +100,7 @@ class WindowScaleController extends Notifier<WindowScaleState> {
       return;
     }
     _fullscreenSupported = await windowChrome.isSupported;
+    _storedMultiplierAtStartup = preferences.getInt(_multiplierKey);
     await _refresh();
     _subscription = windowScale.contentSizeChanges.listen((_) {
       unawaited(_refresh());
@@ -221,14 +228,18 @@ class WindowScaleController extends Notifier<WindowScaleState> {
     }
     _initialMultiplierApplied = true;
     await _refresh();
-    if (state.currentMultiplier == null &&
-        state.availableMultipliers.isNotEmpty) {
-      final stored = preferences.getInt(_multiplierKey);
+    if (state.availableMultipliers.isNotEmpty) {
+      // 初期フレームが偶然どれかの倍率と一致していても、保存済みの倍率を
+      // 優先する（Linuxはネイティブ側の既定サイズをx1にしてあるため、
+      // 一致しただけで保存済みのx2等を無視すると復元されない）。
+      final stored = _storedMultiplierAtStartup;
       final target =
           (stored != null && state.availableMultipliers.contains(stored))
           ? stored
-          : 1;
-      await setMultiplier(target);
+          : state.currentMultiplier ?? 1;
+      if (target != state.currentMultiplier) {
+        await setMultiplier(target);
+      }
     }
     await windowScale.show();
   }

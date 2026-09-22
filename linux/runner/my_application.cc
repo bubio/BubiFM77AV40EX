@@ -14,11 +14,6 @@ struct _MyApplication {
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
-// Called when first Flutter frame received.
-static void first_frame_cb(MyApplication* self, FlView* view) {
-  gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
-}
-
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
@@ -52,7 +47,9 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "BubiFM77AV40EX");
   }
 
-  gtk_window_set_default_size(window, 1280, 720);
+  // x1（640x400のゲスト画面にメニューバーとステータスバーを加えた大きさ）。
+  // 実際の大きさはDart側（WindowScaleController）が倍率に合わせて決める。
+  gtk_window_set_default_size(window, 640, 465);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
@@ -67,10 +64,12 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
-  // Show the window when Flutter renders.
-  // Requires the view to be realized so we can start rendering.
-  g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb),
-                           self);
+  // テンプレートは最初のフレームで表示するが、ここでは出さない。既定の
+  // 大きさのまま一瞬表示されてから倍率の大きさへ変わって見えるのを避ける
+  // ため、Dart側（WindowScaleController.applyInitialMultiplierIfNeeded）が
+  // 大きさを合わせた直後に`window_manager`経由で表示する（macOSの
+  // MainFlutterWindow.swift と同じ、design.md「Window x1/x2/…の実装方式」）。
+  // 描画を始めるにはビューを実体化しておく必要がある。
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
