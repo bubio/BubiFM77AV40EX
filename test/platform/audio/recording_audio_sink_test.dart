@@ -131,12 +131,19 @@ void main() {
     expect(inner.pushed, hasLength(10)); // 再生は録音の成否に関係なく継続
     expect(sink.isRecording, isFalse);
 
-    // 飽和時のcloseはfire-and-forget（design.md 7.2、`pushPcm16`は同期
-    // メソッドでawaitできない）のため、ファイルハンドルが実際に閉じるまで
-    // 少し待つ。Windowsは開いたままのハンドルを含むディレクトリの削除に
-    // 失敗するため（tearDownのtempDir.delete）、待たずに進むとPOSIXでだけ
-    // たまたま通ってしまう。
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+    // 飽和時のcloseは`pushPcm16`（同期メソッド）からはawaitできないため、
+    // `stopRecording`でchainに残ったクローズの完了を待つ。Windowsは開いた
+    // ままのハンドルを含むディレクトリの削除に失敗するため（tearDownの
+    // tempDir.delete）、待たずに進むとPOSIXでだけたまたま通ってしまう。
+    await sink.stopRecording();
+    // 飽和前に書けた分だけでヘッダーが確定している（正しく閉じられた）。
+    final bytes = await File(path).readAsBytes();
+    final dataBytes = ByteData.sublistView(
+      bytes,
+      40,
+      44,
+    ).getUint32(0, Endian.little);
+    expect(dataBytes, bytes.length - 44);
   });
 
   test('drainが進んだ後は未完了カウントが減り、上限に達しない', () async {

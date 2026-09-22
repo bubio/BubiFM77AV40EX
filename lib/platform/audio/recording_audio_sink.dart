@@ -90,10 +90,17 @@ class RecordingAudioSink implements AudioSink, RecordingControl {
     return true;
   }
 
+  /// 録音を止め、ファイルが閉じ終わるまで待つ。
+  ///
+  /// 録音中でなくても、キュー飽和で[pushPcm16]が積んだクローズなど
+  /// 直列chainに残る処理の完了を待つ（`pushPcm16`は同期メソッドのため
+  /// 飽和時のクローズをawaitできない）。これにより[stop]の後はファイル
+  /// ハンドルが必ず閉じている。
   @override
   Future<void> stopRecording() async {
     final recorder = _recorder;
     if (recorder == null) {
+      await _chain;
       return;
     }
     _recorder = null;
