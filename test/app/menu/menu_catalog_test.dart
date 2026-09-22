@@ -40,6 +40,7 @@ void main() {
     void Function()? onCmtFastForward,
     void Function()? onCmtFastRewind,
     CmtDriveSettings cmtDriveSettings = const CmtDriveSettings(),
+    void Function(bool enabled)? onCmtFastLoadChanged,
     void Function(bool enabled)? onCmtWaveShapingChanged,
     List<CmtRecentFile> cmtRecentFiles = const [],
     void Function(String token)? onCmtPlayFromRecent,
@@ -116,6 +117,7 @@ void main() {
       onCmtFastForward: onCmtFastForward ?? () {},
       onCmtFastRewind: onCmtFastRewind ?? () {},
       cmtDriveSettings: cmtDriveSettings,
+      onCmtFastLoadChanged: onCmtFastLoadChanged ?? (_) {},
       onCmtWaveShapingChanged: onCmtWaveShapingChanged ?? (_) {},
       cmtRecentFiles: cmtRecentFiles,
       onCmtPlayFromRecent: onCmtPlayFromRecent ?? (_) {},
@@ -456,6 +458,7 @@ void main() {
       'cmt.fastForward',
       'cmt.fastRewind',
       'cmt.sep1',
+      'cmt.fastLoad',
       'cmt.waveShaper',
       'cmt.sep2',
       'cmt.recent',
@@ -498,6 +501,29 @@ void main() {
     final checkbox =
         entries.firstWhere((e) => e.id == 'cmt.waveShaper') as MenuCheckbox;
     expect(checkbox.checked, isTrue);
+  });
+
+  test('CMT: Fast Loadは既定でチェックされ、チェック状態が引数に従う', () {
+    MenuCheckbox fastLoad(CmtDriveSettings settings) =>
+        catalog(cmtDriveSettings: settings)
+                .firstWhere((g) => g.id == MenuGroupId.cmt)
+                .entries
+                .firstWhere((e) => e.id == 'cmt.fastLoad')
+            as MenuCheckbox;
+    expect(fastLoad(const CmtDriveSettings()).checked, isTrue);
+    expect(fastLoad(const CmtDriveSettings(fastLoad: false)).checked, isFalse);
+  });
+
+  test('CMT: Fast Loadの切替えはコールバックへ渡される', () {
+    final received = <bool>[];
+    final checkbox =
+        catalog(onCmtFastLoadChanged: received.add)
+                .firstWhere((g) => g.id == MenuGroupId.cmt)
+                .entries
+                .firstWhere((e) => e.id == 'cmt.fastLoad')
+            as MenuCheckbox;
+    checkbox.onChanged(false);
+    expect(received, [false]);
   });
 
   test('CMT: Recentが空ならプレースホルダーを、あれば項目とClearを持つ', () {

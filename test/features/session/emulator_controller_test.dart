@@ -1239,6 +1239,34 @@ void main() {
     expect(restart().cmtDriveSettings.waveShaping, isTrue);
   });
 
+  test('CMT-06 高速ロードは既定で有効で、launch時にコアへ送らない', () async {
+    expect(state().cmtDriveSettings.fastLoad, isTrue);
+    expect(session.setCmtFastLoadCalls, isEmpty);
+  });
+
+  test('CMT-06 高速ロードは起動中ならコアへ即時に送り、状態も更新する', () async {
+    await controller().setCmtFastLoad(false);
+
+    expect(session.setCmtFastLoadCalls, [false]);
+    expect(state().cmtDriveSettings.fastLoad, isFalse);
+  });
+
+  test('CMT-06 無効にした高速ロードは次回launch時に新しいセッションへ再適用される', () async {
+    await controller().setCmtFastLoad(false);
+    await controller().shutdown();
+    session = FakeEmulatorSession();
+
+    await controller().launch();
+
+    expect(session.setCmtFastLoadCalls, [false]);
+  });
+
+  test('CMT-06 高速ロードの設定は再起動後も復元される', () async {
+    await controller().setCmtFastLoad(false);
+
+    expect(restart().cmtDriveSettings.fastLoad, isFalse);
+  });
+
   test('AUD-07 CMTノイズ・信号・音声の有効化は起動中ならコアへ即時に送り、状態も更新する', () async {
     await controller().setCmtSoundEnabled(CmtSoundKind.noise, true);
     await controller().setCmtSoundEnabled(CmtSoundKind.signal, true);

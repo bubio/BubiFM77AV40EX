@@ -2193,6 +2193,80 @@ void test_cmt()
 	check(send_and_collect(wave_shaping_bad, &events) == BFM_ERR_INVALID_ARGUMENT,
 	      "0/1以外はinvalidArgument");
 
+	// --- CMT-06: 高速ロードの有効・無効を設定できる ---
+	bfm_command fast_load_off{};
+	fast_load_off.kind = BFM_CMD_SET_CMT_FAST_LOAD;
+	fast_load_off.arg0 = 0;
+	events.clear();
+	check(send_and_collect(fast_load_off, &events) == BFM_OK, "高速ロードを無効化できる");
+
+	bfm_command fast_load_on = fast_load_off;
+	fast_load_on.arg0 = 1;
+	events.clear();
+	check(send_and_collect(fast_load_on, &events) == BFM_OK, "高速ロードを有効化できる");
+
+	bfm_command fast_load_bad = fast_load_off;
+	fast_load_bad.arg0 = 2;
+	events.clear();
+	check(send_and_collect(fast_load_bad, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "0/1以外はinvalidArgument");
+
+	// 高速ロードは再生中だけ壁時計の待機を省くことを、frames_runの実測値で
+	// 確かめる（bfm_session::cmt_fast_loadのコメント）。最小テープは等速でも
+	// 1秒足らずで終端に達するため、0x7FFF×9usの区間を並べた約2分の
+	// テープを使う（加速中に計測区間の途中で終端へ達しない長さ）。
+	{
+		const std::string long_t77 = media_dir + "/long.t77";
+		std::string data;
+		data.append("XM7 TAPE IMAGE 0", 16);
+		for (int i = 0; i < 400; ++i) {
+			data.push_back(0x7F);
+			data.push_back(static_cast<char>(0xFF));
+		}
+		check(write_file(long_t77, data), "高速ロード検査用の長いT77を作れる");
+
+		auto frames_during = [&](int milliseconds) -> uint64_t {
+			bfm_stats before{};
+			bfm_get_stats(session, &before);
+			std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+			bfm_stats after{};
+			bfm_get_stats(session, &after);
+			return after.frames_run - before.frames_run;
+		};
+
+		bfm_command play_long = play_t77;
+		play_long.text = long_t77.c_str();
+		events.clear();
+		check(send_and_collect(play_long, &events) == BFM_OK, "長いT77を開ける");
+		events.clear();
+		check(send_and_collect(fast_load_off, &events) == BFM_OK, "計測の基準用に高速ロードを無効化できる");
+		events.clear();
+		check(send_and_collect(control_play, &events) == BFM_OK, "長いT77を再生できる");
+		const uint64_t frames_normal = frames_during(200);
+		check(bfm_get_cmt_status(session, &status) == BFM_OK && status.playing == 1,
+		      "高速ロード無効でも再生は続く");
+
+		events.clear();
+		check(send_and_collect(fast_load_on, &events) == BFM_OK, "再生中に高速ロードを有効化できる");
+		const uint64_t frames_turbo = frames_during(200);
+		check(bfm_get_cmt_status(session, &status) == BFM_OK && status.playing == 1,
+		      "加速の計測中にテープ終端へ達していない");
+		std::printf("   等速 %llu フレーム / 高速ロード %llu フレーム（200ms）\n",
+		            static_cast<unsigned long long>(frames_normal),
+		            static_cast<unsigned long long>(frames_turbo));
+		check(frames_turbo > frames_normal * 2,
+		      "高速ロード有効の再生中はframes_runが明確に多い（壁時計の待機がない）");
+
+		events.clear();
+		check(send_and_collect(control_stop, &events) == BFM_OK, "停止できる");
+		const uint64_t frames_stopped = frames_during(200);
+		check(frames_stopped * 2 < frames_turbo,
+		      "停止すると高速ロード有効のままでも壁時計のペースへ戻る");
+
+		events.clear();
+		check(send_and_collect(eject_cmt, &events) == BFM_OK, "長いT77を排出できる");
+	}
+
 	// --- AUD-07: CMTノイズ・CMT信号・CMT音声を個別に有効化し、
 	//     ノイズ・信号のみ音量を調整できる ---
 	for (int64_t kind : {BFM_CMT_SOUND_NOISE, BFM_CMT_SOUND_SIGNAL, BFM_CMT_SOUND_VOICE}) {

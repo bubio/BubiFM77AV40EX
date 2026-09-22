@@ -434,6 +434,7 @@ class FakeEmulatorSession implements EmulatorSession {
   int fastForwardCmtCallCount = 0;
   int rewindCmtCallCount = 0;
   final List<bool> setCmtWaveShapingCalls = [];
+  final List<bool> setCmtFastLoadCalls = [];
   final List<(CmtSoundKind kind, bool enabled)> setCmtSoundEnabledCalls = [];
   final List<(CmtSoundKind kind, double volume)> setCmtSoundVolumeCalls = [];
 
@@ -558,6 +559,12 @@ class FakeEmulatorSession implements EmulatorSession {
   @override
   Future<int> setCmtWaveShaping(bool enabled) async {
     setCmtWaveShapingCalls.add(enabled);
+    return _nextCommandId++;
+  }
+
+  @override
+  Future<int> setCmtFastLoad(bool enabled) async {
+    setCmtFastLoadCalls.add(enabled);
     return _nextCommandId++;
   }
 

@@ -74,6 +74,7 @@ void main() {
       onCmtFastForward: () {},
       onCmtFastRewind: () {},
       cmtDriveSettings: const CmtDriveSettings(),
+      onCmtFastLoadChanged: (_) {},
       onCmtWaveShapingChanged: (_) {},
       cmtRecentFiles: const [],
       onCmtPlayFromRecent: (_) {},

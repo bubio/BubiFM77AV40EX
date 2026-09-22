@@ -705,9 +705,19 @@ class FfiEmulatorSession implements EmulatorSession {
     }
   }
 
+  // arg0だけで0/1を渡すCMTコマンド（BFM_CMD_SET_CMT_WAVE_SHAPING、
+  // BFM_CMD_SET_CMT_FAST_LOAD）。_sendCmtSwitchは値をarg1へ入れるため
+  // 使えない。
+  Future<int> _sendCmtFlag(int kind, bool value) =>
+      _sendCmtSwitch(kind, value ? 1 : 0, false);
+
   @override
   Future<int> setCmtWaveShaping(bool enabled) =>
-      _sendCmtSwitch(BfmCommandKind.setCmtWaveShaping, 0, enabled);
+      _sendCmtFlag(BfmCommandKind.setCmtWaveShaping, enabled);
+
+  @override
+  Future<int> setCmtFastLoad(bool enabled) =>
+      _sendCmtFlag(BfmCommandKind.setCmtFastLoad, enabled);
 
   @override
   Future<int> setCmtSoundEnabled(CmtSoundKind kind, bool enabled) =>

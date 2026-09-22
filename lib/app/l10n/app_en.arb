@@ -300,6 +300,10 @@
   "@cmtFastRewind": {
     "description": "Rewinds the tape (CMT-03)."
   },
+  "cmtFastLoad": "Fast Load",
+  "@cmtFastLoad": {
+    "description": "Checkbox that runs the emulator at unlimited speed, muted, while the tape motor is playing (CMT-06)."
+  },
   "cmtWaveformShaper": "Waveform Shaper",
   "@cmtWaveformShaper": {
     "description": "Checkbox toggling waveform shaping for WAV tape playback (CMT-04)."

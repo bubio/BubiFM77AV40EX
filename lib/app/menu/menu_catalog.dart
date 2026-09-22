@@ -58,6 +58,7 @@ List<MenuGroup> buildMenuCatalog({
   required void Function() onCmtFastForward,
   required void Function() onCmtFastRewind,
   required CmtDriveSettings cmtDriveSettings,
+  required void Function(bool enabled) onCmtFastLoadChanged,
   required void Function(bool enabled) onCmtWaveShapingChanged,
   required List<CmtRecentFile> cmtRecentFiles,
   required void Function(String token) onCmtPlayFromRecent,
@@ -343,6 +344,13 @@ List<MenuGroup> buildMenuCatalog({
           onSelected: onCmtFastRewind,
         ),
         const MenuSeparator('cmt.sep1'),
+        MenuCheckbox(
+          'cmt.fastLoad',
+          label: l10n.cmtFastLoad,
+          enabled: true,
+          checked: cmtDriveSettings.fastLoad,
+          onChanged: onCmtFastLoadChanged,
+        ),
         MenuCheckbox(
           'cmt.waveShaper',
           label: l10n.cmtWaveformShaper,

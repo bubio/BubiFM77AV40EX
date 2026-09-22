@@ -164,7 +164,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   final Map<int, _FddSlot> _fddSlots = {};
   final Map<int, Completer<EmulatorErrorCode?>> _pendingCommands = {};
 
-  /// CMTの波形整形設定（CMT-04）。停止中に変更されても次回[launch]時に
+  /// CMTの波形整形・高速ロード設定（CMT-04、CMT-06）。停止中に変更されても次回[launch]時に
   /// 適用できるよう覚えておく（`_fddDriveSettings`と同じ扱い）。
   CmtDriveSettings _cmtDriveSettings = const CmtDriveSettings();
 
@@ -204,7 +204,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     _soundVolumes = _readSoundVolumes();
     _fddMechanicalSoundEnabled = _readFddMechanicalSoundEnabled();
     _cursorToNumpad = _readCursorToNumpad();
-    _cmtDriveSettings = CmtDriveSettings(waveShaping: _readCmtWaveShaping());
+    _cmtDriveSettings = CmtDriveSettings(
+      waveShaping: _readCmtWaveShaping(),
+      fastLoad: _readCmtFastLoad(),
+    );
     _cmtSoundSettings = _readCmtSoundSettings();
     for (var drive = 0; drive < 2; drive++) {
       _fddDriveSettings[drive] = _readFddDriveSettings(drive);
@@ -378,6 +381,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   static const _fddMechanicalSoundEnabledKey = 'host.sound.fddMechanismEnabled';
   static const _cursorToNumpadKey = 'host.input.cursorToNumpad';
   static const _cmtWaveShapingKey = 'cmt.waveShaping';
+  static const _cmtFastLoadKey = 'cmt.fastLoad';
   static const _cmtSoundKey = 'cmt.sound';
   static const _audioBufferSizeKey = 'host.sound.audioBufferSize';
 
@@ -477,6 +481,8 @@ class EmulatorController extends Notifier<EmulatorViewState> {
 
   bool _readCmtWaveShaping() =>
       preferences.getBool(_cmtWaveShapingKey) ?? false;
+
+  bool _readCmtFastLoad() => preferences.getBool(_cmtFastLoadKey) ?? true;
 
   CmtSoundSettings _readCmtSoundSettings() {
     final raw = preferences.getString(_cmtSoundKey);
@@ -630,6 +636,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
         }
         if (_cmtDriveSettings.waveShaping) {
           await session.setCmtWaveShaping(true);
+        }
+        // bridgeの既定は有効（BFM_CMD_SET_CMT_FAST_LOAD）。
+        if (!_cmtDriveSettings.fastLoad) {
+          await session.setCmtFastLoad(false);
         }
         const defaultCmtSound = CmtSoundSettings();
         for (final kind in CmtSoundKind.values) {
@@ -1880,6 +1890,14 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     state = state.copyWith(cmtDriveSettings: _cmtDriveSettings);
     await preferences.setBool(_cmtWaveShapingKey, enabled);
     await _session?.setCmtWaveShaping(enabled);
+  }
+
+  /// CMT高速ロードの有効・無効を設定する（specification.md CMT-06）。
+  Future<void> setCmtFastLoad(bool enabled) async {
+    _cmtDriveSettings = _cmtDriveSettings.copyWith(fastLoad: enabled);
+    state = state.copyWith(cmtDriveSettings: _cmtDriveSettings);
+    await preferences.setBool(_cmtFastLoadKey, enabled);
+    await _session?.setCmtFastLoad(enabled);
   }
 
   /// CMTノイズ・CMT信号・CMT音声を個別に有効・無効化する

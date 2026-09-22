@@ -289,6 +289,7 @@ class _HomeState extends ConsumerState<_Home> {
       onCmtFastForward: emulatorController.cmtFastForward,
       onCmtFastRewind: emulatorController.cmtFastRewind,
       cmtDriveSettings: emulator.cmtDriveSettings,
+      onCmtFastLoadChanged: emulatorController.setCmtFastLoad,
       onCmtWaveShapingChanged: emulatorController.setCmtWaveShaping,
       cmtRecentFiles: emulator.cmtRecentFiles,
       onCmtPlayFromRecent: emulatorController.cmtPlayFromRecent,

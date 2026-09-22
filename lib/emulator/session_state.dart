@@ -291,25 +291,33 @@ enum CmtSoundKind {
   voice,
 }
 
-/// CMTドライブの波形整形設定（specification.md CMT-04）。
+/// CMTドライブの設定（specification.md CMT-04、CMT-06）。
 ///
-/// upstreamの`config.wave_shaper[0]`はWAV読込み時に直接読まれる
-/// ランタイム状態で、即時反映される。
+/// [waveShaping]はupstreamの`config.wave_shaper[0]`で、WAV読込み時に
+/// 直接読まれるランタイム状態のため即時反映される。[fastLoad]は
+/// bridge側だけの設定で、テープのモーターが回っている再生中だけVMを
+/// 無制限速度で進め、その間の音声を捨てる（既定で有効）。
 class CmtDriveSettings {
-  const CmtDriveSettings({this.waveShaping = false});
+  const CmtDriveSettings({this.waveShaping = false, this.fastLoad = true});
 
   final bool waveShaping;
+  final bool fastLoad;
 
-  CmtDriveSettings copyWith({bool? waveShaping}) {
-    return CmtDriveSettings(waveShaping: waveShaping ?? this.waveShaping);
+  CmtDriveSettings copyWith({bool? waveShaping, bool? fastLoad}) {
+    return CmtDriveSettings(
+      waveShaping: waveShaping ?? this.waveShaping,
+      fastLoad: fastLoad ?? this.fastLoad,
+    );
   }
 
   @override
   bool operator ==(Object other) =>
-      other is CmtDriveSettings && other.waveShaping == waveShaping;
+      other is CmtDriveSettings &&
+      other.waveShaping == waveShaping &&
+      other.fastLoad == fastLoad;
 
   @override
-  int get hashCode => waveShaping.hashCode;
+  int get hashCode => Object.hash(waveShaping, fastLoad);
 }
 
 /// CMT音声の個別有効化と、ノイズ・信号のみの音量（specification.md AUD-07）。

@@ -75,6 +75,7 @@
   "cmtStopButton": "停止ボタン",
   "cmtFastForward": "早送り",
   "cmtFastRewind": "巻戻し",
+  "cmtFastLoad": "高速ロード",
   "cmtWaveformShaper": "波形整形",
   "cmtRecentFiles": "最近使ったファイル",
   "cmtRecentFilesEmpty": "（履歴なし）",

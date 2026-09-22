@@ -344,6 +344,15 @@ typedef enum {
 	 * design.md「標準音声設定（M3、AUD-03）の実装方式」隣接の注記参照）。
 	 */
 	BFM_CMD_SET_CMT_SOUND_VOLUME = 0x0315,   /* M4 AUD-07 */
+	/*
+	 * BFM_CMD_SET_CMT_FAST_LOAD: arg0 は0/1（CMT-06）。1の間、テープの
+	 * モーターが回っている再生中（DATAREC::is_tape_playing()、
+	 * remote && play）だけCore threadが壁時計の待機を省き、Full Speedと
+	 * 同じくVMを無制限速度で進める。加速中に生成した音声はリングへ積まずに
+	 * 捨てる。録音中は加速しない。upstreamのconfigには対応する項目がなく、
+	 * bridge側だけの設定。セッション生成時の既定は1。
+	 */
+	BFM_CMD_SET_CMT_FAST_LOAD = 0x0316,      /* CMT-06 */
 
 	/* 入力 */
 	BFM_CMD_KEY_DOWN = 0x0400,               /* WP3 INP-01 */

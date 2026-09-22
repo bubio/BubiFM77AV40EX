@@ -144,6 +144,7 @@ abstract final class BfmCommandKind {
   static const int setCmtWaveShaping = 0x0313;
   static const int setCmtSoundEnable = 0x0314;
   static const int setCmtSoundVolume = 0x0315;
+  static const int setCmtFastLoad = 0x0316;
 
   static const int keyDown = 0x0400;
   static const int keyUp = 0x0401;

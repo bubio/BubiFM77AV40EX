@@ -187,6 +187,10 @@ abstract class EmulatorSession {
   /// CMTの波形整形の有効・無効を設定し、コマンドの連番を返す（CMT-04）。
   Future<int> setCmtWaveShaping(bool enabled);
 
+  /// CMT高速ロード（テープ再生中だけ無制限速度で進め、その間の音声を
+  /// 捨てる）の有効・無効を設定し、コマンドの連番を返す（CMT-06）。
+  Future<int> setCmtFastLoad(bool enabled);
+
   /// CMTノイズ・CMT信号・CMT音声を個別に有効・無効化し、コマンドの連番を
   /// 返す（AUD-07）。
   Future<int> setCmtSoundEnabled(CmtSoundKind kind, bool enabled);

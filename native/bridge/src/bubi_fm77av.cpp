@@ -476,6 +476,20 @@ struct bfm_session {
 	std::atomic<bool> full_speed{false};
 
 	/*
+	 * CMT高速ロード（CMT-06）。trueの間、テープのモーターが回っている
+	 * 再生中（cmt_playing、DATAREC::is_tape_playing() = remote && play）の
+	 * tickだけ、full_speedと同じく壁時計の待機を省く。DATARECはevent clock
+	 * で信号を進めるため、vm->run()を詰めて呼べばテープとCPUが同じ比率で
+	 * 速くなり、ローダー側のタイミングは崩れない。判定は毎tickの
+	 * cmt_playingから出し直し、状態を持ち越さないため、停止・排出・
+	 * リセット・ステートロードのどれでも自然に解除される。pausedが優先する。
+	 * 加速中の音声はvm->create_sound()で消費だけしてリングへ積まない
+	 * （積むと有界リングが満杯のまま残り、加速終了後も最大1秒の遅延が
+	 * 続くため）。録音中は加速しない。
+	 */
+	std::atomic<bool> cmt_fast_load{true};
+
+	/*
 	 * 一時停止（bfm_set_paused）。trueの間、Core threadのtickループは
 	 * コマンドの取込みだけを行い、`vm->run()`を呼ばずに壁時計の1周期を
 	 * 待つ。full_speedより優先し、一時停止中にホットスピンさせない。
@@ -988,6 +1002,16 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 		session->emu->set_sound_device_volume(core_channel, decibel, decibel);
 		break;
 	}
+	case BFM_CMD_SET_CMT_FAST_LOAD:
+		// CMT-06。bfm_session::cmt_fast_loadへ書くだけで、Core threadの
+		// tickループが次回以降のtickから読む（bfm_session::cmt_fast_load
+		// のコメントを参照）。
+		if (queued.arg0 != 0 && queued.arg0 != 1) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+		} else {
+			session->cmt_fast_load.store(queued.arg0 != 0);
+		}
+		break;
 	case BFM_CMD_SET_BOOT_MODE:
 		// コアはリセット時に config.boot_mode を読む。ここでは値を
 		// 置くだけで、反映は次のリセットまたは再起動になる（SYS-04）。
@@ -1390,8 +1414,12 @@ void publish_cmt_status_if_changed(bfm_session* session, VM_TEMPLATE* vm)
  * vm->initialize_sound()を呼び直すと同じ周期のEVENT_MIXが二重登録され
  * ミキシングが二重になる。よってbridge側はconfigを見て同じ式
  * （kAudioSamplesPerCall、pcm_ring.h）で追認するだけにとどめる。
+ *
+ * discardがtrue（CMT高速ロード中、bfm_session::cmt_fast_load）のときも
+ * vm->create_sound()は呼んでevent->buffer_ptrを消費させ、結果だけを
+ * リングへ積まずに捨てる。
  */
-void publish_audio_if_ready(bfm_session* session, VM_TEMPLATE* vm)
+void publish_audio_if_ready(bfm_session* session, VM_TEMPLATE* vm, bool discard)
 {
 	session->note_vm_access();
 	const int samples_per_call = session->audio_samples_per_call;
@@ -1400,6 +1428,9 @@ void publish_audio_if_ready(bfm_session* session, VM_TEMPLATE* vm)
 	}
 	int extra_frames = 0;
 	uint16_t* buffer = vm->create_sound(&extra_frames);
+	if (discard) {
+		return;
+	}
 	session->audio.push(reinterpret_cast<const int16_t*>(buffer),
 	                    static_cast<std::size_t>(samples_per_call));
 	session->audio_frames_produced.fetch_add(
@@ -1508,6 +1539,7 @@ void core_thread_main(bfm_session* session)
 			const int repeat = session->speed_mode == SpeedMultiplierMode::kRepeatDrive
 			    ? (1 << session->speed_shift.load())
 			    : 1;
+			bool cmt_turbo = false;
 			for (int i = 0; i < repeat; ++i) {
 				session->note_vm_access();
 				vm->run();
@@ -1517,15 +1549,19 @@ void core_thread_main(bfm_session* session)
 				publish_led_if_changed(session, vm);
 				accumulate_media_access(session, vm);
 				publish_cmt_status_if_changed(session, vm);
-				publish_audio_if_ready(session, vm);
+				// CMT-06。直前のpublish_cmt_status_if_changedが更新した
+				// cmt_playingから毎回出し直す（bfm_session::cmt_fast_load）。
+				cmt_turbo = session->cmt_fast_load.load() &&
+				    session->cmt_playing.load() != 0;
+				publish_audio_if_ready(session, vm, cmt_turbo);
 			}
 
-			// SYS-03の「無制限」。壁時計の待機を省き、次のtickへ即座に
-			//進む（bfm_session::full_speedのコメント）。停止要求と
-			// コマンドの取込みはループ先頭で毎回行われるため、この間も
-			// 応答性は保たれる。deadlineは無制限を止めたときに大きな
-			// 遅れとして扱われないよう、その都度いま基準へ置き直す。
-			if (session->full_speed.load()) {
+			// SYS-03の「無制限」とCMT-06の高速ロード。壁時計の待機を省き、
+			// 次のtickへ即座に進む（bfm_session::full_speed/cmt_fast_loadの
+			// コメント）。停止要求とコマンドの取込みはループ先頭で毎回行われる
+			// ため、この間も応答性は保たれる。deadlineは無制限を止めたときに
+			// 大きな遅れとして扱われないよう、その都度いま基準へ置き直す。
+			if (session->full_speed.load() || cmt_turbo) {
 				deadline = clock::now() + frame_period;
 				continue;
 			}
