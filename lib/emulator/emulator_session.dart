@@ -232,18 +232,23 @@ abstract class EmulatorSession {
   /// 音声を組み立てていないセッションでは何もしない。
   void setVolume(double volume);
 
-  /// FDD内部機構音（ホスト側合成、AUD-04）の有効・無効を変える。
+  /// FDD機構音のうち読み書き音（ホスト側合成、AUD-04）の有効・無効を
+  /// 変える。
   ///
   /// ブリッジを経由しないホスト側のみの処理で、音声を組み立てていない
-  /// セッションでは何もしない。
+  /// セッションでは何もしない。シーク音・ヘッド音は[setFddNoiseEnabled]。
   void setFddMechanicalSoundEnabled(bool enabled);
 
-  /// FDD内部機構音の音量を変える（0.0〜1.0、AUD-04）。
+  /// FDD機構音のうち読み書き音の音量を変える（0.0〜1.0、AUD-04）。
   ///
-  /// [SoundChannel.fddMechanism] の音量つまみが実際に配線される先で、
-  /// コアのch9（design.md 7.1の申し送りのとおり何も鳴らさない）へは
-  /// 送らない。
+  /// シーク音・ヘッド音の音量は[setSoundChannelVolume]の
+  /// [SoundChannel.fddMechanism]（コアのch9）で別に変える。
   void setFddMechanicalSoundVolume(double volume);
+
+  /// FDD機構音のうちシーク音・ヘッドロード／アンロード音（コアが
+  /// ブリッジの合成WAVを鳴らす、AUD-04）の有効・無効を設定し、コマンドの
+  /// 連番を返す。新しいセッションの既定は有効。
+  Future<int> setFddNoiseEnabled(bool enabled);
 
   /// 最終ミキサー直後のPCMを[filePath]へWAV録音開始する（AUD-06）。
   ///

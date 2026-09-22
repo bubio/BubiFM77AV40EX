@@ -7,7 +7,7 @@ import '../l10n/generated/app_localizations.dart';
 /// AUD-03、AUD-07統合）。
 ///
 /// 標準OPNのFM・PSG、Beep、キーボード音、FDD機構音の5チャンネルと、
-/// CMTノイズ・CMT信号の2チャンネルを「CMT」セクションとして続けて表示する。
+/// CMT機構音・CMT信号の2チャンネルを「CMT」セクションとして続けて表示する。
 /// ステータスバーのマスター音量（アプリ全体の出力音量）とは別物で、
 /// コアのゲスト側デバイスそのものの音量つまみである
 /// （design.md「標準音声設定（M3、AUD-03）の実装方式」）。
@@ -147,7 +147,7 @@ class _SoundVolumeDialogState extends State<SoundVolumeDialog> {
   String _cmtLabel(CmtSoundKind kind) {
     final l10n = widget.l10n;
     return switch (kind) {
-      CmtSoundKind.noise => l10n.cmtSoundNoise,
+      CmtSoundKind.noise => l10n.soundChannelCmtMechanism,
       CmtSoundKind.signal => l10n.cmtSoundSignal,
       CmtSoundKind.voice => l10n.cmtSoundVoice,
     };

@@ -670,25 +670,29 @@ void main() {
     expect(unchecked.checked, isFalse);
   });
 
-  test('Host > Sound: FDD Mechanism Sound、CMT Noise/Signal/Voice、Volume、'
-      'オーディオバッファの順（Bubilator88準拠でDeviceから移動、AUD-07統合）', () {
-    final sound =
-        catalog().firstWhere((g) => g.id == MenuGroupId.host).entries[5]
-            as MenuSubmenu;
-    expect(sound.entries, hasLength(6));
-    final fddMechanismEnabled = sound.entries[0] as MenuCheckbox;
-    expect(fddMechanismEnabled.id, 'host.sound.fddMechanismEnabled');
-    final cmtNoise = sound.entries[1] as MenuCheckbox;
-    expect(cmtNoise.id, 'device.sound.cmtNoise');
-    final cmtSignal = sound.entries[2] as MenuCheckbox;
-    expect(cmtSignal.id, 'device.sound.cmtSignal');
-    final cmtVoice = sound.entries[3] as MenuCheckbox;
-    expect(cmtVoice.id, 'device.sound.cmtVoice');
-    final volume = sound.entries[4] as MenuAction;
-    expect(volume.id, 'host.sound.volume');
-    final audioBufferSize = sound.entries[5] as MenuRadioGroup<AudioBufferSize>;
-    expect(audioBufferSize.id, 'host.sound.audioBufferSize');
-  });
+  test(
+    'Host > Sound: FDD Mechanism Sound、CMT Mechanism Sound/Signal/Voice、Volume、'
+    'オーディオバッファの順（Bubilator88準拠でDeviceから移動、AUD-07統合）',
+    () {
+      final sound =
+          catalog().firstWhere((g) => g.id == MenuGroupId.host).entries[5]
+              as MenuSubmenu;
+      expect(sound.entries, hasLength(6));
+      final fddMechanismEnabled = sound.entries[0] as MenuCheckbox;
+      expect(fddMechanismEnabled.id, 'host.sound.fddMechanismEnabled');
+      final cmtNoise = sound.entries[1] as MenuCheckbox;
+      expect(cmtNoise.id, 'device.sound.cmtNoise');
+      final cmtSignal = sound.entries[2] as MenuCheckbox;
+      expect(cmtSignal.id, 'device.sound.cmtSignal');
+      final cmtVoice = sound.entries[3] as MenuCheckbox;
+      expect(cmtVoice.id, 'device.sound.cmtVoice');
+      final volume = sound.entries[4] as MenuAction;
+      expect(volume.id, 'host.sound.volume');
+      final audioBufferSize =
+          sound.entries[5] as MenuRadioGroup<AudioBufferSize>;
+      expect(audioBufferSize.id, 'host.sound.audioBufferSize');
+    },
+  );
 
   test('Host > Sound > オーディオバッファは選択値に従いonAudioBufferSizeChangedを呼ぶ', () {
     AudioBufferSize? changed;
@@ -704,33 +708,30 @@ void main() {
     expect(changed, AudioBufferSize.ms300);
   });
 
-  test(
-    'Host > Sound > CMT Noise/Signal/Voiceはチェック状態が引数に従いonCmtSoundEnabledChanged'
-    'を呼ぶ（AUD-07）',
-    () {
-      (CmtSoundKind, bool)? changed;
-      final sound =
-          catalog(
-                cmtSoundSettings: const CmtSoundSettings(
-                  noiseEnabled: true,
-                  signalEnabled: false,
-                  voiceEnabled: true,
-                ),
-                onCmtSoundEnabledChanged: (kind, enabled) =>
-                    changed = (kind, enabled),
-              ).firstWhere((g) => g.id == MenuGroupId.host).entries[5]
-              as MenuSubmenu;
-      final cmtNoise = sound.entries[1] as MenuCheckbox;
-      final cmtSignal = sound.entries[2] as MenuCheckbox;
-      final cmtVoice = sound.entries[3] as MenuCheckbox;
-      expect(cmtNoise.checked, isTrue);
-      expect(cmtSignal.checked, isFalse);
-      expect(cmtVoice.checked, isTrue);
+  test('Host > Sound > CMT Mechanism Sound/Signal/Voiceはチェック状態が引数に従いonCmtSoundEnabledChanged'
+      'を呼ぶ（AUD-07）', () {
+    (CmtSoundKind, bool)? changed;
+    final sound =
+        catalog(
+              cmtSoundSettings: const CmtSoundSettings(
+                noiseEnabled: true,
+                signalEnabled: false,
+                voiceEnabled: true,
+              ),
+              onCmtSoundEnabledChanged: (kind, enabled) =>
+                  changed = (kind, enabled),
+            ).firstWhere((g) => g.id == MenuGroupId.host).entries[5]
+            as MenuSubmenu;
+    final cmtNoise = sound.entries[1] as MenuCheckbox;
+    final cmtSignal = sound.entries[2] as MenuCheckbox;
+    final cmtVoice = sound.entries[3] as MenuCheckbox;
+    expect(cmtNoise.checked, isTrue);
+    expect(cmtSignal.checked, isFalse);
+    expect(cmtVoice.checked, isTrue);
 
-      cmtSignal.onChanged(true);
-      expect(changed, (CmtSoundKind.signal, true));
-    },
-  );
+    cmtSignal.onChanged(true);
+    expect(changed, (CmtSoundKind.signal, true));
+  });
 
   test('Host > Sound > VolumeはonOpenSoundVolumeを呼ぶ（AUD-03、AUD-07統合）', () {
     var called = false;

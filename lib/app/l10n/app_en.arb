@@ -320,9 +320,13 @@
   "@cmtClearRecentFiles": {
     "description": "Clears the recent tape image history."
   },
-  "cmtSoundNoise": "CMT Noise",
+  "cmtSoundNoise": "CMT Mechanism Sound",
   "@cmtSoundNoise": {
-    "description": "Checkbox toggling CMT relay/fast-forward noise (AUD-07). Matches the original \"Play CMT Noise\" menu item."
+    "description": "Checkbox toggling the CMT relay/fast-forward mechanism sound (AUD-07). The original \"Play CMT Noise\" menu item, renamed to match \"FDD Mechanism Sound\"."
+  },
+  "soundChannelCmtMechanism": "CMT Mechanism",
+  "@soundChannelCmtMechanism": {
+    "description": "Volume slider label for the CMT relay/fast-forward mechanism sound (AUD-07). Pairs with soundChannelFddMechanism."
   },
   "cmtSoundSignal": "CMT Signal",
   "@cmtSoundSignal": {
@@ -411,7 +415,7 @@
   },
   "soundChannelFddMechanism": "FDD Mechanism",
   "@soundChannelFddMechanism": {
-    "description": "Volume slider label for the FDD seek/head noise (AUD-03)."
+    "description": "Volume slider label for the FDD mechanism sound: seek/head and read/write (AUD-03, AUD-04)."
   },
   "menuHost": "Host",
   "@menuHost": {
@@ -463,7 +467,7 @@
   },
   "hostSoundFddMechanismEnabled": "FDD Mechanism Sound",
   "@hostSoundFddMechanismEnabled": {
-    "description": "Checkbox toggling the host-synthesized FDD mechanical sound (AUD-04, read/write only)."
+    "description": "Checkbox toggling the FDD mechanism sound: seek, head load/unload and read/write (AUD-04)."
   },
   "hostSoundAudioBufferSize": "Audio Buffer",
   "@hostSoundAudioBufferSize": {

@@ -12,6 +12,7 @@
 #include "bubi_fm77av.h"
 
 #include "frame_ring.h"
+#include "mechanical_noise.h"
 #include "pcm_ring.h"
 #include "rgb_filter.h"
 
@@ -1097,6 +1098,16 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 		session->emu->set_sound_device_volume(core_channel, decibel, decibel);
 		break;
 	}
+	case BFM_CMD_SET_FDD_NOISE_ENABLE:
+		// AUD-04。MB8877::update_config()がsound_noise_fddを読んで
+		// シーク・ヘッド音のNOISEのmuteを更新する。
+		if (queued.arg0 != 0 && queued.arg0 != 1) {
+			code = BFM_ERR_INVALID_ARGUMENT;
+			break;
+		}
+		config.sound_noise_fdd = queued.arg0 != 0;
+		vm->update_config();
+		break;
 	case BFM_CMD_SET_SCREEN_FILTER:
 		// VID-04。publish_frame_if_changed が次の面から読む。画面が
 		// 変わらなくても掛け替えた結果を見せるため、次の面を強制公開する。
@@ -1454,9 +1465,12 @@ void core_thread_main(bfm_session* session)
 		if (!home_dir_is_writable(session->core_dir)) {
 			throw std::runtime_error("core directory is not writable");
 		}
+		// 前回の合成WAVを先に消し、利用者のWAVがあればそちらを結線させる。
+		bubi::remove_generated_mechanical_noise(session->core_dir);
 		if (!wire_rom_directory(session->core_dir, session->rom_dir)) {
 			throw std::runtime_error("failed to wire the ROM directory");
 		}
+		bubi::install_generated_mechanical_noise(session->core_dir);
 
 		// VMの生成から破棄までをCore threadに閉じる。
 		bubi_core_set_home_dir(session->home_dir.c_str());
@@ -1472,6 +1486,9 @@ void core_thread_main(bfm_session* session)
 		 */
 		config.sound_frequency = 6; // 48kHz
 		config.sound_latency = session->audio_latency;
+		// AUD-04。MB8877::initialize()がNOISEのmuteを決める前に、
+		// BFM_CMD_SET_FDD_NOISE_ENABLEの既定（有効）へ揃える。
+		config.sound_noise_fdd = true;
 		session->note_vm_access();
 		session->emu = new EMU();
 		VM_TEMPLATE* vm = session->emu->get_vm();

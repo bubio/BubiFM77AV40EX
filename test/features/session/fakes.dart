@@ -224,6 +224,7 @@ class FakeEmulatorSession implements EmulatorSession {
   EmulatorErrorCode? nextScreenPowerError;
   final List<bool> setFddMechanicalSoundEnabledCalls = [];
   final List<double> setFddMechanicalSoundVolumeCalls = [];
+  final List<bool> setFddNoiseEnabledCalls = [];
   final List<String> startRecordingCalls = [];
   int stopRecordingCallCount = 0;
 
@@ -650,6 +651,12 @@ class FakeEmulatorSession implements EmulatorSession {
   @override
   void setFddMechanicalSoundVolume(double volume) {
     setFddMechanicalSoundVolumeCalls.add(volume);
+  }
+
+  @override
+  Future<int> setFddNoiseEnabled(bool enabled) async {
+    setFddNoiseEnabledCalls.add(enabled);
+    return _nextCommandId++;
   }
 
   @override

@@ -270,11 +270,13 @@ void main() {
     ]);
   });
 
-  test('AUD-04 fddMechanismチャンネルの音量はコアへ送らずホスト側合成器へ送る', () async {
+  test('AUD-04 fddMechanismチャンネルの音量はホスト側合成器とコアの両方へ送る', () async {
     await controller().setSoundChannelVolume(SoundChannel.fddMechanism, 0.3);
 
     expect(session.setFddMechanicalSoundVolumeCalls, [0.3]);
-    expect(session.setSoundChannelVolumeCalls, isEmpty);
+    expect(session.setSoundChannelVolumeCalls, [
+      (SoundChannel.fddMechanism, 0.3),
+    ]);
     expect(state().soundVolumes.fddMechanism, 0.3);
   });
 
@@ -286,13 +288,16 @@ void main() {
     await controller().launch();
 
     expect(session.setFddMechanicalSoundVolumeCalls, [0.4]);
-    expect(session.setSoundChannelVolumeCalls, isEmpty);
+    expect(session.setSoundChannelVolumeCalls, [
+      (SoundChannel.fddMechanism, 0.4),
+    ]);
   });
 
   test('AUD-04 機構音の有効・無効は起動中ならホスト側へ即時に送り、状態も更新する', () async {
-    controller().setFddMechanicalSoundEnabled(false);
+    await controller().setFddMechanicalSoundEnabled(false);
 
     expect(session.setFddMechanicalSoundEnabledCalls, [false]);
+    expect(session.setFddNoiseEnabledCalls, [false]);
     expect(state().fddMechanicalSoundEnabled, isFalse);
   });
 
@@ -310,6 +315,7 @@ void main() {
     await controller().launch();
 
     expect(session.setFddMechanicalSoundEnabledCalls, [false]);
+    expect(session.setFddNoiseEnabledCalls, [false]);
   });
 
   test('AUD-04 launch直後は既定値（有効）どおりなら送らない', () async {
@@ -318,6 +324,7 @@ void main() {
     await controller().launch();
 
     expect(session.setFddMechanicalSoundEnabledCalls, isEmpty);
+    expect(session.setFddNoiseEnabledCalls, isEmpty);
   });
 
   test('INP-01 setCursorToNumpad(true)以降は矢印キーがテンキー方向のVKで送られる', () {

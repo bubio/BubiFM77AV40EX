@@ -96,7 +96,7 @@ void main() {
     );
 
     // SoundChannel 5本の後にCMTスライダーが続く。
-    // インデックス5がCMTノイズ、インデックス6がCMT信号。
+    // インデックス5がCMT機構音、インデックス6がCMT信号。
     final noiseSlider = find.byType(Slider).at(5);
     await tester.ensureVisible(noiseSlider);
     await tester.pumpAndSettle();

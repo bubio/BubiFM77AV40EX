@@ -408,6 +408,15 @@ typedef enum {
 	 */
 	BFM_CMD_SET_SCREEN_FILTER = 0x0505,      /* VID-04 */
 	BFM_CMD_SET_SCREEN_POWER = 0x0506,       /* VID-04 */
+	/*
+	 * BFM_CMD_SET_FDD_NOISE_ENABLE: arg0 は0/1（AUD-04のシーク音・
+	 * ヘッドロード／アンロード音）。upstreamのconfig.sound_noise_fddへ書き、
+	 * vm->update_config()でMB8877::update_config()（NOISEのmute反映）まで
+	 * 通す。素材WAVはブリッジが合成して置く（cmt_noise.h）。音量は
+	 * BFM_CMD_SET_SOUND_VOLUMEのBFM_SOUND_CHANNEL_FDD_MECHANISM（VMのch9）。
+	 * セッション生成時の既定は1。
+	 */
+	BFM_CMD_SET_FDD_NOISE_ENABLE = 0x0507,   /* AUD-04 */
 
 	/* 状態 */
 	BFM_CMD_SAVE_STATE = 0x0600,             /* M3 STA-01 */

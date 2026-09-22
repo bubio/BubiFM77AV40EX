@@ -116,6 +116,7 @@ set(BRIDGE_SOURCES
   bridge/osd/sdl/osd_screen.cpp
   bridge/osd/sdl/osd_sound.cpp
   bridge/src/bubi_fm77av.cpp
+  bridge/src/mechanical_noise.cpp
   bridge/src/frame_ring.cpp
   bridge/src/rgb_filter.cpp
   bridge/compat/core_feature_shim.cpp
@@ -269,6 +270,7 @@ if(BUBI_BUILD_HOST_TOOLS)
   add_executable(session_test
     "${CMAKE_CURRENT_SOURCE_DIR}/host/session_test.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/bubi_fm77av.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/mechanical_noise.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/frame_ring.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/rgb_filter.cpp"
   )
@@ -281,6 +283,7 @@ if(BUBI_BUILD_HOST_TOOLS)
   add_executable(rom_boot_check
     "${CMAKE_CURRENT_SOURCE_DIR}/host/rom_boot_check.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/bubi_fm77av.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/mechanical_noise.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/frame_ring.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/rgb_filter.cpp"
   )
@@ -304,6 +307,14 @@ if(BUBI_BUILD_HOST_TOOLS)
   target_include_directories(pcm_ring_test
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src")
 
+  # FDD・CMT機構音の素材の合成の検査（AUD-04/AUD-07）。コアには依存しない。
+  add_executable(mechanical_noise_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/host/mechanical_noise_test.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/mechanical_noise.cpp"
+  )
+  target_include_directories(mechanical_noise_test
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src")
+
   # RGBフィルターの検査（VID-04）。コアは動かさないが、scrntype_t 等の
   # 定義に common.h を使うためコアのライブラリへリンクする。
   add_executable(rgb_filter_test
@@ -318,6 +329,7 @@ if(BUBI_BUILD_HOST_TOOLS)
   # （design.md 16.1）。ここはシンボル解決と呼び出しの検証専用である。
   add_library(bubifm77av40ex_shared SHARED
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/bubi_fm77av.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/mechanical_noise.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/frame_ring.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/bridge/src/rgb_filter.cpp"
   )
@@ -341,6 +353,7 @@ if(BUBI_BUILD_HOST_TOOLS)
   add_test(NAME frame_ring_test COMMAND frame_ring_test)
   add_test(NAME pcm_ring_test COMMAND pcm_ring_test)
   add_test(NAME rgb_filter_test COMMAND rgb_filter_test)
+  add_test(NAME mechanical_noise_test COMMAND mechanical_noise_test)
   # home_dir はプロセス全体で1つに固定されるため、書込み不能な home_dir の
   # 検査だけは別プロセスで走らせる。
   add_test(NAME session_test_unwritable_home

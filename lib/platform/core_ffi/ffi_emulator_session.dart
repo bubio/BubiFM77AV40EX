@@ -705,8 +705,8 @@ class FfiEmulatorSession implements EmulatorSession {
     }
   }
 
-  // arg0だけで0/1を渡すCMTコマンド（BFM_CMD_SET_CMT_WAVE_SHAPING、
-  // BFM_CMD_SET_CMT_FAST_LOAD）。_sendCmtSwitchは値をarg1へ入れるため
+  // arg0だけで0/1を渡すコマンド（BFM_CMD_SET_CMT_WAVE_SHAPING、
+  // BFM_CMD_SET_CMT_FAST_LOAD、BFM_CMD_SET_FDD_NOISE_ENABLE）。_sendCmtSwitchは値をarg1へ入れるため
   // 使えない。
   Future<int> _sendCmtFlag(int kind, bool value) =>
       _sendCmtSwitch(kind, value ? 1 : 0, false);
@@ -891,6 +891,10 @@ class FfiEmulatorSession implements EmulatorSession {
   void setFddMechanicalSoundVolume(double volume) {
     _fddMechanicalSound?.setFddSoundVolume(volume);
   }
+
+  @override
+  Future<int> setFddNoiseEnabled(bool enabled) =>
+      _sendCmtFlag(BfmCommandKind.setFddNoiseEnable, enabled);
 
   @override
   Future<bool> startRecording(String filePath) async {

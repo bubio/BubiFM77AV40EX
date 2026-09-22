@@ -751,6 +751,9 @@ void test_rom_wiring()
 	      "小文字のダミーROMを用意できる");
 	check(write_file(rom_b + "/EXTSUB.ROM", std::string(49152, '\0')),
 	      "別ディレクトリのダミーROMを用意できる");
+	// 機構音WAV（AUD-04/AUD-07）。利用者が置いたものは合成物より優先する。
+	check(write_file(rom_a + "/RELAY_ON.WAV", "利用者のリレー音"),
+	      "利用者の機構音WAVを用意できる");
 
 	bfm_session* session = make_session(nullptr, 0, 0, rom_a.c_str());
 	if (session == nullptr) {
@@ -786,6 +789,11 @@ void test_rom_wiring()
 	// Linuxでは大文字の別名が要る。ここでは結果だけを見る。
 	check(is_wired_to(core_dir + "SUBSYS_B.ROM", rom_a + "/SUBSYS_B.rom"),
 	      "小文字のROMを大文字の名前で開ける");
+	check(is_wired_to(core_dir + "RELAY_ON.WAV", rom_a + "/RELAY_ON.WAV"),
+	      "利用者の機構音WAVを合成物より優先して結線する");
+	check(is_regular_file(core_dir + "FDDSEEK.WAV") && is_regular_file(core_dir + "HEADDOWN.WAV"),
+	      "利用者が置いていない機構音WAVは合成して置く");
+
 	// コアは USERDIC.DAT を自分で書き直す。守るべきなのは中身ではなく、
 	// 「リンクにしないこと」と「利用者のROMディレクトリへ書かせないこと」。
 	check(is_regular_file(learn_data), "USERDIC.DAT をリンクに置き換えない");
@@ -816,6 +824,12 @@ void test_rom_wiring()
 #endif
 	check(is_wired_to(core_dir + "EXTSUB.ROM", rom_b + "/EXTSUB.ROM"),
 	      "新しいROMを結線する");
+#if !defined(_WIN32)
+	check(is_regular_file(core_dir + "RELAY_ON.WAV"),
+	      "利用者の機構音WAVが無くなれば合成物へ戻す");
+#endif
+	check(read_file(rom_a + "/RELAY_ON.WAV") == "利用者のリレー音",
+	      "利用者の機構音WAVへ書き込まない");
 	check(is_regular_file(learn_data), "張り直しでも USERDIC.DAT を消さない");
 	check(is_regular_file(keep_me) && read_file(keep_me) == keep_content,
 	      "張り直しで通常ファイルを消さない");
@@ -2266,6 +2280,22 @@ void test_cmt()
 		events.clear();
 		check(send_and_collect(eject_cmt, &events) == BFM_OK, "長いT77を排出できる");
 	}
+
+	// --- AUD-04: FDDのシーク音・ヘッド音（コアのNOISE）を有効・無効にできる ---
+	for (int64_t value : {0, 1}) {
+		bfm_command fdd_noise{};
+		fdd_noise.kind = BFM_CMD_SET_FDD_NOISE_ENABLE;
+		fdd_noise.arg0 = value;
+		events.clear();
+		check(send_and_collect(fdd_noise, &events) == BFM_OK,
+		      "AUD-04: FDDのシーク音・ヘッド音を切り替えられる");
+	}
+	bfm_command fdd_noise_bad{};
+	fdd_noise_bad.kind = BFM_CMD_SET_FDD_NOISE_ENABLE;
+	fdd_noise_bad.arg0 = 2;
+	events.clear();
+	check(send_and_collect(fdd_noise_bad, &events) == BFM_ERR_INVALID_ARGUMENT,
+	      "AUD-04: 0/1以外の値はinvalidArgument");
 
 	// --- AUD-07: CMTノイズ・CMT信号・CMT音声を個別に有効化し、
 	//     ノイズ・信号のみ音量を調整できる ---

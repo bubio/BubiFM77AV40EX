@@ -602,21 +602,20 @@ class EmulatorController extends Notifier<EmulatorViewState> {
           for (final channel in SoundChannel.values) {
             if (_soundVolumes[channel] != defaults[channel]) {
               if (channel == SoundChannel.fddMechanism) {
-                // AUD-04: このチャンネルはコアのch9ではなく、ホスト側
-                // 合成器（FddMechanicalAudioSink）の音量へ配線されている
-                // （design.md 7.1）。
+                // AUD-04: 読み書き音はホスト側合成器、シーク音・ヘッド音は
+                // コアのch9が鳴らす（design.md 7.1）。
                 session.setFddMechanicalSoundVolume(_soundVolumes[channel]);
-              } else {
-                await session.setSoundChannelVolume(
-                  channel,
-                  _soundVolumes[channel],
-                );
               }
+              await session.setSoundChannelVolume(
+                channel,
+                _soundVolumes[channel],
+              );
             }
           }
         }
         if (!_fddMechanicalSoundEnabled) {
           session.setFddMechanicalSoundEnabled(_fddMechanicalSoundEnabled);
+          await session.setFddNoiseEnabled(_fddMechanicalSoundEnabled);
         }
         // 書込み保護はドライブではなく、マウントされた媒体自身が持つ
         // 状態（コアはDISK::open()のたびにファイル自身のヘッダから
@@ -909,9 +908,9 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   /// 標準OPNのFM・PSG、Beep、キーボード音、FDD機構音のうち[channel]の
   /// 音量を変える（AUD-03）。起動中なら即時反映される。
   ///
-  /// [SoundChannel.fddMechanism]だけはコアのブリッジコマンドではなく、
-  /// ホスト側合成器（`FddMechanicalAudioSink`、AUD-04）の音量へ送る
-  /// （design.md 7.1「配線し直す」の実施）。
+  /// [SoundChannel.fddMechanism]は、コアのch9（シーク音・ヘッド音）に加えて
+  /// ホスト側合成器（`FddMechanicalAudioSink`、読み書き音、AUD-04）の
+  /// 音量へも送る（design.md 7.1）。
   Future<void> setSoundChannelVolume(
     SoundChannel channel,
     double volume,
@@ -921,19 +920,19 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     await _writeSoundVolumes(_soundVolumes);
     if (channel == SoundChannel.fddMechanism) {
       _session?.setFddMechanicalSoundVolume(volume);
-      return;
     }
     await _session?.setSoundChannelVolume(channel, volume);
   }
 
-  /// FDD内部機構音（ホスト側合成、readWriteのみ、AUD-04）の有効・無効を
-  /// 変える。起動中なら即座に反映され、停止中でも次回[launch]時に使う
-  /// 値として覚えておく。
-  void setFddMechanicalSoundEnabled(bool enabled) {
+  /// FDD機構音（ホスト側合成の読み書き音と、コアが鳴らすシーク音・
+  /// ヘッド音、AUD-04）の有効・無効をまとめて変える。起動中なら即座に
+  /// 反映され、停止中でも次回[launch]時に使う値として覚えておく。
+  Future<void> setFddMechanicalSoundEnabled(bool enabled) async {
     _fddMechanicalSoundEnabled = enabled;
     state = state.copyWith(fddMechanicalSoundEnabled: enabled);
     unawaited(preferences.setBool(_fddMechanicalSoundEnabledKey, enabled));
     _session?.setFddMechanicalSoundEnabled(enabled);
+    await _session?.setFddNoiseEnabled(enabled);
   }
 
   /// 最終ミキサー直後のPCMをWAVへ録音開始する（AUD-06、design.md 7.2）。

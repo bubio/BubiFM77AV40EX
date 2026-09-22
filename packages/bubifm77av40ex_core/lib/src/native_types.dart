@@ -159,6 +159,7 @@ abstract final class BfmCommandKind {
   static const int setSoundVolume = 0x0504;
   static const int setScreenFilter = 0x0505;
   static const int setScreenPower = 0x0506;
+  static const int setFddNoiseEnable = 0x0507;
 
   static const int saveState = 0x0600;
   static const int loadState = 0x0601;
