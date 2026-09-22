@@ -19,6 +19,13 @@
  * - 変更: ウィンドウとFlViewの差（ヘッダーバー等）をその場で測って足す
  * - 最小: FlViewのサイズ要求として設定し、GTKにウィンドウの最小サイズを
  *   計算させる（ヘッダーバーや装飾はGTKが加える）
+ *
+ * あわせてフルスクリーン（VID-03）を、macOS版と同じチャンネル
+ * （`bubifm77av40ex/platform`の isFullScreen/setFullScreen と
+ * `bubifm77av40ex/platform/fullscreen`の変化通知）で扱う。OS側の操作
+ * （ウィンドウマネージャーのショートカット等）での変化も
+ * window-state-event から通知する。security-scoped bookmark 等の
+ * macOS専用のメソッドは未実装のまま返し、Dart側は対応外と判断する。
  */
 
 namespace {
@@ -26,6 +33,9 @@ namespace {
 constexpr char kMethodChannelName[] = "bubifm77av40ex/platform/window_scale";
 constexpr char kEventChannelName[] =
     "bubifm77av40ex/platform/window_scale/changes";
+constexpr char kPlatformChannelName[] = "bubifm77av40ex/platform";
+constexpr char kFullScreenEventChannelName[] =
+    "bubifm77av40ex/platform/fullscreen";
 
 }  // namespace
 
@@ -37,6 +47,12 @@ struct _BubiFm77Av40ExPlatformPlugin {
   gboolean listening;
   gint last_width;
   gint last_height;
+
+  GtkWidget* window;  // 弱参照。フルスクリーンの対象
+  gulong window_state_handler;
+  FlEventChannel* full_screen_changes;  // 参照を1つ持つ
+  gboolean full_screen_listening;
+  gboolean full_screen;  // window-state-eventで知った最新の状態
 };
 
 G_DECLARE_FINAL_TYPE(BubiFm77Av40ExPlatformPlugin,
@@ -103,6 +119,74 @@ static FlMethodErrorResponse* cancel_cb(FlEventChannel* channel,
   auto* self = BUBI_FM77_AV40_EX_PLATFORM_PLUGIN(user_data);
   self->listening = FALSE;
   return nullptr;
+}
+
+static gboolean window_state_cb(GtkWidget* widget,
+                                GdkEventWindowState* event,
+                                gpointer user_data) {
+  auto* self = BUBI_FM77_AV40_EX_PLATFORM_PLUGIN(user_data);
+  if ((event->changed_mask & GDK_WINDOW_STATE_FULLSCREEN) == 0) {
+    return FALSE;
+  }
+  self->full_screen =
+      (event->new_window_state & GDK_WINDOW_STATE_FULLSCREEN) != 0;
+  if (self->full_screen_listening) {
+    g_autoptr(FlValue) value = fl_value_new_bool(self->full_screen);
+    fl_event_channel_send(self->full_screen_changes, value, nullptr, nullptr);
+  }
+  return FALSE;
+}
+
+static FlMethodErrorResponse* full_screen_listen_cb(FlEventChannel* channel,
+                                                    FlValue* args,
+                                                    gpointer user_data) {
+  BUBI_FM77_AV40_EX_PLATFORM_PLUGIN(user_data)->full_screen_listening = TRUE;
+  return nullptr;
+}
+
+static FlMethodErrorResponse* full_screen_cancel_cb(FlEventChannel* channel,
+                                                    FlValue* args,
+                                                    gpointer user_data) {
+  BUBI_FM77_AV40_EX_PLATFORM_PLUGIN(user_data)->full_screen_listening = FALSE;
+  return nullptr;
+}
+
+static void platform_method_call_cb(FlMethodChannel* channel,
+                                    FlMethodCall* method_call,
+                                    gpointer user_data) {
+  auto* self = BUBI_FM77_AV40_EX_PLATFORM_PLUGIN(user_data);
+  const gchar* method = fl_method_call_get_name(method_call);
+  FlValue* args = fl_method_call_get_args(method_call);
+
+  g_autoptr(FlMethodResponse) response = nullptr;
+  if (g_strcmp0(method, "isFullScreen") == 0) {
+    g_autoptr(FlValue) result = fl_value_new_bool(self->full_screen);
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+  } else if (g_strcmp0(method, "setFullScreen") == 0) {
+    FlValue* value = args != nullptr &&
+                             fl_value_get_type(args) == FL_VALUE_TYPE_MAP
+                         ? fl_value_lookup_string(args, "value")
+                         : nullptr;
+    if (value == nullptr || fl_value_get_type(value) != FL_VALUE_TYPE_BOOL) {
+      response = FL_METHOD_RESPONSE(fl_method_error_response_new(
+          "invalidArgument", "Required arguments are missing.", nullptr));
+    } else {
+      // 現状と異なる場合だけ切り替える。実際の状態反映は
+      // window-state-event（window_state_cb）を経由して届く。
+      const gboolean requested = fl_value_get_bool(value);
+      if (self->window != nullptr && requested != self->full_screen) {
+        if (requested) {
+          gtk_window_fullscreen(GTK_WINDOW(self->window));
+        } else {
+          gtk_window_unfullscreen(GTK_WINDOW(self->window));
+        }
+      }
+      response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+    }
+  } else {
+    response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+  }
+  fl_method_call_respond(method_call, response, nullptr);
 }
 
 static void set_content_size(BubiFm77Av40ExPlatformPlugin* self,
@@ -178,7 +262,14 @@ static void bubi_fm77_av40_ex_platform_plugin_dispose(GObject* object) {
                                  reinterpret_cast<gpointer*>(&self->view));
     self->view = nullptr;
   }
+  if (self->window != nullptr) {
+    g_clear_signal_handler(&self->window_state_handler, self->window);
+    g_object_remove_weak_pointer(G_OBJECT(self->window),
+                                 reinterpret_cast<gpointer*>(&self->window));
+    self->window = nullptr;
+  }
   g_clear_object(&self->changes);
+  g_clear_object(&self->full_screen_changes);
   G_OBJECT_CLASS(bubi_fm77_av40_ex_platform_plugin_parent_class)
       ->dispose(object);
 }
@@ -204,6 +295,17 @@ void bubi_fm77_av40_ex_platform_plugin_register_with_registrar(
     plugin->size_allocate_handler =
         g_signal_connect(plugin->view, "size-allocate",
                          G_CALLBACK(size_allocate_cb), plugin);
+
+    // ランナーはFlViewをウィンドウへ入れてからプラグインを登録する。
+    GtkWidget* toplevel = gtk_widget_get_toplevel(plugin->view);
+    if (GTK_IS_WINDOW(toplevel)) {
+      plugin->window = toplevel;
+      g_object_add_weak_pointer(G_OBJECT(plugin->window),
+                                reinterpret_cast<gpointer*>(&plugin->window));
+      plugin->window_state_handler =
+          g_signal_connect(plugin->window, "window-state-event",
+                           G_CALLBACK(window_state_cb), plugin);
+    }
   }
 
   FlBinaryMessenger* messenger = fl_plugin_registrar_get_messenger(registrar);
@@ -213,6 +315,19 @@ void bubi_fm77_av40_ex_platform_plugin_register_with_registrar(
                                          FL_METHOD_CODEC(codec));
   fl_event_channel_set_stream_handlers(plugin->changes, listen_cb, cancel_cb,
                                        plugin, nullptr);
+
+  plugin->full_screen_changes = fl_event_channel_new(
+      messenger, kFullScreenEventChannelName, FL_METHOD_CODEC(codec));
+  fl_event_channel_set_stream_handlers(plugin->full_screen_changes,
+                                       full_screen_listen_cb,
+                                       full_screen_cancel_cb, plugin, nullptr);
+
+  g_autoptr(FlMethodChannel) platform_channel = fl_method_channel_new(
+      messenger, kPlatformChannelName, FL_METHOD_CODEC(codec));
+  fl_method_channel_set_method_call_handler(platform_channel,
+                                            platform_method_call_cb,
+                                            g_object_ref(plugin),
+                                            g_object_unref);
 
   g_autoptr(FlMethodChannel) channel =
       fl_method_channel_new(messenger, kMethodChannelName,
