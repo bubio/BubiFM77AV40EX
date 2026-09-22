@@ -58,7 +58,7 @@ class StatusBar extends StatelessWidget {
           Flexible(
             flex: 8,
             child: _CmtIndicator(
-              text: l10n.statusCmt(state.cmtMessage),
+              text: l10n.statusCmt(shortenCmtMessage(state.cmtMessage)),
               running: state.cmtPlaying || state.cmtRecording,
             ),
           ),
@@ -114,6 +114,19 @@ class _FddLamp extends StatelessWidget {
     );
   }
 }
+
+/// コアのCMT状態文字列のうち、テープ端での停止を示す長い表記を
+/// 走行位置の表記（`Stop (NN %)`）にそろえる。
+///
+/// upstream `DATAREC::update_event`はテープ端で停止すると
+/// `Stop (Beginning-of-Tape)`/`Stop (End-of-Tape)`を返すが、それ以外の
+/// 停止位置は`Stop (NN %)`で表すため、端も`0 %`/`100 %`で表示する。
+/// upstreamコアは変更できないため、表示の直前でここが置き換える。
+String shortenCmtMessage(String message) => switch (message) {
+  'Stop (Beginning-of-Tape)' => 'Stop (0 %)',
+  'Stop (End-of-Tape)' => 'Stop (100 %)',
+  _ => message,
+};
 
 /// CMT走行状態の表示（specification.md CMT-05、design.md 12.4、M4）。
 ///
