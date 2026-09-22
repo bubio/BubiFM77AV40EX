@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path_provider_windows/path_provider_windows.dart';
 
+import 'xdg_user_directory.dart';
+
 /// OSの「ピクチャ」相当のディレクトリ（VID-05）。
 ///
 /// `path_provider`はPictures/Music配下の位置を返すAPIを持たないため、
@@ -23,10 +25,14 @@ class PicturesDirectory {
   /// OSのPicturesディレクトリの絶対パス。未対応のOSでは`null`。
   Future<String?> path() async {
     // MethodChannelはmacOSのみが実装している。WindowsはKnown Folder
-    // （SHGetKnownFolderPath）をpath_provider_windows経由で引き、
-    // ネイティブプラグインの追加を避ける。
+    // （SHGetKnownFolderPath）をpath_provider_windows経由で、LinuxはXDG
+    // ユーザーディレクトリ（xdg-user-dir）を引き、ネイティブプラグインの
+    // 追加を避ける。
     if (Platform.isWindows) {
       return PathProviderWindows().getPath(_windowsFolderId);
+    }
+    if (Platform.isLinux) {
+      return xdgUserDirectoryPath('PICTURES');
     }
     try {
       return await _channel.invokeMethod<String>('picturesDirectoryPath');

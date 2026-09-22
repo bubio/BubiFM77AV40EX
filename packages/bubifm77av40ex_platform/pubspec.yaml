@@ -11,6 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
   path_provider_windows: 2.3.0
+  # LinuxのPictures/Music（xdg-user-dir）。path_providerのLinux実装も
+  # 使うFlutter公式パッケージ（推移的依存の明示化）。
+  xdg_directories: 1.1.0
 
 dev_dependencies:
   flutter_test:
