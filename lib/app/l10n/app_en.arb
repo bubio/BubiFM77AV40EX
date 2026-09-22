@@ -384,6 +384,15 @@
   "@deviceJoystickUnassigned": {
     "description": "Dropdown item/placeholder meaning no controller is assigned to a joystick slot (INP-04)."
   },
+  "deviceJoystickUnnamed": "Controller {number}",
+  "@deviceJoystickUnnamed": {
+    "description": "Fallback dropdown label for a connected controller whose platform name is empty (e.g. a PS4 controller on Windows via GameInput). number is its 1-based position in the connected list (INP-04).",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
   "soundChannelOpnFm": "FM",
   "@soundChannelOpnFm": {
     "description": "Volume slider label for the standard OPN's FM part (AUD-03)."

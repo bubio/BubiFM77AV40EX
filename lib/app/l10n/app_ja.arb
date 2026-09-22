@@ -96,6 +96,7 @@
   "deviceJoystickSlot1": "ジョイスティック1",
   "deviceJoystickSlot2": "ジョイスティック2",
   "deviceJoystickUnassigned": "未割当",
+  "deviceJoystickUnnamed": "コントローラー{number}",
   "soundChannelOpnFm": "FM",
   "soundChannelOpnPsg": "PSG",
   "soundChannelBeep": "Beep",

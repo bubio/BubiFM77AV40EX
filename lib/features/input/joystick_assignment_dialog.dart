@@ -102,10 +102,16 @@ class _JoystickAssignmentDialogState
                   value: null,
                   child: Text(l10n.deviceJoystickUnassigned),
                 ),
-                for (final info in joystick.connected)
+                for (final (index, info) in joystick.connected.indexed)
                   DropdownMenuItem<String?>(
                     value: info.id,
-                    child: Text(info.name),
+                    // Windows（GameInput）ではPS4コントローラーなどの
+                    // displayNameが取れず空文字列になるため、番号で代替する。
+                    child: Text(
+                      info.name.trim().isEmpty
+                          ? l10n.deviceJoystickUnnamed(index + 1)
+                          : info.name,
+                    ),
                   ),
               ],
               onChanged: (value) => notifier.assign(slot, value),

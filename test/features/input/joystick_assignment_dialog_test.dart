@@ -73,6 +73,18 @@ void main() {
     container.dispose();
   });
 
+  testWidgets('名前が空のコントローラーは番号付きの代替名で並ぶ', (tester) async {
+    source.connected = [(id: 'pad-1', name: 'Pad 1'), (id: 'pad-2', name: '')];
+
+    await openDialog(tester);
+    await tester.tap(find.byKey(const Key('joystickAssignmentDialogSlot0')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pad 1'), findsOneWidget);
+    expect(find.text('Controller 2'), findsOneWidget);
+    container.dispose();
+  });
+
   testWidgets('スロットのドロップダウンを選ぶとassignが呼ばれる', (tester) async {
     source.connected = [(id: 'pad-1', name: 'Pad 1')];
     await openDialog(tester);
