@@ -1,8 +1,9 @@
 /// Flutter公式パッケージが覆わないOSサービス。
 ///
-/// macOSの security-scoped bookmark と、Windowsのウィンドウ
-/// クライアント領域操作を扱う。Linuxの正規化パスとAndroidのSAF永続URI
-/// 権限は、担当マイルストーン（M6）で足す。
+/// macOSの security-scoped bookmark と、Windows/Linuxのウィンドウ
+/// クライアント領域操作、macOS/Linuxのフルスクリーン、Linuxの
+/// XDGユーザーディレクトリを扱う。
+/// AndroidのSAF永続URI権限は、担当マイルストーン（M7）で足す。
 library;
 
 export 'src/full_screen_channel.dart';

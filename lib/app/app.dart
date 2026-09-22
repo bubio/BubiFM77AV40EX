@@ -31,6 +31,35 @@ import 'menu/platform_application_menu.dart';
 import 'menu/sound_volume_dialog.dart';
 import 'pause_on_popup_observer.dart';
 
+/// Linuxで使うフォントの候補順（上から、その文字を持つ最初のものを使う）。
+///
+/// FlutterのLinux版は、指定したフォントに無い文字をOS（fontconfig）の
+/// 代替フォントへ自動で回さず、日本語が豆腐（□）になる。Flutter 3.47.5の
+/// Ubuntu 26.04で、fontconfigが`Noto Sans CJK JP`を返す環境でも再現した。
+/// 候補を明示すればその中からは正しく選ばれるため、Material既定のLinux用
+/// 候補（`Typography`の`_helsinkiFontFallbacks`）の後ろへ日本語フォントを
+/// 足す。[ThemeData]の`fontFamilyFallback`は既定の候補を置き換えるため、
+/// 欧文側も写しておく。未インストールの名前は読み飛ばされる。
+///
+/// 欧文を先に置き、英数字は従来どおりUbuntu等で描く。日本語はJP字形の
+/// フォントを優先し、ディストリビューションごとの定番を順に並べる。
+const List<String> linuxFontFamilyFallback = [
+  'Ubuntu',
+  'Adwaita Sans',
+  'Cantarell',
+  'DejaVu Sans',
+  'Liberation Sans',
+  'Arial',
+  'Noto Sans CJK JP',
+  'Noto Sans JP',
+  'Source Han Sans JP',
+  'IPAexGothic',
+  'IPAGothic',
+  'TakaoGothic',
+  'VL Gothic',
+  'Droid Sans Fallback',
+];
+
 /// アプリケーションのルート。
 ///
 /// macOS標準Applicationメニュー（About、Services、Hide系、Quit）は[PlatformApplicationMenu]がここで一度だけ組み立てる
@@ -63,8 +92,8 @@ class _BubiFm77Av40ExAppState extends ConsumerState<BubiFm77Av40ExApp> {
       navigatorKey: _navigatorKey,
       navigatorObservers: [_pauseOnPopupObserver],
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
-      theme: ThemeData(brightness: Brightness.light, useMaterial3: true),
-      darkTheme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
+      theme: _themeData(Brightness.light),
+      darkTheme: _themeData(Brightness.dark),
       themeMode: ThemeMode.system,
       locale: _localeOf(settings.localeMode),
       localizationsDelegates: const [
@@ -87,6 +116,14 @@ class _BubiFm77Av40ExAppState extends ConsumerState<BubiFm77Av40ExApp> {
         exit(0);
       },
       child: materialApp,
+    );
+  }
+
+  static ThemeData _themeData(Brightness brightness) {
+    return ThemeData(
+      brightness: brightness,
+      useMaterial3: true,
+      fontFamilyFallback: Platform.isLinux ? linuxFontFamilyFallback : null,
     );
   }
 

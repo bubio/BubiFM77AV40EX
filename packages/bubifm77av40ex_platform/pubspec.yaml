@@ -11,6 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
   path_provider_windows: 2.3.0
+  # LinuxのPictures/Music（xdg-user-dir）。path_providerのLinux実装も
+  # 使うFlutter公式パッケージ（推移的依存の明示化）。
+  xdg_directories: 1.1.0
 
 dev_dependencies:
   flutter_test:
@@ -29,4 +32,9 @@ flutter:
       # 大きさの調査」）。`window_manager`にはWindowsでクライアント領域を
       # 指定するAPIがないための自前実装（design.mdへ理由を記録）。
       windows:
+        pluginClass: BubiFm77Av40ExPlatformPlugin
+      # Windowsと同じウィンドウの大きさのチャンネル（GTKのヘッダーバーの
+      # 有無で`window_manager`の換算がずれるため、Flutterの描画面の大きさを
+      # 直接扱う）と、macOSと同じフルスクリーンのチャンネルを持つ。
+      linux:
         pluginClass: BubiFm77Av40ExPlatformPlugin

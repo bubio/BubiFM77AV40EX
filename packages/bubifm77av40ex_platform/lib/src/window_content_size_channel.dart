@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 
 /// メインウィンドウのクライアント領域（枠・タイトルバーを除いた中身）を
-/// 直接指定・取得するチャンネル（Windows専用、design.md「x1ウィンドウの
+/// 直接指定・取得するチャンネル（Windows/Linux、design.md「x1ウィンドウの
 /// 大きさの調査」）。
 ///
 /// `window_manager`の`setSize`/`getSize`はWindowsではタイトルバーに加え、
@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 /// 公開APIがない。このチャンネルの裏側（Win32ネイティブ実装）は
 /// `AdjustWindowRectExForDpi`でクライアント領域から外形をOSに計算させる
 /// ため、呼び出し側はクライアント領域の大きさだけを気にすればよい。
+/// Linuxの裏側はFlutterの描画面（FlView）の実際の大きさを扱い、ヘッダー
+/// バー等の差はその場で測って足す。
 /// macOSは`NSWindow.setContentSize:`にあたる処理を`window_manager`が
 /// 内部で行うため、こちらは使わない（[OsWindowScale]がOSで分岐する）。
 class WindowContentSizeChannel {

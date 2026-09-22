@@ -127,6 +127,12 @@ list(TRANSFORM BRIDGE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 
 add_library(bubifm77av40ex_core STATIC ${CORE_SOURCES} ${BRIDGE_SOURCES})
 
+# Linux/Windowsではこの静的ライブラリを共有ライブラリ（Flutterプラグイン、
+# 検査用の bubifm77av40ex_shared）へ取り込む。Linuxでは位置独立コードで
+# なければリンクできない（macOSは既定で位置独立のため差が出ない）。
+set_target_properties(bubifm77av40ex_core PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+
 target_include_directories(bubifm77av40ex_core
   PUBLIC
     # 製品用 C ABI の公開ヘッダー
