@@ -19,9 +19,14 @@ dev_dependencies:
 
 flutter:
   plugin:
-    # macOS以外はM4〜M6で各マイルストーンの担当時に追加する。
-    # Linux/Windowsは正規化パス、AndroidはSAFの永続URI権限になる
-    # （design.md 9）。
+    # macOS/Windows以外はM6で担当時に追加する。Linuxは正規化パス、Androidは
+    # SAFの永続URI権限になる（design.md 9）。
     platforms:
       macos:
+        pluginClass: BubiFm77Av40ExPlatformPlugin
+      # クライアント領域（ウィンドウの枠を除いた中身）を直接指定して
+      # ウィンドウを操作するチャンネルだけを持つ（design.md「x1ウィンドウの
+      # 大きさの調査」）。`window_manager`にはWindowsでクライアント領域を
+      # 指定するAPIがないための自前実装（design.mdへ理由を記録）。
+      windows:
         pluginClass: BubiFm77Av40ExPlatformPlugin
