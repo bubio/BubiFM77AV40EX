@@ -346,6 +346,32 @@ void main() {
     expect(container.read(windowScaleControllerProvider).currentMultiplier, 2);
   });
 
+  test('setChromeHeightがステータスバーを隠す等で縮む方向でも'
+      '実際にウィンドウが縮む（最小サイズを先に更新する）', () async {
+    // WindowsのSetWindowPosは非対話的なリサイズでも直近の
+    // WM_GETMINMAXINFO（最小サイズ）を尊重するため、最小サイズを更新
+    // する前に縮める方向のsetContentSizeを呼ぶと要求どおり縮まない
+    // （利用者からの報告：「ステータスバーの非表示が直っていない」、
+    // Win32の最小プログラムで実機の挙動を確認して再現した）。
+    container.read(windowScaleControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(windowScaleControllerProvider).currentMultiplier, 1);
+
+    final controller = container.read(windowScaleControllerProvider.notifier);
+    // まずステータスバーを表示してx1のまま伸びる（既存の「同じ倍率を
+    // 保つ」テストと同じ形）。最小サイズも424へ更新される。
+    await controller.setChromeHeight(24);
+    expect(windowScale.contentSize, const Size(640, 424));
+    expect(container.read(windowScaleControllerProvider).currentMultiplier, 1);
+
+    // 次にステータスバーを隠して縮める方向。最小サイズを先に更新して
+    // いなければ、Fakeが古い最小サイズ（424）でこの要求を詰めてしまう。
+    await controller.setChromeHeight(0);
+
+    expect(windowScale.contentSize, const Size(640, 400));
+    expect(container.read(windowScaleControllerProvider).currentMultiplier, 1);
+  });
+
   test('setChromeHeightはフルスクリーン中はウィンドウをリサイズしない', () async {
     windowScale.contentSize = const Size(1280, 800);
     container.read(windowScaleControllerProvider);

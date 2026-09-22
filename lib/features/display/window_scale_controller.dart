@@ -188,6 +188,15 @@ class WindowScaleController extends Notifier<WindowScaleState> {
     if (!state.supported) {
       return;
     }
+    // 最小サイズを先に今のchromeHeightへ合わせておく。Windowsは
+    // SetWindowPosによる非対話的なリサイズでも直近のWM_GETMINMAXINFO
+    // （最小サイズ）を尊重してリサイズ要求を黙って詰めてしまうため、
+    // 縮める方向（ステータスバーを隠す等でchromeHeightが小さくなった
+    // 直後）に古い（大きい）最小サイズが残ったままsetContentSizeすると、
+    // 要求どおり縮まない（利用者からの報告：「ステータスバーの非表示が
+    // 直っていない」）。`_refresh`も同じ最小サイズ設定を行うが、それは
+    // リサイズの後になるため間に合わない。
+    await windowScale.setMinimumContentSize(_windowSizeForMultiplier(1));
     await windowScale.setContentSize(_windowSizeForMultiplier(multiplier));
     await _refresh();
   }

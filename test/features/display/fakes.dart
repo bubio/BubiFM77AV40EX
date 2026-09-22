@@ -82,6 +82,16 @@ class FakeWindowScale implements WindowScale {
   final List<Size> setMinimumContentSizeCalls = [];
   int showCalls = 0;
 
+  /// 直近の[setMinimumContentSize]の値。WindowsのSetWindowPosが
+  /// WM_GETMINMAXINFOの最小サイズを非対話的なリサイズでも尊重して
+  /// 縮小要求を詰めてしまう挙動を模す（`OsWindowScale`のネイティブ側
+  /// 実装が実際にそうなっていることを、Win32の最小プログラムで確認した。
+  /// 利用者からの報告：「ステータスバーの非表示が直っていない」）。
+  /// これにより、最小サイズを更新する前に縮める方向へ
+  /// `setContentSize`すると、このFakeでも要求どおりに縮まないことを
+  /// テストで検出できる。
+  Size? _minimumContentSize;
+
   final StreamController<Size> _changes = StreamController<Size>.broadcast();
 
   @override
@@ -93,12 +103,19 @@ class FakeWindowScale implements WindowScale {
   @override
   Future<void> setContentSize(Size size) async {
     setContentSizeCalls.add(size);
+    final minimum = _minimumContentSize;
+    if (minimum != null &&
+        (size.width < minimum.width || size.height < minimum.height)) {
+      // 最小サイズより小さい要求は無視される（Win32の実機と同じ）。
+      return;
+    }
     contentSize = size;
   }
 
   @override
   Future<void> setMinimumContentSize(Size size) async {
     setMinimumContentSizeCalls.add(size);
+    _minimumContentSize = size;
   }
 
   @override
