@@ -4,7 +4,7 @@ publish_to: 'none'
 
 # セマンティックバージョニング。P0プレビューは0.x、P1完成版で1.0.0とする。
 # ビルド番号は1からの連番。
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
   sdk: ^3.13.2
