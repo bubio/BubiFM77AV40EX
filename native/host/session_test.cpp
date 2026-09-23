@@ -1970,6 +1970,7 @@ void test_media()
 		check(bfm_get_fdd_bank_info(session, 0, &bank_num, &cur_bank) == BFM_OK && bank_num == 1,
 		      "拒否後もFD1挿入状態は壊れたロードの影響を受けない");
 
+
 		const std::string missing_path = state_dir + "/does-not-exist.bin";
 		bfm_command load_missing{};
 		load_missing.kind = BFM_CMD_LOAD_STATE;
@@ -2279,6 +2280,106 @@ void test_cmt()
 
 		events.clear();
 		check(send_and_collect(eject_cmt, &events) == BFM_OK, "長いT77を排出できる");
+	}
+
+	// --- CMT-05: 状態文字列が前のテープやロード前の値を残さない ---
+	// upstreamのDATAREC::messageはテープを開き直しても初期化されず、
+	// stateにも含まれない。停止中の表示はブリッジが走行位置から作る
+	// （refresh_cmt_statusのコメント）。
+	{
+		auto has_tape_position_changed = [](const std::vector<bfm_event>& events) {
+			for (const auto& event : events) {
+				if (event.kind == BFM_EVENT_TAPE_POSITION_CHANGED) {
+					return true;
+				}
+			}
+			return false;
+		};
+		auto expected_stop = [](int32_t position) {
+			return "Stop (" + std::to_string(position) + " %)";
+		};
+
+		bfm_command play_long = play_t77;
+		const std::string long_t77 = media_dir + "/long.t77";
+		play_long.text = long_t77.c_str();
+		events.clear();
+		check(send_and_collect(play_long, &events) == BFM_OK, "状態文字列検査用に長いT77を開ける");
+		check(bfm_get_cmt_status(session, &status) == BFM_OK &&
+		          std::string(status.message) == "Stop (0 %)",
+		      "開いた直後は先頭位置の\"Stop (0 %)\"になる");
+
+		// 高速ロードで走行位置を進めてから止める。
+		events.clear();
+		check(send_and_collect(control_play, &events) == BFM_OK, "長いT77を再生できる");
+		std::this_thread::sleep_for(std::chrono::milliseconds(500));
+		events.clear();
+		check(send_and_collect(control_stop, &events) == BFM_OK, "途中で止められる");
+		check(bfm_get_cmt_status(session, &status) == BFM_OK, "停止後の状態を取得できる");
+		const int32_t saved_position = status.position;
+		check(saved_position > 0 && saved_position < 100, "走行位置が途中まで進んでいる");
+		check(std::string(status.message) == expected_stop(saved_position),
+		      "停止中は走行位置どおりの\"Stop (NN %)\"になる");
+
+		const std::string state_path = media_dir + "/cmt-state.bin";
+		bfm_command save_state{};
+		save_state.kind = BFM_CMD_SAVE_STATE;
+		save_state.text = state_path.c_str();
+		events.clear();
+		check(send_and_collect(save_state, &events) == BFM_OK, "途中位置のテープごと状態を保存できる");
+
+		events.clear();
+		check(send_and_collect(eject_cmt, &events) == BFM_OK, "保存後に排出できる");
+		check(bfm_get_cmt_status(session, &status) == BFM_OK &&
+		          std::string(status.message) == "Stop",
+		      "排出後は前のテープの走行位置を残さない");
+		check(has_tape_position_changed(events), "排出で状態文字列の変化が通知される");
+
+		events.clear();
+		check(send_and_collect(play_t77, &events) == BFM_OK, "別のテープを開ける");
+		check(bfm_get_cmt_status(session, &status) == BFM_OK &&
+		          std::string(status.message) == "Stop (0 %)",
+		      "別のテープを開くと走行位置は先頭から表示される");
+		check(has_tape_position_changed(events), "挿入で状態文字列の変化が通知される");
+
+		// Play Buttonの完了直後（コアがまだ1フレームも進めていない時点）でも、
+		// 前のテープの状態文字列を見せない。一時停止中もコマンドは処理され
+		// VMは進まないため、この時点を確実に観測できる。
+		check(bfm_set_paused(session, 1) == BFM_OK, "一時停止できる");
+		std::this_thread::sleep_for(std::chrono::milliseconds(50));
+		events.clear();
+		check(send_and_collect(control_play, &events) == BFM_OK, "別のテープを再生できる");
+		check(bfm_get_cmt_status(session, &status) == BFM_OK &&
+		          std::string(status.message).rfind("Play (", 0) == 0,
+		      "再生を始めた直後から\"Play (NN %)\"になる");
+		events.clear();
+		check(send_and_collect(control_stop, &events) == BFM_OK, "再生を止められる");
+		check(bfm_set_paused(session, 0) == BFM_OK, "一時停止を解除できる");
+
+		bfm_command load_state{};
+		load_state.kind = BFM_CMD_LOAD_STATE;
+		load_state.text = state_path.c_str();
+		events.clear();
+		check(send_and_collect(load_state, &events) == BFM_OK, "テープ入りの状態を読み込める");
+		check(bfm_get_cmt_status(session, &status) == BFM_OK && status.inserted == 1 &&
+		          status.position == saved_position &&
+		          std::string(status.message) == expected_stop(saved_position),
+		      "ステートロード後は保存時の走行位置が表示される");
+		check(has_tape_position_changed(events), "ステートロードで状態文字列の変化が通知される");
+
+		events.clear();
+		check(send_and_collect(eject_cmt, &events) == BFM_OK, "後続検査のため排出できる");
+
+		bfm_command rec_long = play_long;
+		rec_long.arg0 = 1;
+		const std::string rec_path = media_dir + "/rec-status.t77";
+		rec_long.text = rec_path.c_str();
+		events.clear();
+		check(send_and_collect(rec_long, &events) == BFM_OK, "録音用に開ける");
+		check(bfm_get_cmt_status(session, &status) == BFM_OK &&
+		          std::string(status.message) == "Stop",
+		      "録音用テープの停止中はupstreamと同じ\"Stop\"になる");
+		events.clear();
+		check(send_and_collect(eject_cmt, &events) == BFM_OK, "録音用テープを排出できる");
 	}
 
 	// --- AUD-04: FDDのシーク音・ヘッド音（コアのNOISE）を有効・無効にできる ---

@@ -1203,6 +1203,9 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       }
     }
     state = state.copyWith(fddMedia: updatedMedia);
+    // CMTもstateごと差し替わる（DATARECは挿入状態と走行位置をstateに
+    // 含める）。ネイティブのイベントを待たずに表示とメニューを合わせる。
+    _refreshCmtStatus(session);
     return true;
   }
 
@@ -1721,9 +1724,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     if (destination == null) {
       return;
     }
-    if (_cmtSlot != null) {
-      await cmtEject();
-    }
+    // コアが別のテープを持ったままだと挿入は拒否される。ステートロードで
+    // 復元したテープは[_cmtSlot]を持たないため、[cmtEject]はコアの状態でも
+    // 判定する。
+    await cmtEject();
     try {
       final workspace = _workspace ??= await cacheWorkspace
           .createSessionWorkspace();
@@ -1773,9 +1777,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       await resource.release();
       return false;
     }
-    if (_cmtSlot != null) {
-      await cmtEject();
-    }
+    // コアが別のテープを持ったままだと挿入は拒否される。ステートロードで
+    // 復元したテープは[_cmtSlot]を持たないため、[cmtEject]はコアの状態でも
+    // 判定する。
+    await cmtEject();
     try {
       final workspace = _workspace ??= await cacheWorkspace
           .createSessionWorkspace();
@@ -1813,10 +1818,14 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   /// 作業領域の複製を原本へ原子的に書き戻す（design.md 16.1、FDDの
   /// `ejectFdd`と同じ方針）。再生用に開いていた場合は読み取り専用のため
   /// 書き戻さない。未挿入なら何もしない。
+  ///
+  /// ステートロードで復元したテープは利用者が開いたファイルと結び付かない
+  /// （[_cmtSlot]がない）が、コアには挿入されているため排出はする。
+  /// 書き戻し先がないので、原本への書き戻しは行わない。
   Future<void> cmtEject() async {
     final session = _session;
     final slot = _cmtSlot;
-    if (session == null || slot == null) {
+    if (session == null || (slot == null && !state.cmtInserted)) {
       return;
     }
     final commandId = await session.ejectCmt();
@@ -1826,14 +1835,16 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       return;
     }
     final workspace = _workspace;
-    if (workspace != null && slot.forRecording) {
-      await slot.resource.withAccess(
-        (nativePath) =>
-            workspace.exportAtomic(slot.workspaceFileName, nativePath),
-      );
+    if (slot != null) {
+      if (workspace != null && slot.forRecording) {
+        await slot.resource.withAccess(
+          (nativePath) =>
+              workspace.exportAtomic(slot.workspaceFileName, nativePath),
+        );
+      }
+      await slot.resource.release();
+      _cmtSlot = null;
     }
-    await slot.resource.release();
-    _cmtSlot = null;
     _refreshCmtStatus(session);
   }
 

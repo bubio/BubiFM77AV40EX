@@ -1173,6 +1173,58 @@ void main() {
     expect(cacheWorkspace.handle.exportCalls, isEmpty);
   });
 
+  group('ステートロードで復元したテープ', () {
+    // コアはテープの挿入状態と走行位置をstateに含めて復元する。ホストが
+    // 開いたファイル（_CmtSlot）とは結び付かない。
+    Future<void> loadStateWithTape() async {
+      final tempDir = Directory.systemTemp.createTempSync('bubi-state-test');
+      addTearDown(() => tempDir.deleteSync(recursive: true));
+      appDataPaths.statesPath = tempDir.path;
+      session.cmtStatus = (
+        inserted: true,
+        playing: false,
+        recording: false,
+        position: 42,
+        message: 'Stop (42 %)',
+      );
+      expect(await controller().loadState(0), isTrue);
+    }
+
+    test('CMT-05 ロード直後に状態を問い合わせて表示へ反映する', () async {
+      await loadStateWithTape();
+
+      expect(state().cmtInserted, isTrue);
+      expect(state().cmtPosition, 42);
+      expect(state().cmtMessage, 'Stop (42 %)');
+    });
+
+    test('CMT-01 排出でき、原本が無いので書き戻さない', () async {
+      await loadStateWithTape();
+
+      await controller().cmtEject();
+
+      expect(session.ejectCmtCallCount, 1);
+      expect(cacheWorkspace.handle.exportCalls, isEmpty);
+      expect(state().cmtInserted, isFalse);
+      expect(state().cmtMessage, 'Stop');
+    });
+
+    test('CMT-01 排出せずに別のテープを開くと、先に排出してから入れ替える', () async {
+      await loadStateWithTape();
+      externalFileAccess.nextPickResult = FakeExternalResource(
+        '/Volumes/USB/OTHER.T77',
+        displayName: 'OTHER.T77',
+      );
+
+      await controller().cmtPlay();
+
+      expect(session.ejectCmtCallCount, 1);
+      expect(session.insertCmtForPlaybackCalls, hasLength(1));
+      expect(state().cmtInserted, isTrue);
+      expect(state().cmtMessage, 'Stop');
+    });
+  });
+
   test('CMT-03 走行制御はコアへ即時に送り、状態を問い合わせて反映する', () async {
     session.cmtStatus = (
       inserted: true,

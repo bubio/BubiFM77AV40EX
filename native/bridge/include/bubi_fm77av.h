@@ -455,10 +455,10 @@ typedef enum {
 	 */
 	BFM_EVENT_MEDIA_ACCESS_CHANGED = 4,/* 未使用。bfm_get_media_access を使う */
 	/*
-	 * upstream DATAREC::get_message()（"Play"/"Stop (NN %)"/"Record"等、
-	 * CMT-05）が返す状態文字列が前回と変わったときだけ発火する低頻度
+	 * CMTの状態文字列（"Play (NN %)"/"Stop (NN %)"/"Record"等、CMT-05、
+	 * bfm_get_cmt_statusのmessage）が前回と変わったときだけ発火する低頻度
 	 * イベント（BFM_EVENT_LED_CHANGEDと同じ「変化検知してイベント化」
-	 * 方針）。走行位置(%)自体は毎フレーム変わりうる高頻度データのため
+	 * 方針）。挿入・排出・ステートロードによる変化でも発火する。走行位置(%)自体は毎フレーム変わりうる高頻度データのため
 	 * イベントには含めず、bfm_get_cmt_status のポーリング専用とする
 	 * （design.md 4.3が禁じる高頻度データをここへ流さないため、
 	 * BFM_EVENT_MEDIA_ACCESS_CHANGEDと同じ考え方）。
@@ -658,8 +658,17 @@ BFM_API bfm_result bfm_get_fdd_write_protect(bfm_session* session, int32_t drive
  * CMTの現在状態（design.md「D88 bank list」と同型の直接アクセサ、
  * specification.md CMT-05、M4）。message は終端NULを含めて必ず
  * NUL終端し、収まらない場合は切り詰める。position は0〜100（未挿入または
- * 再生中でなければ0、upstream DATAREC::get_tape_position()と同じ意味）。
- * 未挿入なら inserted/playing/recording はすべて0、message は空文字。
+ * 再生用でなければ0、upstream DATAREC::get_tape_position()と同じ意味）。
+ * 未挿入なら inserted/playing/recording はすべて0、message は"Stop"。
+ *
+ * message はupstreamと同じ書式（再生中は"Play (NN %)"、録音中は"Record"、
+ * 停止中は再生用が"Stop (NN %)"・録音用が"Stop"）を、現在の走行位置から
+ * ブリッジが作る。upstreamのDATAREC::get_message()をそのまま返すのは
+ * 早送り・巻戻し中だけである。upstreamのmessageはテープを開き直しても
+ * 初期化されず、stateにも含まれず、モーター始動直後も前の値のままのため、
+ * そのままでは前のテープやロード前の値が見えるからである。
+ * ステートロードで戻したテープは録音用かどうかをブリッジが判別できず、
+ * 停止中は再生用の書式になる（録音用と知っているホストが表示側で扱う）。
  */
 typedef struct {
 	int32_t inserted;

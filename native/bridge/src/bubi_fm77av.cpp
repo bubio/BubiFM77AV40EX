@@ -609,7 +609,16 @@ struct bfm_session {
 	std::atomic<int32_t> cmt_recording{0};
 	std::atomic<int32_t> cmt_position{0};
 	std::mutex cmt_message_mutex;
-	char cmt_message[128] = {0};
+	char cmt_message[128] = "Stop";
+
+	/*
+	 * 録音用に開いたテープか（Core threadだけが読み書きする）。停止中の
+	 * 表示をupstreamと同じ"Stop"（録音）/"Stop (NN %)"（再生）に分けるため
+	 * に持つ。DATARECは録音用かどうかを停止中に外から読めない
+	 * （is_tape_recording()はモーター回転中だけtrue）。ステートロードで
+	 * 復元したテープは判別できないため再生用として扱う。
+	 */
+	bool cmt_for_recording = false;
 
 	void set_cmt_message(const char* value)
 	{
@@ -690,10 +699,64 @@ struct bfm_session {
 namespace {
 
 /*
+ * CMTの状態文字列を組み立てる。
+ *
+ * upstreamのDATAREC::messageは、モーターが回っている間はEVENT_SIGNALごとに
+ * 書き直されるが、止まっている間は最後に書いた値のまま残る。しかも
+ * play_tape()/close_tape()はmessageを初期化せず、process_state()は
+ * messageを保存・復元しない。そのまま見せると、排出せずに別のテープを
+ * 開いたときや排出後に前のテープの"Stop (45 %)"が残り、ステートロード後は
+ * ロード前の文字列が残る（原作Windows版も同じ）。
+ *
+ * そこで、upstreamのupdate_event()/event_callback()と同じ書式を実際の
+ * 走行位置から作る。upstreamの文字列を使うのは、外から方向を読めない
+ * 早送り・巻戻し中だけにする。
+ * テープ端の"Stop (Beginning-of-Tape)"/"Stop (End-of-Tape)"は区別せず
+ * "Stop (0 %)"/"Stop (100 %)"と同じ値にする（UIも同じ表記へ縮めている、
+ * status_bar.dartのshortenCmtMessage）。
+ */
+void compose_cmt_message(bfm_session* session, char* out, size_t out_size)
+{
+	if (!session->emu->is_tape_inserted(0)) {
+		std::snprintf(out, out_size, "Stop");
+		return;
+	}
+	if (session->emu->is_tape_recording(0)) {
+		// upstreamも録音の開始時（update_event）に"Record"を書き、以後変えない。
+		std::snprintf(out, out_size, "Record");
+		return;
+	}
+	if (session->emu->is_tape_playing(0)) {
+		// 早送り・巻戻し中はupstreamの文字列を使う（走行方向はDATARECの外から
+		// 読めない）。それ以外は再生であり、upstreamのmessageはモーター始動
+		// 直後のEVENT_SIGNALまで前の値（前のテープの"Stop (45 %)"など）の
+		// ままなので、同じ書式を実際の走行位置から作る。
+		const char* message = session->emu->get_tape_message(0);
+		if (message != nullptr && std::strncmp(message, "Fast ", 5) == 0) {
+			std::snprintf(out, out_size, "%s", message);
+		} else {
+			std::snprintf(out, out_size, "Play (%d %%)", session->emu->get_tape_position(0));
+		}
+		return;
+	}
+	if (session->cmt_for_recording) {
+		std::snprintf(out, out_size, "Stop");
+		return;
+	}
+	std::snprintf(out, out_size, "Stop (%d %%)", session->emu->get_tape_position(0));
+}
+
+/*
  * CMTの複製フィールド（cmt_inserted等）を実際のコア状態へ合わせる。
  * Core threadだけが呼ぶ（emu->is_tape_inserted等の呼出しはCore thread専用）。
- * 挿入・排出・制御コマンドの完了直後、およびtickループから毎フレーム呼ぶ
- * （fdd_bank_num[drv].store(...)と同じ「Core threadだけが書く」パターン）。
+ * 挿入・排出・制御・ステートロードの各コマンドの完了直後、およびtickループ
+ * から毎フレーム呼ぶ（fdd_bank_num[drv].store(...)と同じ「Core threadだけが
+ * 書く」パターン）。
+ *
+ * 状態文字列が変わったときはBFM_EVENT_TAPE_POSITION_CHANGEDを1回pushする
+ * （publish_led_if_changedと同じ「変化検知してイベント化」方針）。コマンド
+ * 経由の変化もここで通知するため、ホストはどの経路で状態が変わっても
+ * このイベントだけを見ればよい。
  */
 void refresh_cmt_status(bfm_session* session)
 {
@@ -701,6 +764,18 @@ void refresh_cmt_status(bfm_session* session)
 	session->cmt_playing.store(session->emu->is_tape_playing(0) ? 1 : 0);
 	session->cmt_recording.store(session->emu->is_tape_recording(0) ? 1 : 0);
 	session->cmt_position.store(session->emu->get_tape_position(0));
+
+	char message[sizeof(session->cmt_message)];
+	compose_cmt_message(session, message, sizeof(message));
+	char previous[sizeof(session->cmt_message)];
+	session->copy_cmt_message(previous, sizeof(previous));
+	if (std::strcmp(previous, message) == 0) {
+		return;
+	}
+	session->set_cmt_message(message);
+	bfm_event event{};
+	event.kind = BFM_EVENT_TAPE_POSITION_CHANGED;
+	session->push_event(event);
 }
 
 // Core threadだけが呼ぶ。VMへの操作はすべてここを通る。
@@ -905,6 +980,7 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 			code = BFM_ERR_INVALID_ARGUMENT;
 			break;
 		}
+		session->cmt_for_recording = queued.arg0 == 1;
 		refresh_cmt_status(session);
 		bfm_event event{};
 		event.kind = BFM_EVENT_MEDIA_CHANGED;
@@ -919,6 +995,7 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 			break;
 		}
 		session->emu->close_tape(0);
+		session->cmt_for_recording = false;
 		refresh_cmt_status(session);
 		bfm_event event{};
 		event.kind = BFM_EVENT_MEDIA_CHANGED;
@@ -1198,6 +1275,8 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 		// 更新し、挿入状態が変わっていればMEDIA_CHANGEDを出す。
 		{
 			const bool had_cmt = session->cmt_inserted.load() != 0;
+			// 録音用かどうかはstateから読めない（cmt_for_recordingのコメント）。
+			session->cmt_for_recording = false;
 			refresh_cmt_status(session);
 			const bool has_cmt_now = session->cmt_inserted.load() != 0;
 			if (has_cmt_now != had_cmt) {
@@ -1384,30 +1463,16 @@ void accumulate_media_access(bfm_session* session, VM_TEMPLATE* vm)
 }
 
 /*
- * CMTの状態（specification.md CMT-05、M4）。
- *
- * inserted/playing/recording/positionは毎フレーム複製するだけで、
- * イベントにはしない（走行位置は高頻度に変わりうるため、
- * accumulate_media_accessと同じくポーリング専用とする）。
- * message文字列（"Play"/"Stop (NN %)"等）は前回値と比較し、変わって
- * いたときだけ複製してBFM_EVENT_TAPE_POSITION_CHANGEDを1回push する
- * （publish_led_if_changedと同じ「変化検知してイベント化」方針）。
+ * CMTの状態（specification.md CMT-05、M4）。inserted/playing/recording/
+ * positionは毎フレーム複製するだけで、イベントにはしない（走行位置は
+ * 高頻度に変わりうるため、accumulate_media_accessと同じくポーリング専用）。
+ * 状態文字列の変化だけをrefresh_cmt_statusがイベントにする。
  */
 void publish_cmt_status_if_changed(bfm_session* session, VM_TEMPLATE* vm)
 {
 	(void)vm;
 	session->note_vm_access();
 	refresh_cmt_status(session);
-	const char* message = session->emu->get_tape_message(0);
-	char previous[128];
-	session->copy_cmt_message(previous, sizeof(previous));
-	if (std::strncmp(previous, message, sizeof(previous) - 1) == 0) {
-		return;
-	}
-	session->set_cmt_message(message);
-	bfm_event event{};
-	event.kind = BFM_EVENT_TAPE_POSITION_CHANGED;
-	session->push_event(event);
 }
 
 /*
