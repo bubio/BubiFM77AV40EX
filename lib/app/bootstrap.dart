@@ -43,7 +43,7 @@ Future<Widget> buildApp({
   final appDataPaths = OsAppDataPaths();
   const scanner = FileSystemRomScanner();
   const reveal = OsFolderReveal();
-  final externalFileAccess = OsExternalFileAccess();
+  final externalFileAccess = OsExternalFileAccess(preferences: preferences);
   final cacheWorkspace = OsCacheWorkspace(appDataPaths: appDataPaths);
   await cacheWorkspace.purgeAbandonedWorkspaces();
 

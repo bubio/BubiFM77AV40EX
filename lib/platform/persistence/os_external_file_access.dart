@@ -4,17 +4,31 @@ import 'package:bubifm77av40ex_platform/bubifm77av40ex_platform.dart';
 import 'package:file_selector/file_selector.dart' as selector;
 
 import 'external_file_access.dart';
+import 'preferences_store.dart';
 
 /// OSのダイアログと永続アクセス権を使う [ExternalFileAccess]。
 ///
 /// macOSでは security-scoped bookmark をトークンとして保存する。
 /// ブックマークを扱えないOSでは正規化した絶対パスをトークンにする
 /// （design.md 9）。どちらの場合も原本は利用者の位置に置いたままにする。
+///
+/// macOSのパネルは前回開いた場所を自分で覚えるが、LinuxとWindowsの
+/// ダイアログは毎回同じ場所から開く。そこで両OSでは最後に選んだ
+/// フォルダーを [preferences] へ保存し、次のダイアログの初期位置にする。
 class OsExternalFileAccess implements ExternalFileAccess {
-  OsExternalFileAccess({SecurityScopedBookmarks? bookmarks})
-    : _bookmarks = bookmarks ?? const SecurityScopedBookmarks();
+  OsExternalFileAccess({
+    SecurityScopedBookmarks? bookmarks,
+    this._preferences,
+    bool? remembersDirectory,
+  }) : _bookmarks = bookmarks ?? const SecurityScopedBookmarks(),
+       _remembersDirectory =
+           remembersDirectory ?? (Platform.isLinux || Platform.isWindows);
+
+  static const String lastDirectoryKey = 'fileDialog.lastDirectory';
 
   final SecurityScopedBookmarks _bookmarks;
+  final PreferencesStore? _preferences;
+  final bool _remembersDirectory;
   bool? _bookmarksSupported;
 
   Future<bool> _supportsBookmarks() async {
@@ -24,11 +38,13 @@ class OsExternalFileAccess implements ExternalFileAccess {
   @override
   Future<ExternalResource?> pickDirectory({String? dialogTitle}) async {
     final path = await selector.getDirectoryPath(
+      initialDirectory: _initialDirectory(),
       confirmButtonText: dialogTitle,
     );
     if (path == null) {
       return null;
     }
+    await _rememberDirectory(path);
     return _resourceFor(path);
   }
 
@@ -38,6 +54,7 @@ class OsExternalFileAccess implements ExternalFileAccess {
     List<String> allowedExtensions = const [],
   }) async {
     final file = await selector.openFile(
+      initialDirectory: _initialDirectory(),
       confirmButtonText: dialogTitle,
       acceptedTypeGroups: allowedExtensions.isEmpty
           ? const []
@@ -46,6 +63,7 @@ class OsExternalFileAccess implements ExternalFileAccess {
     if (file == null) {
       return null;
     }
+    await _rememberDirectory(File(file.path).parent.path);
     return _resourceFor(file.path);
   }
 
@@ -55,13 +73,36 @@ class OsExternalFileAccess implements ExternalFileAccess {
     String? suggestedFileName,
   }) async {
     final location = await selector.getSaveLocation(
+      initialDirectory: _initialDirectory(),
       confirmButtonText: dialogTitle,
       suggestedName: suggestedFileName,
     );
     if (location == null) {
       return null;
     }
+    await _rememberDirectory(File(location.path).parent.path);
     return _resourceFor(location.path);
+  }
+
+  /// 前回のフォルダー。消えていれば既定の位置に任せる。
+  String? _initialDirectory() {
+    final preferences = _preferences;
+    if (!_remembersDirectory || preferences == null) {
+      return null;
+    }
+    final directory = preferences.getString(lastDirectoryKey);
+    if (directory == null || !Directory(directory).existsSync()) {
+      return null;
+    }
+    return directory;
+  }
+
+  Future<void> _rememberDirectory(String directory) async {
+    final preferences = _preferences;
+    if (!_remembersDirectory || preferences == null) {
+      return;
+    }
+    await preferences.setString(lastDirectoryKey, directory);
   }
 
   @override
