@@ -195,11 +195,17 @@ class _StateSlotCell extends StatelessWidget {
                           ),
                         ),
                       ],
-                      if (info.diskNames.isNotEmpty) ...[
+                      if (info.diskNames.isNotEmpty ||
+                          info.tapeName != null) ...[
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            info.diskNames.join(', '),
+                            [
+                              ...info.diskNames,
+                              if (info.tapeName != null)
+                                AppLocalizations.of(context)
+                                    .stateSlotTape(info.tapeName!),
+                            ].join(', '),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 11,

@@ -260,6 +260,15 @@
   "@stateSlotEmpty": {
     "description": "Placeholder shown on a state slot with no saved data."
   },
+  "stateSlotTape": "CMT: {name}",
+  "@stateSlotTape": {
+    "description": "State-slot cell: the cassette tape that was inserted when the state was saved, listed after the disk names. `name` is the tape file name.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "stateSlotDialogCancel": "Cancel",
   "@stateSlotDialogCancel": {
     "description": "Button closing the state-slot dialog without acting."

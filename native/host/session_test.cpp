@@ -1970,6 +1970,33 @@ void test_media()
 		check(bfm_get_fdd_bank_info(session, 0, &bank_num, &cur_bank) == BFM_OK && bank_num == 1,
 		      "拒否後もFD1挿入状態は壊れたロードの影響を受けない");
 
+		// 先頭4バイトは正しいが途中で切れたファイル。コアは内部で巻き戻す
+		// だけで成否を返さないため、ブリッジが巻き戻しを検出して拒否する。
+		const std::string state_truncated = state_dir + "/slot-truncated.bin";
+		const std::string valid_state = read_file(state_empty);
+		check(valid_state.size() > 64, "切り詰め元の状態ファイルを読める");
+		check(write_file(state_truncated, valid_state.substr(0, 64)),
+		      "途中で切れた状態ファイルを書ける");
+		bfm_command load_truncated{};
+		load_truncated.kind = BFM_CMD_LOAD_STATE;
+		load_truncated.text = state_truncated.c_str();
+		events.clear();
+		check(send_and_collect(load_truncated, &events) == BFM_ERR_STATE_INCOMPATIBLE,
+		      "途中で切れたファイルはコアの巻き戻しを検出してstateIncompatibleで拒否される");
+		bool saw_media_changed_on_rollback = false;
+		for (const auto& event : events) {
+			if (event.kind == BFM_EVENT_MEDIA_CHANGED) {
+				saw_media_changed_on_rollback = true;
+			}
+		}
+		check(!saw_media_changed_on_rollback, "巻き戻し時はMEDIA_CHANGEDを出さない");
+		bank_num = -1;
+		cur_bank = -1;
+		check(bfm_get_fdd_bank_info(session, 0, &bank_num, &cur_bank) == BFM_OK && bank_num == 1,
+		      "巻き戻し後もFD1挿入状態はロード前のまま");
+		events.clear();
+		check(send_and_collect(load_with_disk, &events) == BFM_OK,
+		      "巻き戻しの後も正しい状態ファイルは読み込める（目印が残らない）");
 
 		const std::string missing_path = state_dir + "/does-not-exist.bin";
 		bfm_command load_missing{};
@@ -2472,6 +2499,141 @@ void test_cmt()
 	bfm_destroy(session);
 }
 
+/*
+ * ステートロードした媒体の書込み先（design.md 16.1「ステートロードした媒体の
+ * 書き戻し」）。ホストはコアへ作業コピーのパスを渡すため、ステートには
+ * そのパスが入り、ロード後の排出でコアはそこへ書く。ホストが保存時の
+ * 作業領域を作り直してから読み込めば済む、という前提をここで確かめる。
+ */
+std::string blank_d88_bank(const char* title, bool protect)
+{
+	std::string bank;
+	bank.append(title, std::strlen(title));
+	bank.append(17 - std::strlen(title), '\0');
+	bank.append(9, '\0');
+	bank.push_back(protect ? 0x10 : 0);
+	bank.push_back('\0');
+	const uint32_t size = static_cast<uint32_t>(17 + 9 + 1 + 1 + 4 + 164 * 4);
+	bank.append(reinterpret_cast<const char*>(&size), sizeof(size));
+	bank.append(164 * 4, '\0');
+	return bank;
+}
+
+void test_state_media_relocation()
+{
+	group("ステートロードした媒体の書込み先");
+
+	const std::string base = g_home + "/relocate-test";
+	const std::string workspace = base + "/ws";
+	const std::string disk = workspace + "/fd0.d88";
+	const std::string state = base + "/state.bin";
+	mkdir(base.c_str(), 0700);
+	mkdir(workspace.c_str(), 0700);
+	const std::string bank0 = blank_d88_bank("BANK0", false);
+	const std::string bank1 = blank_d88_bank("BANK1", false);
+	const std::string original = bank0 + bank1;
+	check(write_file(disk, original), "2バンクのD88を作業コピーとして置ける");
+
+	bfm_session* session = make_session();
+	if (session == nullptr) {
+		check(false, "生成できる");
+		return;
+	}
+	bfm_start(session);
+	check(wait_for_state(session, BFM_STATE_RUNNING, 5000), "running へ遷移する");
+
+	auto send = [&](const bfm_command& command) -> int32_t {
+		uint64_t id = 0;
+		if (bfm_send_command(session, &command, &id) != BFM_OK) {
+			return -1;
+		}
+		int32_t code = -1;
+		return wait_for_completion(session, id, 5000, &code) ? code : -1;
+	};
+
+	bfm_command insert{};
+	insert.kind = BFM_CMD_INSERT_FDD;
+	insert.arg0 = 0;
+	insert.arg1 = 1; // 2つ目のバンク
+	insert.text = disk.c_str();
+	check(send(insert) == BFM_OK, "2つ目のバンクを挿入できる");
+
+	// 書込み保護の切替はD88ヘッダーを書き換えるため、BIOSなしで
+	// 「内容が変わった」状態を作れる（DISK::close()がbuffer[0x1a]を書く）。
+	bfm_command protect{};
+	protect.kind = BFM_CMD_SET_FDD_WRITE_PROTECT;
+	protect.arg0 = 0;
+	protect.arg1 = 1;
+	check(send(protect) == BFM_OK, "書込み保護で内容を変えられる");
+
+	bfm_command save{};
+	save.kind = BFM_CMD_SAVE_STATE;
+	save.text = state.c_str();
+	check(send(save) == BFM_OK, "状態を保存できる");
+
+	bfm_command eject{};
+	eject.kind = BFM_CMD_EJECT_FDD;
+	eject.arg0 = 0;
+	check(send(eject) == BFM_OK, "排出できる");
+
+	bfm_command load{};
+	load.kind = BFM_CMD_LOAD_STATE;
+	load.text = state.c_str();
+
+	// 作業領域を作り直すだけでは、コアは選択中のバンクだけのファイルを書く
+	// （DISK::close()は書込み先から他バンクを読み直すため）。
+	std::remove(disk.c_str());
+	check(send(load) == BFM_OK, "作業コピーが無くても状態を読み込める");
+	check(send(eject) == BFM_OK, "ロード後に排出できる");
+	check(read_file(disk).size() == bank1.size(),
+	      "作業コピーを置かないと、書き出されるのは選択中のバンクだけになる");
+
+	// 原本を作業コピーの場所へ置いてから読み込めば、他バンクは保たれる。
+	check(write_file(disk, original), "原本を作業コピーの場所へ置き直せる");
+	check(send(load) == BFM_OK, "状態を読み込める");
+	check(send(eject) == BFM_OK, "ロード後に排出できる");
+	const std::string written = read_file(disk);
+	check(written.size() == original.size(), "ロード後の排出で2バンクとも書き出される");
+	check(written.compare(0, bank0.size(), bank0) == 0, "選択していないバンクは原本のまま");
+	check(written.size() > bank0.size() + 0x1a &&
+	          static_cast<unsigned char>(written[bank0.size() + 0x1a]) == 0x10,
+	      "選択中のバンクには保存時の変更（書込み保護）が入る");
+
+	// 録音中のテープは、ロード時にコアが保存時の録音先を作り直して書く。
+	const std::string tape_dir = base + "/tape-ws";
+	const std::string tape = tape_dir + "/rec.t77";
+	mkdir(tape_dir.c_str(), 0700);
+	bfm_command rec{};
+	rec.kind = BFM_CMD_INSERT_CMT;
+	rec.arg0 = 1;
+	rec.text = tape.c_str();
+	check(send(rec) == BFM_OK, "録音用に開ける");
+	bfm_command play{};
+	play.kind = BFM_CMD_CONTROL_CMT;
+	play.arg0 = BFM_CMT_CONTROL_PLAY;
+	check(send(play) == BFM_OK, "録音を始められる");
+	std::this_thread::sleep_for(std::chrono::milliseconds(200));
+	check(send(save) == BFM_OK, "録音中の状態を保存できる");
+	bfm_command eject_cmt{};
+	eject_cmt.kind = BFM_CMD_EJECT_CMT;
+	check(send(eject_cmt) == BFM_OK, "録音を排出できる");
+
+	std::remove(tape.c_str());
+	rmdir(tape_dir.c_str());
+	check(send(load) == BFM_OK, "録音先のディレクトリが無くても読み込める");
+	check(!is_regular_file(tape), "ディレクトリが無ければ録音先は作られない");
+	check(send(eject_cmt) == BFM_OK, "排出できる");
+
+	mkdir(tape_dir.c_str(), 0700);
+	check(send(load) == BFM_OK, "録音先のディレクトリを作り直して読み込める");
+	check(is_regular_file(tape), "ロード時にコアが録音先を作り直す");
+	check(send(eject_cmt) == BFM_OK, "ロード後の録音を排出できる");
+	check(read_file(tape).size() > 16, "排出で録音内容が録音先へ書き出される");
+
+	bfm_stop(session);
+	bfm_destroy(session);
+}
+
 int main(int argc, char** argv)
 {
 	if (argc < 2) {
@@ -2522,6 +2684,7 @@ int main(int argc, char** argv)
 	test_audio();
 	test_media();
 	test_cmt();
+	test_state_media_relocation();
 	test_home_dir_is_process_wide();
 
 	std::printf("\n%s\n", failures == 0 ? "すべて合格" : "失敗あり");

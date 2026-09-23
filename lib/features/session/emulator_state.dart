@@ -26,6 +26,7 @@ class EmulatorViewState {
     this.fddSourceKind = const {},
     this.fddRecentFiles = const {},
     this.cmtInserted = false,
+    this.cmtMedia,
     this.cmtPlaying = false,
     this.cmtRecording = false,
     this.cmtPosition = 0,
@@ -105,6 +106,11 @@ class EmulatorViewState {
 
   /// CMTに媒体が挿入されているか（CMT-01/CMT-02）。
   final bool cmtInserted;
+
+  /// CMTに挿入中の媒体の表示名。未挿入ならnull。ステートロードで復元した
+  /// テープは保存時のmetadata.jsonから名前を戻し、戻せなければ空文字にする
+  /// （[fddMedia]と同じ扱い）。
+  final String? cmtMedia;
 
   /// CMTが走行（再生）中かどうか（CMT-03）。
   final bool cmtPlaying;
@@ -212,6 +218,8 @@ class EmulatorViewState {
     Map<int, DiskSourceKind>? fddSourceKind,
     Map<int, List<FddRecentFile>>? fddRecentFiles,
     bool? cmtInserted,
+    String? cmtMedia,
+    bool clearCmtMedia = false,
     bool? cmtPlaying,
     bool? cmtRecording,
     int? cmtPosition,
@@ -254,6 +262,7 @@ class EmulatorViewState {
       fddSourceKind: fddSourceKind ?? this.fddSourceKind,
       fddRecentFiles: fddRecentFiles ?? this.fddRecentFiles,
       cmtInserted: cmtInserted ?? this.cmtInserted,
+      cmtMedia: clearCmtMedia ? null : (cmtMedia ?? this.cmtMedia),
       cmtPlaying: cmtPlaying ?? this.cmtPlaying,
       cmtRecording: cmtRecording ?? this.cmtRecording,
       cmtPosition: cmtPosition ?? this.cmtPosition,

@@ -773,6 +773,8 @@ class FakeExternalFileAccess implements ExternalFileAccess {
 
 /// メモリ上に作業ディレクトリの操作記録だけを持つ`WorkspaceHandle`。
 class FakeWorkspaceHandle implements WorkspaceHandle {
+  FakeWorkspaceHandle([this.nativePath = '/cache/fdd-sessions/fake']);
+
   final List<String> importedFileNames = [];
   final List<(String workspaceFileName, String destinationNativePath)>
   exportCalls = [];
@@ -784,14 +786,24 @@ class FakeWorkspaceHandle implements WorkspaceHandle {
   final Set<String> files = {};
 
   @override
-  String get nativePath => '/cache/fdd-sessions/fake';
+  final String nativePath;
+
+  /// [importCopy]を失敗させる複製先の名前（原本を読めない場合を模す）。
+  final Set<String> failingImports = {};
+
+  /// [importCopy]の複製元（複製先の名前→複製元のパス）。
+  final Map<String, String> importedFrom = {};
 
   @override
   Future<String> importCopy(
     String sourceNativePath, {
     required String fileName,
   }) async {
+    if (failingImports.contains(fileName)) {
+      throw FileSystemException('fake import failure', sourceNativePath);
+    }
     importedFileNames.add(fileName);
+    importedFrom[fileName] = sourceNativePath;
     files.add(fileName);
     return '$nativePath/$fileName';
   }
@@ -843,6 +855,26 @@ class FakeCacheWorkspace implements CacheWorkspace {
   Future<WorkspaceHandle> createSessionWorkspace() async {
     createSessionWorkspaceCallCount++;
     return handle;
+  }
+
+  /// [reopenSessionWorkspace]で開き直した作業領域（パス→ハンドル）。
+  /// `/cache/fdd-sessions/`直下だけを受け付ける。
+  final Map<String, FakeWorkspaceHandle> reopened = {};
+
+  @override
+  Future<WorkspaceHandle?> reopenSessionWorkspace(String nativePath) async {
+    if (nativePath == handle.nativePath) {
+      return handle;
+    }
+    const root = '/cache/fdd-sessions/';
+    if (!nativePath.startsWith(root) ||
+        nativePath.substring(root.length).contains('/')) {
+      return null;
+    }
+    return reopened.putIfAbsent(
+      nativePath,
+      () => FakeWorkspaceHandle(nativePath),
+    );
   }
 
   @override

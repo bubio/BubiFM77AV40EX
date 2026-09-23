@@ -55,11 +55,13 @@ typedef enum {
 	/*
 	 * BFM_CMD_LOAD_STATE: 読込み対象ファイルの先頭4バイト（コアの
 	 * STATE_VERSION、emu.cpp内`#define`）がブリッジの既知値と一致しない、
-	 * またはファイルが読めない（M3 STA-02）。コア内部の
-	 * EMU::load_state_tmpはこれより深いデバイス単位の不一致も検出して
-	 * 現在の実行状態へロールバックするが、その結果はvoid APIからは
-	 * 見えないため、ここで検出できるのは先頭バージョンチェックの範囲に限る
-	 * （design.md「状態保存（M3、STA-01/STA-02）の実装方式」参照）。
+	 * またはファイルが読めない（M3 STA-02）。これより深いデバイス単位の
+	 * 不一致では、コア内部のEMU::load_state_tmpが現在の実行状態へ
+	 * ロールバックする。void APIからは結果が見えないため、ブリッジが
+	 * ロード前に置いた目印で巻き戻しを検出し、同じくこのコードを返す
+	 * （bubi_fm77av.cppのBFM_CMD_LOAD_STATE、design.md「状態保存（M3、
+	 * STA-01/STA-02）の実装方式」参照）。いずれの場合も実行状態と
+	 * 挿入中の媒体はロード前のまま変わらない。
 	 */
 	BFM_ERR_STATE_INCOMPATIBLE = 9
 } bfm_result;

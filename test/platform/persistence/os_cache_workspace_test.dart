@@ -142,4 +142,40 @@ void main() {
     await original.delete();
     expect(await handle.contentEquals('fd0-GAME.D88', original.path), isFalse);
   });
+
+  test('reopenSessionWorkspace: 消えた作業領域を同じ場所に作り直す', () async {
+    final first = await workspace().createSessionWorkspace();
+    final path = first.nativePath;
+    await first.dispose();
+    expect(await Directory(path).exists(), isFalse);
+
+    final reopened = await workspace().reopenSessionWorkspace(path);
+
+    expect(reopened, isNotNull);
+    expect(reopened!.nativePath, path);
+    expect(await Directory(path).exists(), isTrue);
+    final source = File('${root.path}/GAME.D88')..writeAsStringSync('d88');
+    await reopened.importCopy(source.path, fileName: 'fd0-GAME.D88');
+    expect(await reopened.exists('fd0-GAME.D88'), isTrue);
+  });
+
+  test('reopenSessionWorkspace: セッション用の領域の直下以外は受け付けない', () async {
+    final sessions = '${root.path}/fdd-sessions';
+    for (final path in [
+      root.path,
+      sessions,
+      '$sessions/..',
+      '$sessions/.',
+      '$sessions/a/b',
+      '${root.path}/elsewhere',
+    ]) {
+      expect(
+        await workspace().reopenSessionWorkspace(path),
+        isNull,
+        reason: path,
+      );
+    }
+    expect(await Directory('$sessions/a').exists(), isFalse);
+    expect(await Directory('${root.path}/elsewhere').exists(), isFalse);
+  });
 }

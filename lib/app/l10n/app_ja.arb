@@ -65,6 +65,7 @@
   "stateSlotDialogTitleSave": "状態を保存",
   "stateSlotDialogTitleLoad": "状態を読込み",
   "stateSlotEmpty": "空",
+  "stateSlotTape": "CMT: {name}",
   "stateSlotDialogCancel": "キャンセル",
   "menuDisk": "Disk",
   "menuCmt": "CMT",

@@ -1220,11 +1220,10 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 		// M3 STA-02。EMU::load_stateはvoidを返し、非互換/破損時は内部で
 		// 現在の実行状態へ自動ロールバックする（デバイス単位の版チェック、
 		// emu.cpp EMU::load_state_tmp）ため、公開APIだけでは成否が
-		// わからない。ここでは先頭4バイト（コアのSTATE_VERSION）だけを
-		// 事前に読み、既知値と一致しないファイルはロードせず拒否する
+		// わからない。先頭4バイト（コアのSTATE_VERSION）を事前に読んで
+		// 既知値と一致しないファイルはロードせずに拒否し、それより深い
+		// 不一致はロード後に巻き戻しを検出して拒否する（下記の目印）
 		// （design.md「状態保存（M3、STA-01/STA-02）の実装方式」）。
-		// これより深い不一致はコア内部のロールバックに任せ、ホストからは
-		// 検出できない既知の制限とする。
 		if (queued.text.empty()) {
 			code = BFM_ERR_INVALID_ARGUMENT;
 			break;
@@ -1252,7 +1251,23 @@ void apply_command(bfm_session* session, VM_TEMPLATE* vm, const QueuedCommand& q
 		}
 		const bool had_fd0 = session->emu->is_floppy_disk_inserted(0);
 		const bool had_fd1 = session->emu->is_floppy_disk_inserted(1);
+		// 先頭4バイトより奥の不一致では、EMU::load_state()はロード直前に
+		// 自分で保存した$temp$.staを読み直して元に戻すだけで、成否を返さない
+		// （load_state_tmpはprivate）。そこで、stateに含まれる公開メンバー
+		// d88_file[0].pathへ実在しえない目印を置いてからロードする。目印は
+		// 巻き戻し用の$temp$.staにだけ入るため、ロード後も残っていれば
+		// 巻き戻されたと判定できる。本当に読めた場合は保存時の値に置き換わる。
+		static const char kLoadPendingMarker[] = "\x01" "bubi:load-state-pending";
+		char path_before[sizeof(session->emu->d88_file[0].path)];
+		std::memcpy(path_before, session->emu->d88_file[0].path, sizeof(path_before));
+		std::snprintf(session->emu->d88_file[0].path,
+		              sizeof(session->emu->d88_file[0].path), "%s", kLoadPendingMarker);
 		session->emu->load_state(queued.text.c_str());
+		if (std::strcmp(session->emu->d88_file[0].path, kLoadPendingMarker) == 0) {
+			std::memcpy(session->emu->d88_file[0].path, path_before, sizeof(path_before));
+			code = BFM_ERR_STATE_INCOMPATIBLE;
+			break;
+		}
 		for (int drv = 0; drv < kFddDriveCount; ++drv) {
 			const bool has_now = session->emu->is_floppy_disk_inserted(drv);
 			const bool had_before = drv == 0 ? had_fd0 : had_fd1;

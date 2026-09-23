@@ -1696,4 +1696,331 @@ void main() {
       async.flushMicrotasks();
     });
   });
+
+  group('STA-02 ステートロードした媒体を原本と対応付け直す', () {
+    // 保存時とは別のセッションの作業領域を表す。
+    const oldWorkspace = '/cache/fdd-sessions/old-session';
+
+    late Directory tempDir;
+
+    setUp(() {
+      tempDir = Directory.systemTemp.createTempSync('bubi-state-test');
+      addTearDown(() => tempDir.deleteSync(recursive: true));
+      appDataPaths.statesPath = tempDir.path;
+    });
+
+    void writeMetadata(int slot, Map<String, Object?> extra) {
+      final slotDir = Directory('${tempDir.path}/slot-$slot')
+        ..createSync(recursive: true);
+      File('${slotDir.path}/metadata.json').writeAsStringSync(
+        jsonEncode({
+          'schemaVersion': 1,
+          'createdAt': DateTime(2026, 1, 1).toIso8601String(),
+          ...extra,
+        }),
+      );
+    }
+
+    Map<String, Object?> fddEntry(
+      String displayName, {
+      int drive = 0,
+      String workspace = oldWorkspace,
+    }) => {
+      'drive': drive,
+      'displayName': displayName,
+      'token': '/Volumes/USB/$displayName',
+      'workspace': workspace,
+      'fileName': 'fd$drive-$displayName',
+    };
+
+    test('saveStateは原本のトークンと作業コピーの場所をmetadataへ書く', () async {
+      externalFileAccess.nextPickResult = FakeExternalResource(
+        '/Volumes/USB/GAME.D88',
+        displayName: 'GAME.D88',
+      );
+      await controller().insertFdd(0);
+      externalFileAccess.nextPickResult = FakeExternalResource(
+        '/Volumes/USB/TAPE.T77',
+        displayName: 'TAPE.T77',
+      );
+      await controller().cmtPlay();
+
+      await controller().saveState(1);
+
+      final metadata = jsonDecode(
+        File('${tempDir.path}/slot-1/metadata.json').readAsStringSync(),
+      ) as Map<String, dynamic>;
+      expect(metadata['fddMedia'], [
+        {
+          'drive': 0,
+          'displayName': 'GAME.D88',
+          'token': '/Volumes/USB/GAME.D88',
+          'workspace': cacheWorkspace.handle.nativePath,
+          'fileName': 'fd0-GAME.D88',
+        },
+      ]);
+      expect(metadata['cmt'], {
+        'displayName': 'TAPE.T77',
+        'token': '/Volumes/USB/TAPE.T77',
+        'workspace': cacheWorkspace.handle.nativePath,
+        'fileName': 'cmt-TAPE.T77',
+        'forRecording': false,
+      });
+    });
+
+    test('D88系はロード前に原本を保存時の作業コピーの場所へ複製し、排出時に変更を書き戻す', () async {
+      writeMetadata(2, {
+        'diskNames': ['GAME.D88', null],
+        'fddMedia': [fddEntry('GAME.D88')],
+      });
+      final original = FakeExternalResource(
+        '/Volumes/USB/GAME.D88',
+        displayName: 'GAME.D88',
+      );
+      externalFileAccess.resolveResultByToken['/Volumes/USB/GAME.D88'] =
+          original;
+      session.fddBankInfoByDrive[0] = (bankNum: 2, curBank: 1);
+
+      expect(await controller().loadState(2), isTrue);
+
+      final reopened = cacheWorkspace.reopened[oldWorkspace]!;
+      // 他バンクを保つため、コアが書き込む前に原本の中身を置いておく。
+      expect(reopened.importedFrom, {'fd0-GAME.D88': '/Volumes/USB/GAME.D88'});
+      expect(state().fddSourceKind[0], DiskSourceKind.nativeContainer);
+
+      reopened.changedFiles.add('fd0-GAME.D88');
+      await controller().ejectFdd(0);
+
+      expect(reopened.exportCalls, [('fd0-GAME.D88', '/Volumes/USB/GAME.D88')]);
+      expect(original.releaseCallCount, 1);
+    });
+
+    test('変換形式は複製せず、ロード後もSave Asでコアの書き出したD88を保存できる', () async {
+      writeMetadata(2, {
+        'diskNames': ['GAME.TD0', null],
+        'fddMedia': [fddEntry('GAME.TD0')],
+      });
+      externalFileAccess.resolveResultByToken['/Volumes/USB/GAME.TD0'] =
+          FakeExternalResource(
+            '/Volumes/USB/GAME.TD0',
+            displayName: 'GAME.TD0',
+          );
+      session.fddBankInfoByDrive[0] = (bankNum: 1, curBank: 0);
+
+      await controller().loadState(2);
+
+      final reopened = cacheWorkspace.reopened[oldWorkspace]!;
+      expect(reopened.importedFrom, isEmpty);
+      expect(state().fddSourceKind[0], DiskSourceKind.converted);
+
+      reopened.files.add('fd0-GAME.TD0.D88');
+      externalFileAccess.nextSaveLocationResult = FakeExternalResource(
+        '/Volumes/USB/SAVED.D88',
+        displayName: 'SAVED.D88',
+      );
+      await controller().saveFddAs(0);
+
+      expect(reopened.exportCalls, [
+        ('fd0-GAME.TD0.D88', '/Volumes/USB/SAVED.D88'),
+      ]);
+    });
+
+    test('作業領域がセッション用の領域の外を指していれば対応付けない', () async {
+      writeMetadata(2, {
+        'diskNames': ['GAME.D88', null],
+        'fddMedia': [fddEntry('GAME.D88', workspace: '/Users/someone/Desktop')],
+      });
+      externalFileAccess.resolveResultByToken['/Volumes/USB/GAME.D88'] =
+          FakeExternalResource(
+            '/Volumes/USB/GAME.D88',
+            displayName: 'GAME.D88',
+          );
+      session.fddBankInfoByDrive[0] = (bankNum: 1, curBank: 0);
+
+      await controller().loadState(2);
+
+      expect(cacheWorkspace.reopened, isEmpty);
+      expect(state().fddMedia[0], 'GAME.D88');
+      expect(state().fddSourceKind[0], isNull);
+      await controller().ejectFdd(0);
+      expect(cacheWorkspace.handle.exportCalls, isEmpty);
+    });
+
+    test('原本を開き直せなければ対応付けない（書き戻し先が無い）', () async {
+      writeMetadata(2, {
+        'diskNames': ['GAME.D88', null],
+        'fddMedia': [fddEntry('GAME.D88')],
+      });
+      session.fddBankInfoByDrive[0] = (bankNum: 1, curBank: 0);
+
+      await controller().loadState(2);
+
+      expect(cacheWorkspace.reopened[oldWorkspace]!.importedFrom, isEmpty);
+      expect(state().fddSourceKind[0], isNull);
+    });
+
+    test('1台分の原本を複製できなくても、その原本を返して他の媒体は対応付ける', () async {
+      writeMetadata(2, {
+        'diskNames': ['GAME.D88', 'DATA.D88'],
+        'fddMedia': [fddEntry('GAME.D88'), fddEntry('DATA.D88', drive: 1)],
+        'cmt': {
+          'displayName': 'TAPE.T77',
+          'token': '/Volumes/USB/TAPE.T77',
+          'workspace': oldWorkspace,
+          'fileName': 'cmt-TAPE.T77',
+          'forRecording': false,
+        },
+      });
+      final unreadable = FakeExternalResource(
+        '/Volumes/USB/GAME.D88',
+        displayName: 'GAME.D88',
+      );
+      externalFileAccess.resolveResultByToken['/Volumes/USB/GAME.D88'] =
+          unreadable;
+      externalFileAccess.resolveResultByToken['/Volumes/USB/DATA.D88'] =
+          FakeExternalResource(
+            '/Volumes/USB/DATA.D88',
+            displayName: 'DATA.D88',
+          );
+      externalFileAccess.resolveResultByToken['/Volumes/USB/TAPE.T77'] =
+          FakeExternalResource(
+            '/Volumes/USB/TAPE.T77',
+            displayName: 'TAPE.T77',
+          );
+      final reopened = await cacheWorkspace.reopenSessionWorkspace(
+        oldWorkspace,
+      ) as FakeWorkspaceHandle;
+      reopened.failingImports.add('fd0-GAME.D88');
+      session.fddBankInfoByDrive[0] = (bankNum: 1, curBank: 0);
+      session.fddBankInfoByDrive[1] = (bankNum: 1, curBank: 0);
+      session.cmtStatus = (
+        inserted: true,
+        playing: false,
+        recording: false,
+        position: 0,
+        message: 'Stop',
+      );
+
+      expect(await controller().loadState(2), isTrue);
+
+      expect(unreadable.releaseCallCount, 1);
+      expect(state().fddSourceKind[0], isNull);
+      expect(state().fddSourceKind[1], DiskSourceKind.nativeContainer);
+      expect(reopened.importedFrom, {'fd1-DATA.D88': '/Volumes/USB/DATA.D88'});
+      expect(state().cmtMedia, 'TAPE.T77');
+    });
+
+    test('ロード前に入っていた媒体は原本へ書き戻さずに置き換える（原作と同じ）', () async {
+      final before = FakeExternalResource(
+        '/Volumes/USB/BEFORE.D88',
+        displayName: 'BEFORE.D88',
+      );
+      externalFileAccess.nextPickResult = before;
+      await controller().insertFdd(0);
+      cacheWorkspace.handle.changedFiles.add('fd0-BEFORE.D88');
+      writeMetadata(2, {
+        'diskNames': [null, null],
+      });
+      session.fddBankInfoByDrive[0] = (bankNum: 0, curBank: 0);
+
+      await controller().loadState(2);
+
+      expect(cacheWorkspace.handle.exportCalls, isEmpty);
+      expect(before.releaseCallCount, 1);
+      expect(state().fddMedia, isEmpty);
+    });
+
+    test('ロードが失敗したら開き直した原本を返し、今の媒体はそのまま', () async {
+      externalFileAccess.nextPickResult = FakeExternalResource(
+        '/Volumes/USB/BEFORE.D88',
+        displayName: 'BEFORE.D88',
+      );
+      await controller().insertFdd(0);
+      writeMetadata(2, {
+        'diskNames': ['GAME.D88', null],
+        'fddMedia': [fddEntry('GAME.D88')],
+      });
+      final original = FakeExternalResource(
+        '/Volumes/USB/GAME.D88',
+        displayName: 'GAME.D88',
+      );
+      externalFileAccess.resolveResultByToken['/Volumes/USB/GAME.D88'] =
+          original;
+      session.nextLoadStateError = EmulatorErrorCode.stateIncompatible;
+
+      expect(await controller().loadState(2), isFalse);
+
+      expect(original.releaseCallCount, 1);
+      expect(state().fddMedia[0], 'BEFORE.D88');
+    });
+
+    test('録音中のテープは保存先と対応付け直し、排出時に保存先へ書き出す', () async {
+      writeMetadata(2, {
+        'diskNames': [null, null],
+        'cmt': {
+          'displayName': 'NEW.T77',
+          'token': 'bookmark-of-new',
+          'workspace': oldWorkspace,
+          'fileName': 'cmt-NEW.T77',
+          'forRecording': true,
+          'path': '/Volumes/USB/NEW.T77',
+        },
+      });
+      // 一度も排出していない保存先はまだ無く、トークンから開き直せない。
+      final destination = FakeExternalResource(
+        '/Volumes/USB/NEW.T77',
+        displayName: 'NEW.T77',
+      );
+      externalFileAccess.resourceForPathResultByPath['/Volumes/USB/NEW.T77'] =
+          destination;
+      // ロード後のコアは録音用かどうかを判別できず、再生用の書式で返す。
+      session.cmtStatus = (
+        inserted: true,
+        playing: false,
+        recording: false,
+        position: 0,
+        message: 'Stop (0 %)',
+      );
+
+      await controller().loadState(2);
+
+      expect(state().cmtMedia, 'NEW.T77');
+      expect(state().cmtMessage, 'Stop');
+      final reopened = cacheWorkspace.reopened[oldWorkspace]!;
+      // コアがロード中に作り直すため、録音の作業コピーは複製しない。
+      expect(reopened.importedFrom, isEmpty);
+
+      await controller().cmtEject();
+
+      expect(reopened.exportCalls, [('cmt-NEW.T77', '/Volumes/USB/NEW.T77')]);
+      expect(destination.releaseCallCount, 1);
+      expect(state().cmtMedia, isNull);
+    });
+
+    test('CMTの表示名は挿入・排出・ロードで保たれ、スロット一覧にも出る', () async {
+      externalFileAccess.nextPickResult = FakeExternalResource(
+        '/Volumes/USB/TAPE.T77',
+        displayName: 'TAPE.T77',
+      );
+      await controller().cmtPlay();
+      expect(state().cmtMedia, 'TAPE.T77');
+
+      await controller().saveState(4);
+      await controller().cmtEject();
+      expect(state().cmtMedia, isNull);
+
+      session.cmtStatus = (
+        inserted: true,
+        playing: false,
+        recording: false,
+        position: 0,
+        message: 'Stop',
+      );
+      await controller().loadState(4);
+      expect(state().cmtMedia, 'TAPE.T77');
+
+      final slots = await controller().listStateSlots();
+      expect(slots[4].tapeName, 'TAPE.T77');
+    });
+  });
 }

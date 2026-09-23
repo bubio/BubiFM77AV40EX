@@ -161,6 +161,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   final Map<int, FddDriveSettings> _fddDriveSettings = {};
 
   WorkspaceHandle? _workspace;
+
+  /// ステートロードのために開き直した、以前のセッションの作業領域
+  /// （パス→ハンドル）。終了時に[_workspace]と同じく破棄する。
+  final Map<String, WorkspaceHandle> _restoredWorkspaces = {};
   final Map<int, _FddSlot> _fddSlots = {};
   final Map<int, Completer<EmulatorErrorCode?>> _pendingCommands = {};
 
@@ -1142,6 +1146,19 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       'diskNames': [
         for (var drive = 0; drive < 2; drive++) state.fddMedia[drive],
       ],
+      // ロード後に原本と対応付け直すための情報（[loadState]）。
+      // 表示名だけの`diskNames`は一覧表示と旧形式の読込み用に残す。
+      'fddMedia': [
+        for (final MapEntry(key: drive, value: slot) in _fddSlots.entries)
+          {
+            'drive': drive,
+            'displayName': slot.resource.displayName,
+            'token': slot.resource.token,
+            'workspace': slot.workspace.nativePath,
+            'fileName': slot.workspaceFileName,
+          },
+      ],
+      'cmt': await _cmtMetadata(),
     };
     await location.metadata.writeAtomic(utf8.encode(jsonEncode(metadata)));
   }
@@ -1164,8 +1181,9 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     releaseAllKeys();
     final location = await appDataPaths.stateSlot(slot);
     List<String?> diskNames = const [null, null];
+    Map<String, dynamic>? metadata;
     try {
-      final metadata = jsonDecode(
+      metadata = jsonDecode(
         utf8.decode(await location.metadata.read()),
       ) as Map<String, dynamic>;
       final names = metadata['diskNames'] as List<dynamic>?;
@@ -1176,24 +1194,51 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       // メタデータが読めなくても状態そのものは読み込みを試みる
       // （ディスク表示名が復元できないだけ）。
     }
+    final restored = await _prepareRestoredMedia(metadata);
     final commandId = await session.loadState(location.state.nativePath);
     final error = await _awaitCommand(commandId);
     if (error != null) {
+      for (final fdd in restored.fdd.values) {
+        await fdd.resource.release();
+      }
+      await restored.cmt?.resource?.release();
       state = state.copyWith(failureMessage: '$error');
       return false;
     }
+    // 原作と同じく、ロード前に入っていた媒体は書き戻さずに置き換わる
+    // （コアはロード時にそれらを閉じない）。原本への参照だけ返す。
+    for (final old in _fddSlots.values) {
+      await old.resource.release();
+    }
+    _fddSlots.clear();
+    await _cmtSlot?.resource.release();
+    _cmtSlot = null;
     // MEDIA_CHANGEDネイティブイベントはドライブ番号と挿抜だけを運び、
     // ファイル名を持たない（コアはホストが挿入したファイルパスを覚える
     // 概念を持たないため）。挿入有無自体は挿入直後に更新済みの
     // bank情報（`_refreshMountedDiskState`）から読み直し、表示名は
     // このアプリ自身が保存時に書いたmetadata.jsonから復元する。
     final updatedMedia = {...state.fddMedia};
+    final updatedSourceKind = {...state.fddSourceKind};
     for (var drive = 0; drive < 2; drive++) {
       _refreshMountedDiskState(session, drive);
       final inserted = session.getFddBankInfo(drive).bankNum > 0;
+      final restoredFdd = restored.fdd[drive];
       if (!inserted) {
+        await restoredFdd?.resource.release();
         updatedMedia.remove(drive);
+        updatedSourceKind.remove(drive);
         continue;
+      }
+      if (restoredFdd != null) {
+        _fddSlots[drive] = restoredFdd;
+        updatedSourceKind[drive] = _sourceKindOfPath(
+          restoredFdd.resource.displayName,
+        );
+      } else {
+        // 原本と対応付けられない（旧形式のメタデータ、原本の失効など）。
+        // 書き戻し先もSave Asの元も無い媒体として扱う。
+        updatedSourceKind.remove(drive);
       }
       final name = drive < diskNames.length ? diskNames[drive] : null;
       if (name != null && name.isNotEmpty) {
@@ -1202,11 +1247,183 @@ class EmulatorController extends Notifier<EmulatorViewState> {
         updatedMedia[drive] = '';
       }
     }
-    state = state.copyWith(fddMedia: updatedMedia);
+    state = state.copyWith(
+      fddMedia: updatedMedia,
+      fddSourceKind: updatedSourceKind,
+    );
     // CMTもstateごと差し替わる（DATARECは挿入状態と走行位置をstateに
     // 含める）。ネイティブのイベントを待たずに表示とメニューを合わせる。
     _refreshCmtStatus(session);
+    final restoredCmt = restored.cmt;
+    if (state.cmtInserted) {
+      final resource = restoredCmt?.resource;
+      final workspace = restoredCmt?.workspace;
+      final fileName = restoredCmt?.fileName;
+      if (resource != null && workspace != null && fileName != null) {
+        _cmtSlot = _CmtSlot(
+          resource: resource,
+          workspace: workspace,
+          workspaceFileName: fileName,
+          forRecording: restoredCmt!.forRecording,
+        );
+        // 録音用かどうかで表示が変わるため、対応付けた後に読み直す。
+        _refreshCmtStatus(session);
+      } else {
+        await resource?.release();
+      }
+      state = state.copyWith(cmtMedia: restoredCmt?.displayName ?? '');
+    } else {
+      await restoredCmt?.resource?.release();
+      state = state.copyWith(clearCmtMedia: true);
+    }
     return true;
+  }
+
+  /// ステート保存時に書く、CMTの原本との対応情報。未挿入ならnull。
+  ///
+  /// 録音用の保存先は、一度も排出していなければまだファイルが無く、
+  /// トークンから開き直せないことがある。そのためパスも書いておく。
+  Future<Map<String, Object?>?> _cmtMetadata() async {
+    final slot = _cmtSlot;
+    if (slot == null) {
+      final name = state.cmtMedia;
+      return name == null ? null : {'displayName': name};
+    }
+    return {
+      'displayName': slot.resource.displayName,
+      'token': slot.resource.token,
+      'workspace': slot.workspace.nativePath,
+      'fileName': slot.workspaceFileName,
+      'forRecording': slot.forRecording,
+      if (slot.forRecording)
+        'path': await slot.resource.withAccess(
+          (nativePath) async => nativePath,
+        ),
+    };
+  }
+
+  /// ステートロードの前に、保存時の作業領域とそこにあった作業コピーを
+  /// 用意し直し、原本を開き直す（design.md 16.1「ステートロードした媒体の
+  /// 書き戻し」）。
+  ///
+  /// ステートにはコアが開いていた作業コピーのパスが入っており、コアは
+  /// ロード後の排出でそこへ書く（原作では原本のパスが入り、原本へ書く）。
+  /// D88系はコアが閉じるときに書込み先から他バンクを読み直すため、
+  /// 原本の中身を複製して置いておく。置かないと選択中のバンクだけの
+  /// ファイルになり、それを原本へ書き戻すと他バンクが失われる。
+  Future<_RestoredMedia> _prepareRestoredMedia(
+    Map<String, dynamic>? metadata,
+  ) async {
+    final fdd = <int, _FddSlot>{};
+    if (metadata == null) {
+      return _RestoredMedia(fdd, null);
+    }
+    // 壊れた項目や開き直せない原本は、その媒体の対応付けを諦めるだけにし、
+    // 他の媒体とロード自体は続ける。
+    final entries = metadata['fddMedia'];
+    if (entries is List<dynamic>) {
+      for (final entry in entries) {
+        try {
+          final slot = await _prepareRestoredFdd(entry as Map<String, dynamic>);
+          if (slot != null) {
+            fdd[slot.drive] = slot.slot;
+          }
+        } on Object catch (error) {
+          debugPrint('EmulatorController: ignoring FDD metadata: $error');
+        }
+      }
+    }
+    _RestoredCmt? cmt;
+    final cmtEntry = metadata['cmt'];
+    if (cmtEntry is Map<String, dynamic>) {
+      try {
+        cmt = await _prepareRestoredCmt(cmtEntry);
+      } on Object catch (error) {
+        debugPrint('EmulatorController: ignoring CMT metadata: $error');
+      }
+    }
+    return _RestoredMedia(fdd, cmt);
+  }
+
+  Future<({int drive, _FddSlot slot})?> _prepareRestoredFdd(
+    Map<String, dynamic> entry,
+  ) async {
+    final drive = entry['drive'] as int;
+    final displayName = entry['displayName'] as String;
+    final fileName = entry['fileName'] as String;
+    final workspace = await _reopenWorkspace(entry['workspace'] as String);
+    if (workspace == null) {
+      return null;
+    }
+    final resource = await externalFileAccess.resolve(entry['token'] as String);
+    if (resource == null) {
+      return null;
+    }
+    try {
+      if (_sourceKindOfPath(displayName) == DiskSourceKind.nativeContainer) {
+        await resource.withAccess(
+          (nativePath) => workspace.importCopy(nativePath, fileName: fileName),
+        );
+      }
+    } on Object {
+      // 複製できなければ他バンクを守れない。対応付けずに原本を返す。
+      await resource.release();
+      rethrow;
+    }
+    return (
+      drive: drive,
+      slot: _FddSlot(
+        resource: resource,
+        workspace: workspace,
+        workspaceFileName: fileName,
+      ),
+    );
+  }
+
+  Future<_RestoredCmt> _prepareRestoredCmt(Map<String, dynamic> entry) async {
+    final displayName = entry['displayName'] as String;
+    final token = entry['token'] as String?;
+    final workspacePath = entry['workspace'] as String?;
+    final fileName = entry['fileName'] as String?;
+    final forRecording = entry['forRecording'] as bool? ?? false;
+    // 録音用はコアがロード中に作業コピーを作り直して書くため、作業領域
+    // （ディレクトリ）だけを用意する。再生用はテープの中身がステートに
+    // 入っており、作業コピーは要らない。
+    final workspace = workspacePath == null
+        ? null
+        : await _reopenWorkspace(workspacePath);
+    ExternalResource? resource;
+    if (token != null && workspace != null && fileName != null) {
+      resource = await externalFileAccess.resolve(token);
+      final path = entry['path'] as String?;
+      if (resource == null && forRecording && path != null) {
+        resource = await externalFileAccess.resourceForPath(path);
+      }
+    }
+    return _RestoredCmt(
+      displayName: displayName,
+      resource: resource,
+      workspace: workspace,
+      fileName: fileName,
+      forRecording: forRecording,
+    );
+  }
+
+  /// 保存時の作業領域を開き直す。現在のセッションのものならそれを使う。
+  Future<WorkspaceHandle?> _reopenWorkspace(String nativePath) async {
+    final current = _workspace;
+    if (current != null && current.nativePath == nativePath) {
+      return current;
+    }
+    final known = _restoredWorkspaces[nativePath];
+    if (known != null) {
+      return known;
+    }
+    final reopened = await cacheWorkspace.reopenSessionWorkspace(nativePath);
+    if (reopened != null) {
+      _restoredWorkspaces[nativePath] = reopened;
+    }
+    return reopened;
   }
 
   /// スロット0〜9の一覧をUI表示用に読み出す（STA-01）。ダイアログを開く
@@ -1221,6 +1438,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       }
       DateTime? savedAt;
       var diskNames = const <String>[];
+      String? tapeName;
       try {
         final metadata = jsonDecode(
           utf8.decode(await location.metadata.read()),
@@ -1235,6 +1453,13 @@ class EmulatorController extends Notifier<EmulatorViewState> {
             for (final name in names)
               if (name is String && name.isNotEmpty) name,
           ];
+        }
+        final cmt = metadata['cmt'];
+        if (cmt is Map<String, dynamic>) {
+          final name = cmt['displayName'];
+          if (name is String && name.isNotEmpty) {
+            tapeName = name;
+          }
         }
       } on Object {
         // 壊れたmetadata.jsonは「データなし」として扱う。
@@ -1255,6 +1480,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
           hasData: true,
           savedAt: savedAt,
           diskNames: diskNames,
+          tapeName: tapeName,
           thumbnailBytes: thumbnailBytes,
         ),
       );
@@ -1489,18 +1715,18 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   Future<void> insertFddBank(int drive, int bank) async {
     final session = _session;
     final slot = _fddSlots[drive];
-    final workspace = _workspace;
-    if (session == null || slot == null || workspace == null) {
+    if (session == null || slot == null) {
       return;
     }
+    final workspace = slot.workspace;
     final ejectId = await session.ejectFdd(drive);
     final ejectError = await _awaitCommand(ejectId);
     if (ejectError != null) {
       state = state.copyWith(failureMessage: '$ejectError');
       return;
     }
-    await _writeBackIfChanged(slot, workspace);
-    final latest = await _adoptLatestFddWorkspaceFile(drive, slot, workspace);
+    await _writeBackIfChanged(slot);
+    final latest = await _adoptLatestFddWorkspaceFile(drive, slot);
     final workspacePath = '${workspace.nativePath}/${latest.workspaceFileName}';
     final insertId = await session.insertFdd(drive, workspacePath, bank: bank);
     final insertError = await _awaitCommand(insertId);
@@ -1516,10 +1742,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   Future<void> saveFddAs(int drive) async {
     final session = _session;
     final slot = _fddSlots[drive];
-    final workspace = _workspace;
-    if (session == null || slot == null || workspace == null) {
+    if (session == null || slot == null) {
       return;
     }
+    final workspace = slot.workspace;
     final destination = await _whilePaused(
       () => externalFileAccess.pickSaveLocation(
         suggestedFileName: '${slot.resource.displayName}.d88',
@@ -1535,7 +1761,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       state = state.copyWith(failureMessage: '$ejectError');
       return;
     }
-    final latest = await _adoptLatestFddWorkspaceFile(drive, slot, workspace);
+    final latest = await _adoptLatestFddWorkspaceFile(drive, slot);
     await destination.withAccess(
       (nativePath) =>
           workspace.exportAtomic(latest.workspaceFileName, nativePath),
@@ -1589,6 +1815,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       }
       _fddSlots[drive] = _FddSlot(
         resource: resource,
+        workspace: workspace,
         workspaceFileName: fileName,
       );
       state = state.copyWith(
@@ -1656,14 +1883,12 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   /// バンクを切り替えただけで原本を置き換えない）。TD0等の変換形式と
   /// rawは原本を読込専用とし、変更は[saveFddAs]でだけ残す
   /// （specification.md FDD-09）。
-  Future<void> _writeBackIfChanged(
-    _FddSlot slot,
-    WorkspaceHandle workspace,
-  ) async {
+  Future<void> _writeBackIfChanged(_FddSlot slot) async {
     if (_sourceKindOfPath(slot.resource.displayName) !=
         DiskSourceKind.nativeContainer) {
       return;
     }
+    final workspace = slot.workspace;
     await slot.resource.withAccess((nativePath) async {
       if (await workspace.contentEquals(slot.workspaceFileName, nativePath)) {
         return;
@@ -1687,13 +1912,13 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   Future<_FddSlot> _adoptLatestFddWorkspaceFile(
     int drive,
     _FddSlot slot,
-    WorkspaceHandle workspace,
   ) async {
     for (final suffix in _coreDerivedDiskSuffixes) {
       final derived = '${slot.workspaceFileName}$suffix';
-      if (await workspace.exists(derived)) {
+      if (await slot.workspace.exists(derived)) {
         final latest = _FddSlot(
           resource: slot.resource,
+          workspace: slot.workspace,
           workspaceFileName: derived,
         );
         _fddSlots[drive] = latest;
@@ -1729,10 +1954,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       return;
     }
     if (slot != null) {
-      final workspace = _workspace;
-      if (workspace != null) {
-        await _writeBackIfChanged(slot, workspace);
-      }
+      await _writeBackIfChanged(slot);
       await slot.resource.release();
       _fddSlots.remove(drive);
     }
@@ -1799,9 +2021,11 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       }
       _cmtSlot = _CmtSlot(
         resource: destination,
+        workspace: workspace,
         workspaceFileName: fileName,
         forRecording: true,
       );
+      state = state.copyWith(cmtMedia: destination.displayName);
       _refreshCmtStatus(session);
       await _recordCmtRecentFile(destination);
     } on Object catch (error) {
@@ -1856,9 +2080,11 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       }
       _cmtSlot = _CmtSlot(
         resource: resource,
+        workspace: workspace,
         workspaceFileName: fileName,
         forRecording: forRecording,
       );
+      state = state.copyWith(cmtMedia: resource.displayName);
       _refreshCmtStatus(session);
       await _recordCmtRecentFile(resource);
       return true;
@@ -1891,17 +2117,17 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       state = state.copyWith(failureMessage: '$error');
       return;
     }
-    final workspace = _workspace;
     if (slot != null) {
-      if (workspace != null && slot.forRecording) {
+      if (slot.forRecording) {
         await slot.resource.withAccess(
           (nativePath) =>
-              workspace.exportAtomic(slot.workspaceFileName, nativePath),
+              slot.workspace.exportAtomic(slot.workspaceFileName, nativePath),
         );
       }
       await slot.resource.release();
       _cmtSlot = null;
     }
+    state = state.copyWith(clearCmtMedia: true);
     _refreshCmtStatus(session);
   }
 
@@ -1997,12 +2223,20 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   /// [TapePositionChanged]イベント受信時に呼ぶ。
   void _refreshCmtStatus(EmulatorSession session) {
     final status = session.getCmtStatus();
+    // ステートロードで戻した録音用テープは、コアが録音用と判別できず停止中を
+    // 再生用の"Stop (NN %)"で返す（bfm_get_cmt_statusのコメント）。録音用と
+    // 分かっていれば、upstreamと同じ"Stop"にそろえる。
+    final stoppedRecordingTape =
+        (_cmtSlot?.forRecording ?? false) &&
+        status.inserted &&
+        !status.playing &&
+        !status.recording;
     state = state.copyWith(
       cmtInserted: status.inserted,
       cmtPlaying: status.playing,
       cmtRecording: status.recording,
       cmtPosition: status.position,
-      cmtMessage: status.message,
+      cmtMessage: stoppedRecordingTape ? 'Stop' : status.message,
     );
   }
 
@@ -2125,6 +2359,10 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     if (workspace != null) {
       await workspace.dispose();
     }
+    for (final restored in _restoredWorkspaces.values) {
+      await restored.dispose();
+    }
+    _restoredWorkspaces.clear();
     if (session == null) {
       return;
     }
@@ -2135,21 +2373,60 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   }
 }
 
+/// [EmulatorController.loadState]がロード前に用意する、原本との対応。
+class _RestoredMedia {
+  _RestoredMedia(this.fdd, this.cmt);
+
+  final Map<int, _FddSlot> fdd;
+  final _RestoredCmt? cmt;
+}
+
+class _RestoredCmt {
+  _RestoredCmt({
+    required this.displayName,
+    required this.resource,
+    required this.workspace,
+    required this.fileName,
+    required this.forRecording,
+  });
+
+  final String displayName;
+
+  /// 原本（録音用は保存先）。開き直せなければnull。
+  final ExternalResource? resource;
+  final WorkspaceHandle? workspace;
+  final String? fileName;
+  final bool forRecording;
+}
+
 class _FddSlot {
-  _FddSlot({required this.resource, required this.workspaceFileName});
+  _FddSlot({
+    required this.resource,
+    required this.workspace,
+    required this.workspaceFileName,
+  });
 
   final ExternalResource resource;
+
+  /// 作業コピーのある作業領域。ふつうは現在のセッションのものだが、
+  /// ステートロードで復元した媒体は保存時のセッションの作業領域を
+  /// 開き直したものになる（[EmulatorController.loadState]）。
+  final WorkspaceHandle workspace;
   final String workspaceFileName;
 }
 
 class _CmtSlot {
   _CmtSlot({
     required this.resource,
+    required this.workspace,
     required this.workspaceFileName,
     required this.forRecording,
   });
 
   final ExternalResource resource;
+
+  /// 作業コピーのある作業領域（[_FddSlot.workspace]と同じ扱い）。
+  final WorkspaceHandle workspace;
   final String workspaceFileName;
 
   /// 録音用に開いた場合はtrue（排出時に原本へ書き戻す）。再生用に開いた

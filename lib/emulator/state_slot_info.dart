@@ -10,6 +10,7 @@ class StateSlotInfo {
     required this.hasData,
     this.savedAt,
     this.diskNames = const [],
+    this.tapeName,
     this.thumbnailBytes,
   });
 
@@ -23,6 +24,9 @@ class StateSlotInfo {
 
   /// 保存時点でFD1/FD2に挿入されていた媒体の表示名（空でないものだけ）。
   final List<String> diskNames;
+
+  /// 保存時点でCMTに挿入されていたテープの表示名。無ければnull。
+  final String? tapeName;
 
   /// 保存時点の画面のサムネイル（PNGバイト列）。保存されていなければnull。
   final Uint8List? thumbnailBytes;

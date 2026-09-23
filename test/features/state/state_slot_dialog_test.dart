@@ -134,7 +134,11 @@ void main() {
     return container;
   }
 
-  void writeSlot(int slot, {List<String> diskNames = const []}) {
+  void writeSlot(
+    int slot, {
+    List<String> diskNames = const [],
+    String? tapeName,
+  }) {
     final dir = Directory('${tempDir.path}/slot-$slot')
       ..createSync(recursive: true);
     File('${dir.path}/metadata.json').writeAsStringSync(
@@ -142,9 +146,19 @@ void main() {
         'schemaVersion': 1,
         'createdAt': DateTime(2026, 1, 2, 3, 4).toIso8601String(),
         'diskNames': diskNames,
+        if (tapeName != null) 'cmt': {'displayName': tapeName},
       }),
     );
   }
+
+  testWidgets('保存時のディスクとテープの名前をセルに出す', (tester) async {
+    writeSlot(3, diskNames: ['GAME.D88'], tapeName: 'TAPE.T77');
+
+    final container = await wrap(tester, StateSlotDialogMode.load);
+
+    expect(find.text('GAME.D88, CMT: TAPE.T77'), findsOneWidget);
+    container.dispose();
+  });
 
   testWidgets('スロット0〜9のグリッドを表示する', (tester) async {
     final container = await wrap(tester, StateSlotDialogMode.save);

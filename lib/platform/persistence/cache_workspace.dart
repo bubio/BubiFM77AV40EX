@@ -7,6 +7,14 @@ abstract interface class CacheWorkspace {
   /// セッション専用の作業ディレクトリを確保する。
   Future<WorkspaceHandle> createSessionWorkspace();
 
+  /// 以前のセッションの作業ディレクトリ [nativePath] を開き直す。無ければ
+  /// 作り直す。セッション用の領域の外を指していればnullを返す。
+  ///
+  /// ステートにはコアが開いていた作業コピーのパスが入るため、ロード前に
+  /// その場所を用意し直すのに使う（design.md 16.1「ステートロードした
+  /// 媒体の書き戻し」）。
+  Future<WorkspaceHandle?> reopenSessionWorkspace(String nativePath);
+
   /// 起動時に残存する放棄済みワークスペースを削除する。
   Future<void> purgeAbandonedWorkspaces();
 }

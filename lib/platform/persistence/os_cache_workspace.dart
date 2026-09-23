@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:path/path.dart' as p;
+
 import 'cache_workspace.dart';
 import 'os_app_data_paths.dart';
 
@@ -39,6 +41,20 @@ class OsCacheWorkspace implements CacheWorkspace {
         '${DateTime.now().microsecondsSinceEpoch}-${_random.nextInt(1 << 32)}';
     final directory = Directory('${root.path}/$id');
     await directory.create(recursive: true);
+    return _OsWorkspaceHandle(directory);
+  }
+
+  @override
+  Future<WorkspaceHandle?> reopenSessionWorkspace(String nativePath) async {
+    final root = await _sessionsRoot();
+    // セッション用の領域の直下だけを受け付ける（メタデータに書かれた
+    // 任意の場所へディレクトリを作らない）。`..`等は先に正規化して判定する。
+    final normalized = p.normalize(p.absolute(nativePath));
+    if (p.dirname(normalized) != p.normalize(p.absolute(root.path))) {
+      return null;
+    }
+    final directory = Directory(normalized);
+    await directory.create();
     return _OsWorkspaceHandle(directory);
   }
 
