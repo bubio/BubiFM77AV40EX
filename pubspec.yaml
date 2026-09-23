@@ -55,6 +55,9 @@ dependencies:
   # CLI（APP-05）の媒体パスをOSごとの規則（Windowsのドライブ名や区切り
   # 文字）で解決する（Dart SDK公式チームのパッケージ、推移的依存の明示化）。
   path: 1.9.1
+  # ウィンドウのタイトルバーに表示するアプリのバージョンとビルド番号の取得。
+  # pubspec.yamlのversionをOSごとのバンドル情報から読む。
+  package_info_plus: 10.2.1
 
 dev_dependencies:
   flutter_test:

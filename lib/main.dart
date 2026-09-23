@@ -5,6 +5,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'app/bootstrap.dart';
 import 'app/cli_args.dart';
+import 'app/window_title.dart';
 import 'emulator/rom/rom_inventory.dart';
 import 'emulator/rom/rom_requirement.dart';
 import 'emulator/session_state.dart';
@@ -27,6 +28,7 @@ Future<void> main(List<String> args) async {
       // に使うwindow_managerはデスクトップのみ対応。
       if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
         await windowManager.ensureInitialized();
+        await applyVersionedWindowTitle();
       }
       final resolvedOptions = await _resolveAndValidate(options);
       // platform実装の組み立てはappの責務（design.md 3.1）。
