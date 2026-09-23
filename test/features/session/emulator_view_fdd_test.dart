@@ -281,13 +281,14 @@ void main() {
     expect(container.read(emulatorControllerProvider).fddMedia[0], 'OTHER.D88');
     expect(session.insertCalls, hasLength(2));
     expect(session.ejectCalls, [0]);
-    expect(cacheWorkspace.handle.exportCalls, [
-      ('fd0-GAME.D88', '/Volumes/USB/GAME.D88'),
-    ]);
+    // 中身が変わっていないため原本へ書き戻さない。
+    expect(cacheWorkspace.handle.exportCalls, isEmpty);
     container.dispose();
   });
 
-  testWidgets('FDD-01 Diskメニューから排出すると原本へ書き戻し、未挿入表示に戻る', (tester) async {
+  testWidgets('FDD-01 Diskメニューから排出すると未挿入表示に戻り、変更がなければ原本へ書き戻さない', (
+    tester,
+  ) async {
     externalFileAccess.nextPickResult = FakeExternalResource(
       '/Volumes/USB/GAME.D88',
       displayName: 'GAME.D88',
@@ -305,9 +306,8 @@ void main() {
 
     expect(container.read(emulatorControllerProvider).fddMedia[0], isNull);
     expect(session.ejectCalls, [0]);
-    expect(cacheWorkspace.handle.exportCalls, [
-      ('fd0-GAME.D88', '/Volumes/USB/GAME.D88'),
-    ]);
+    // 中身が変わっていないため原本へ書き戻さない。
+    expect(cacheWorkspace.handle.exportCalls, isEmpty);
     container.dispose();
   });
 

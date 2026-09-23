@@ -1484,7 +1484,8 @@ class EmulatorController extends Notifier<EmulatorViewState> {
   ///
   /// 排出して他バンクを含む全体を原本へ書き戻してから、同じ作業コピーを
   /// 新しいバンクで再挿入する（design.md 9.1「選択バンクの更新時に他
-  /// バンクを保持して同じコンテナへ書き戻す」）。原本の再選択は行わない。
+  /// バンクを保持して同じコンテナへ書き戻す」）。書き戻しは変更があった
+  /// ときだけ行う（[_writeBackIfChanged]）。原本の再選択は行わない。
   Future<void> insertFddBank(int drive, int bank) async {
     final session = _session;
     final slot = _fddSlots[drive];
@@ -1498,11 +1499,9 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       state = state.copyWith(failureMessage: '$ejectError');
       return;
     }
-    await slot.resource.withAccess(
-      (nativePath) =>
-          workspace.exportAtomic(slot.workspaceFileName, nativePath),
-    );
-    final workspacePath = '${workspace.nativePath}/${slot.workspaceFileName}';
+    await _writeBackIfChanged(slot, workspace);
+    final latest = await _adoptLatestFddWorkspaceFile(drive, slot, workspace);
+    final workspacePath = '${workspace.nativePath}/${latest.workspaceFileName}';
     final insertId = await session.insertFdd(drive, workspacePath, bank: bank);
     final insertError = await _awaitCommand(insertId);
     if (insertError != null) {
@@ -1536,12 +1535,13 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       state = state.copyWith(failureMessage: '$ejectError');
       return;
     }
+    final latest = await _adoptLatestFddWorkspaceFile(drive, slot, workspace);
     await destination.withAccess(
       (nativePath) =>
-          workspace.exportAtomic(slot.workspaceFileName, nativePath),
+          workspace.exportAtomic(latest.workspaceFileName, nativePath),
     );
     await destination.release();
-    final workspacePath = '${workspace.nativePath}/${slot.workspaceFileName}';
+    final workspacePath = '${workspace.nativePath}/${latest.workspaceFileName}';
     final insertId = await session.insertFdd(drive, workspacePath);
     final insertError = await _awaitCommand(insertId);
     if (insertError != null) {
@@ -1568,6 +1568,11 @@ class EmulatorController extends Notifier<EmulatorViewState> {
       final workspace = _workspace ??= await cacheWorkspace
           .createSessionWorkspace();
       final fileName = 'fd$drive-${resource.displayName}';
+      // 同じ名前で前に挿入したときにコアが書き出した変換結果が残っていると、
+      // 保存時にそれを最新と取り違える（[_adoptLatestFddWorkspaceFile]）。
+      for (final suffix in _coreDerivedDiskSuffixes) {
+        await workspace.delete('$fileName$suffix');
+      }
       final workspacePath = await resource.withAccess(
         (nativePath) => workspace.importCopy(nativePath, fileName: fileName),
       );
@@ -1644,10 +1649,65 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     );
   }
 
+  /// 排出後の作業コピーを、変更があるときだけ原本へ書き戻す。
+  ///
+  /// 原作（upstream `DISK::close()`）と同じく、D88/D77/D8E/1DDだけを
+  /// 対象にし、中身が挿入時から変わっていなければ書かない（読むだけ・
+  /// バンクを切り替えただけで原本を置き換えない）。TD0等の変換形式と
+  /// rawは原本を読込専用とし、変更は[saveFddAs]でだけ残す
+  /// （specification.md FDD-09）。
+  Future<void> _writeBackIfChanged(
+    _FddSlot slot,
+    WorkspaceHandle workspace,
+  ) async {
+    if (_sourceKindOfPath(slot.resource.displayName) !=
+        DiskSourceKind.nativeContainer) {
+      return;
+    }
+    await slot.resource.withAccess((nativePath) async {
+      if (await workspace.contentEquals(slot.workspaceFileName, nativePath)) {
+        return;
+      }
+      await workspace.exportAtomic(slot.workspaceFileName, nativePath);
+    });
+  }
+
+  /// コアが変換読込した媒体の変更を書き出す先の拡張子。
+  ///
+  /// upstreamの`DISK::open()`（vm/disk.cpp）は、TD0/IMD/DSK/NFD/FDIを
+  /// 変換読込したときと、rawイメージを物理フォーマットしたときに、
+  /// 書き出し先を渡されたパスへこの拡張子を足した別ファイルにする。
+  /// 渡した作業コピー自身には書き込まない。
+  static const _coreDerivedDiskSuffixes = ['.D88', '.D8E'];
+
+  /// 排出直後に、コアが最新の内容を書き出した作業領域内のファイルを
+  /// 探し、以後はそれを[drive]の作業コピーとして扱う。変換読込した媒体は
+  /// 変更が別ファイル（[_coreDerivedDiskSuffixes]）に入るため、元の複製を
+  /// 保存・再挿入すると変更が失われる。
+  Future<_FddSlot> _adoptLatestFddWorkspaceFile(
+    int drive,
+    _FddSlot slot,
+    WorkspaceHandle workspace,
+  ) async {
+    for (final suffix in _coreDerivedDiskSuffixes) {
+      final derived = '${slot.workspaceFileName}$suffix';
+      if (await workspace.exists(derived)) {
+        final latest = _FddSlot(
+          resource: slot.resource,
+          workspaceFileName: derived,
+        );
+        _fddSlots[drive] = latest;
+        return latest;
+      }
+    }
+    return slot;
+  }
+
   /// FD1(0)/FD2(1)から媒体を排出する（FDD-01）。
   ///
-  /// コアが排出を終えたことを確認してから、作業領域の複製を原本へ
-  /// 原子的に書き戻す（design.md 16.1）。未挿入のドライブは何もしない。
+  /// コアが排出を終えたことを確認してから、変更があれば作業領域の複製を
+  /// 原本へ原子的に書き戻す（design.md 16.1、[_writeBackIfChanged]）。
+  /// 未挿入のドライブは何もしない。
   ///
   /// ステートロードで挿入された媒体（design.md「状態保存」、STA-02）は
   /// アプリ側の`_FddSlot`（原本ファイルの参照）を持たない。コアの内部には
@@ -1671,10 +1731,7 @@ class EmulatorController extends Notifier<EmulatorViewState> {
     if (slot != null) {
       final workspace = _workspace;
       if (workspace != null) {
-        await slot.resource.withAccess(
-          (nativePath) =>
-              workspace.exportAtomic(slot.workspaceFileName, nativePath),
-        );
+        await _writeBackIfChanged(slot, workspace);
       }
       await slot.resource.release();
       _fddSlots.remove(drive);

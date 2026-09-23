@@ -94,6 +94,39 @@ class _OsWorkspaceHandle implements WorkspaceHandle {
   }
 
   @override
+  Future<bool> contentEquals(
+    String workspaceFileName,
+    String nativePath,
+  ) async {
+    final a = File('${_directory.path}/$workspaceFileName');
+    final b = File(nativePath);
+    if (!await b.exists() || await a.length() != await b.length()) {
+      return false;
+    }
+    // ディスクイメージは高々数MBのため、丸ごと読んで比べる。
+    final bytesA = await a.readAsBytes();
+    final bytesB = await b.readAsBytes();
+    for (var i = 0; i < bytesA.length; i++) {
+      if (bytesA[i] != bytesB[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  Future<bool> exists(String workspaceFileName) =>
+      File('${_directory.path}/$workspaceFileName').exists();
+
+  @override
+  Future<void> delete(String workspaceFileName) async {
+    final file = File('${_directory.path}/$workspaceFileName');
+    if (await file.exists()) {
+      await file.delete();
+    }
+  }
+
+  @override
   Future<List<String>> listFiles() async {
     final entries = await _directory.list().toList();
     return [

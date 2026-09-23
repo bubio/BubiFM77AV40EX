@@ -732,9 +732,8 @@ void main() {
 
     expect(session.insertCalls, hasLength(2));
     expect(session.ejectCalls, [0]);
-    expect(cacheWorkspace.handle.exportCalls, [
-      ('fd0-GAME.D88', '/Volumes/USB/GAME.D88'),
-    ]);
+    // 中身が変わっていないため原本へ書き戻さない。
+    expect(cacheWorkspace.handle.exportCalls, isEmpty);
     expect(state().fddMedia[0], 'OTHER.D88');
   });
 
@@ -790,7 +789,41 @@ void main() {
     expect(externalFileAccess.resourceForPathCalls, isEmpty);
   });
 
-  test('FDD-01 排出は完了を待ってから作業領域の複製を原本へ原子的に書き戻す', () async {
+  test('FDD-01 排出は完了を待ってから、変更のある作業コピーを原本へ原子的に書き戻す', () async {
+    final resource = FakeExternalResource(
+      '/Volumes/USB/GAME.D88',
+      displayName: 'GAME.D88',
+    );
+    externalFileAccess.nextPickResult = resource;
+    await controller().insertFdd(0);
+    cacheWorkspace.handle.changedFiles.add('fd0-GAME.D88');
+
+    await controller().ejectFdd(0);
+
+    expect(session.ejectCalls, [0]);
+    expect(cacheWorkspace.handle.exportCalls, [
+      ('fd0-GAME.D88', '/Volumes/USB/GAME.D88'),
+    ]);
+    expect(resource.releaseCallCount, 1);
+    expect(state().fddMedia, isEmpty);
+  });
+
+  test('FDD-09 変換形式（TD0等）は変更があっても原本へ書き戻さない', () async {
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/GAME.TD0',
+      displayName: 'GAME.TD0',
+    );
+    await controller().insertFdd(0);
+    cacheWorkspace.handle.changedFiles.add('fd0-GAME.TD0');
+    cacheWorkspace.handle.files.add('fd0-GAME.TD0.D88');
+
+    await controller().ejectFdd(0);
+
+    expect(session.ejectCalls, [0]);
+    expect(cacheWorkspace.handle.exportCalls, isEmpty);
+  });
+
+  test('FDD-01 中身が変わっていなければ排出しても原本へ書き戻さない', () async {
     final resource = FakeExternalResource(
       '/Volumes/USB/GAME.D88',
       displayName: 'GAME.D88',
@@ -801,9 +834,7 @@ void main() {
     await controller().ejectFdd(0);
 
     expect(session.ejectCalls, [0]);
-    expect(cacheWorkspace.handle.exportCalls, [
-      ('fd0-GAME.D88', '/Volumes/USB/GAME.D88'),
-    ]);
+    expect(cacheWorkspace.handle.exportCalls, isEmpty);
     expect(resource.releaseCallCount, 1);
     expect(state().fddMedia, isEmpty);
   });
@@ -943,13 +974,14 @@ void main() {
     expect(session.insertCalls, isEmpty);
   });
 
-  test('FDD-04 バンク切替は排出して書き戻してから同じ作業コピーを新バンクで再挿入する', () async {
+  test('FDD-04 バンク切替は排出して変更を書き戻してから同じ作業コピーを新バンクで再挿入する', () async {
     externalFileAccess.nextPickResult = FakeExternalResource(
       '/Volumes/USB/GAME.D88',
       displayName: 'GAME.D88',
     );
     await controller().insertFdd(0);
     session.fddBankInfoByDrive[0] = (bankNum: 2, curBank: 1);
+    cacheWorkspace.handle.changedFiles.add('fd0-GAME.D88');
 
     await controller().insertFddBank(0, 1);
 
@@ -967,12 +999,15 @@ void main() {
     expect(state().fddCurBank[0], 1);
   });
 
-  test('FDD-09 Save Asは原本に触れず、選択先へ保存してから挿入したままにする', () async {
+  test('FDD-09 Save Asは原本に触れず、コアが書き出したD88を選択先へ保存し、以後それを使う', () async {
     externalFileAccess.nextPickResult = FakeExternalResource(
       '/Volumes/USB/GAME.TD0',
       displayName: 'GAME.TD0',
     );
     await controller().insertFdd(0);
+    // upstream DISK::close()は変換読込した媒体の変更を"<渡したパス>.D88"へ
+    // 書き出し、渡したTD0の複製自体には書き込まない。
+    cacheWorkspace.handle.files.add('fd0-GAME.TD0.D88');
     externalFileAccess.nextSaveLocationResult = FakeExternalResource(
       '/Volumes/USB/SAVED.D88',
       displayName: 'SAVED.D88',
@@ -982,17 +1017,45 @@ void main() {
 
     expect(session.ejectCalls, [0]);
     expect(cacheWorkspace.handle.exportCalls, [
-      ('fd0-GAME.TD0', '/Volumes/USB/SAVED.D88'),
+      ('fd0-GAME.TD0.D88', '/Volumes/USB/SAVED.D88'),
     ]);
-    // 原本(GAME.TD0)へは一度もexportAtomicしていない。
+    // 原本(GAME.TD0)へは一度も書き出していない。
     expect(
       cacheWorkspace.handle.exportCalls.any(
         (call) => call.$2 == '/Volumes/USB/GAME.TD0',
       ),
       isFalse,
     );
-    expect(session.insertCalls, hasLength(2));
-    expect(state().fddMedia[0], isNotNull);
+    // 再挿入も変更の入ったD88で行う（元のTD0からの再変換で変更を失わない）。
+    expect(
+      session.insertCalls[1].$2,
+      '${cacheWorkspace.handle.nativePath}/fd0-GAME.TD0.D88',
+    );
+
+    // 2回目の保存も同じD88を書き出す。
+    externalFileAccess.nextSaveLocationResult = FakeExternalResource(
+      '/Volumes/USB/SAVED2.D88',
+      displayName: 'SAVED2.D88',
+    );
+    await controller().saveFddAs(0);
+
+    expect(cacheWorkspace.handle.exportCalls.last, (
+      'fd0-GAME.TD0.D88',
+      '/Volumes/USB/SAVED2.D88',
+    ));
+  });
+
+  test('FDD-09 同じ名前の媒体を挿入し直すと、前回の変換結果を消してから複製する', () async {
+    cacheWorkspace.handle.files.add('fd0-GAME.TD0.D88');
+    externalFileAccess.nextPickResult = FakeExternalResource(
+      '/Volumes/USB/GAME.TD0',
+      displayName: 'GAME.TD0',
+    );
+
+    await controller().insertFdd(0);
+
+    expect(cacheWorkspace.handle.deletedFileNames, ['fd0-GAME.TD0.D88']);
+    expect(cacheWorkspace.handle.files, {'fd0-GAME.TD0'});
   });
 
   test('FDD-07 挿入した媒体は最近使ったファイルへ記録され、再選択できる', () async {
@@ -1070,6 +1133,8 @@ void main() {
       displayName: 'GAME.D88',
     );
     await controller().insertFdd(0);
+
+    cacheWorkspace.handle.changedFiles.add('fd0-GAME.D88');
 
     await controller().shutdown();
 

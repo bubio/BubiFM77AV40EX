@@ -24,11 +24,21 @@ abstract interface class WorkspaceHandle {
   /// 原子的に書き戻す（design.md 9.1「原子的に書き戻し」、16.1）。
   ///
   /// 呼び出し側は、コアが書き込みを終えたことを確認してから呼ぶこと
-  /// （FDDでは`BFM_EVENT_MEDIA_CHANGED`の排出通知を待つ）。
+  /// （FDDでは排出コマンドの完了を待つ）。
   Future<void> exportAtomic(
     String workspaceFileName,
     String destinationNativePath,
   );
+
+  /// 作業領域内の [workspaceFileName] と [nativePath] の中身が同じか。
+  /// 書き戻しを変更があったときだけに絞るために使う。
+  Future<bool> contentEquals(String workspaceFileName, String nativePath);
+
+  /// 作業領域内に [workspaceFileName] があるかどうか。
+  Future<bool> exists(String workspaceFileName);
+
+  /// 作業領域内の [workspaceFileName] を消す。無ければ何もしない。
+  Future<void> delete(String workspaceFileName);
 
   /// 作業領域内のファイルを列挙する。
   Future<List<String>> listFiles();

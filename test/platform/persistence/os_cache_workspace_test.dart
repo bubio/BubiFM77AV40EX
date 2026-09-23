@@ -102,4 +102,44 @@ void main() {
     await workspace().purgeAbandonedWorkspaces();
     expect(await destination.readAsString(), 'updated');
   });
+
+  test('exists/delete: 作業領域内のファイルの有無を調べ、消せる', () async {
+    final handle = await workspace().createSessionWorkspace();
+    await handle.importCopy(
+      (File('${root.path}/game.td0')..writeAsStringSync('td0')).path,
+      fileName: 'fd0-GAME.TD0',
+    );
+    // コアが変換読込した媒体の変更を書き出す別ファイルを模す。
+    File('${handle.nativePath}/fd0-GAME.TD0.D88').writeAsStringSync('d88');
+
+    expect(await handle.exists('fd0-GAME.TD0'), isTrue);
+    expect(await handle.exists('fd0-GAME.TD0.D88'), isTrue);
+    expect(await handle.exists('fd0-GAME.TD0.D8E'), isFalse);
+
+    await handle.delete('fd0-GAME.TD0.D88');
+    // 無いファイルを消しても失敗しない。
+    await handle.delete('fd0-GAME.TD0.D8E');
+
+    expect(await handle.exists('fd0-GAME.TD0.D88'), isFalse);
+    expect(await handle.exists('fd0-GAME.TD0'), isTrue);
+  });
+
+  test('contentEquals: 作業コピーと原本の中身が同じかを比べる', () async {
+    final handle = await workspace().createSessionWorkspace();
+    final original = File('${root.path}/GAME.D88')..writeAsStringSync('abc');
+    await handle.importCopy(original.path, fileName: 'fd0-GAME.D88');
+
+    expect(await handle.contentEquals('fd0-GAME.D88', original.path), isTrue);
+
+    // 長さが同じで中身だけ違う場合（コアがセクタを書き換えた場合）。
+    File('${handle.nativePath}/fd0-GAME.D88').writeAsStringSync('abd');
+    expect(await handle.contentEquals('fd0-GAME.D88', original.path), isFalse);
+
+    File('${handle.nativePath}/fd0-GAME.D88').writeAsStringSync('abcd');
+    expect(await handle.contentEquals('fd0-GAME.D88', original.path), isFalse);
+
+    // 原本が消えていれば「同じではない」とする。
+    await original.delete();
+    expect(await handle.contentEquals('fd0-GAME.D88', original.path), isFalse);
+  });
 }

@@ -776,7 +776,12 @@ class FakeWorkspaceHandle implements WorkspaceHandle {
   final List<String> importedFileNames = [];
   final List<(String workspaceFileName, String destinationNativePath)>
   exportCalls = [];
+  final List<String> deletedFileNames = [];
   bool disposed = false;
+
+  /// 作業領域内にあるとみなすファイル。コアが変換読込した媒体の変更を
+  /// 別ファイルへ書き出したことは、テストがここへ名前を足して表す。
+  final Set<String> files = {};
 
   @override
   String get nativePath => '/cache/fdd-sessions/fake';
@@ -787,7 +792,28 @@ class FakeWorkspaceHandle implements WorkspaceHandle {
     required String fileName,
   }) async {
     importedFileNames.add(fileName);
+    files.add(fileName);
     return '$nativePath/$fileName';
+  }
+
+  /// コアが排出時に書き込み、原本と中身が変わったとみなす作業コピー。
+  final Set<String> changedFiles = {};
+
+  @override
+  Future<bool> contentEquals(
+    String workspaceFileName,
+    String nativePath,
+  ) async => !changedFiles.contains(workspaceFileName);
+
+  @override
+  Future<bool> exists(String workspaceFileName) async =>
+      files.contains(workspaceFileName);
+
+  @override
+  Future<void> delete(String workspaceFileName) async {
+    if (files.remove(workspaceFileName)) {
+      deletedFileNames.add(workspaceFileName);
+    }
   }
 
   @override
