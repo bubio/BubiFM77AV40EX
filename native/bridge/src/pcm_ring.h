@@ -86,6 +86,24 @@ public:
 		total_underrun_ += (frames - available);
 	}
 
+	// 溜まっている分だけ、最大[frames]分を取り出して取り出した数を返す。
+	// pop()と違い無音で埋めず、アンダーランにも数えない。生成が一定量の
+	// まとまり（audio_latency分）で届くため、固定量を無音埋めで読む
+	// pop()を短い周期で呼ぶと、まとまりの隙間ごとに無音が挟まり音が途切れる。
+	std::size_t pop_available(int16_t* dst, std::size_t frames)
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		const std::size_t available = frames < count_ ? frames : count_;
+		for (std::size_t i = 0; i < available; ++i) {
+			const std::size_t read_pos = (head_ + i) % kAudioRingCapacityFrames;
+			dst[i * 2 + 0] = buffer_[read_pos * 2 + 0];
+			dst[i * 2 + 1] = buffer_[read_pos * 2 + 1];
+		}
+		head_ = (head_ + available) % kAudioRingCapacityFrames;
+		count_ -= available;
+		return available;
+	}
+
 	std::size_t occupied_frames() const
 	{
 		std::lock_guard<std::mutex> lock(mutex_);

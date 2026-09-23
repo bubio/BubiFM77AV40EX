@@ -50,11 +50,19 @@ class RecordingAudioSink implements AudioSink, RecordingControl {
   Future<void> _chain = Future<void>.value();
 
   @override
-  Future<void> start({required int sampleRate, required int channels}) {
+  Future<void> start({
+    required int sampleRate,
+    required int channels,
+    Duration prebuffer = const Duration(milliseconds: 90),
+  }) {
     _sampleRate = sampleRate;
     _channels = channels;
     _formatKnown = true;
-    return _inner.start(sampleRate: sampleRate, channels: channels);
+    return _inner.start(
+      sampleRate: sampleRate,
+      channels: channels,
+      prebuffer: prebuffer,
+    );
   }
 
   @override

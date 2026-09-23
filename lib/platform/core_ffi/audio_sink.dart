@@ -10,7 +10,15 @@ import 'dart:typed_data';
 /// （`lib/app/bootstrap.dart`）だけが組み立てる。
 abstract class AudioSink {
   /// 再生を開始する。[sampleRate]と[channels]は`bfm_get_audio_format`から得る。
-  Future<void> start({required int sampleRate, required int channels});
+  ///
+  /// [prebuffer]は再生開始（とアンダーラン後の再開）までに溜める量。
+  /// PCMはオーディオバッファ設定の長さのまとまりで届くため、呼び手が
+  /// その長さに合わせて決める。
+  Future<void> start({
+    required int sampleRate,
+    required int channels,
+    Duration prebuffer = const Duration(milliseconds: 90),
+  });
 
   /// 16bit符号付きリトルエンディアンのPCMを供給する。呼び出し後、
   /// 渡したバッファを呼び手側で書き換えてはならない

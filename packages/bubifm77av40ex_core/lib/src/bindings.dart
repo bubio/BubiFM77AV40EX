@@ -103,6 +103,18 @@ final class BubiCoreBindings {
             >
           >('bfm_read_audio')
           .asFunction(),
+      readAudioAvailable = library
+          .lookup<
+            NativeFunction<
+              Int32 Function(
+                Pointer<BfmSession>,
+                Pointer<Int16>,
+                Uint32,
+                Pointer<Uint32>,
+              )
+            >
+          >('bfm_read_audio_available')
+          .asFunction(),
       getAudioFormat = library
           .lookup<
             NativeFunction<
@@ -176,6 +188,11 @@ final class BubiCoreBindings {
   final void Function(Pointer<BfmSession>, int) releaseVideoFrame;
   final int Function(Pointer<BfmSession>) videoGeneration;
   final int Function(Pointer<BfmSession>, Pointer<Int16>, int) readAudio;
+
+  /// 溜まっている分だけ読み、読んだフレーム数を返す（bfm_read_audio_available）。
+  /// 無音で埋めない。
+  final int Function(Pointer<BfmSession>, Pointer<Int16>, int, Pointer<Uint32>)
+  readAudioAvailable;
   final int Function(Pointer<BfmSession>, Pointer<Uint32>, Pointer<Uint32>)
   getAudioFormat;
 

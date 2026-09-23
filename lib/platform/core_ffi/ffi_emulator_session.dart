@@ -27,6 +27,7 @@ class FfiEmulatorSession implements EmulatorSession {
     this._audio,
     this._fddMechanicalSound,
     this._recording,
+    this._audioBufferSize,
   );
 
   /// セッションを生成する。
@@ -109,6 +110,7 @@ class FfiEmulatorSession implements EmulatorSession {
         audio,
         fddMechanicalSound,
         recording,
+        audioBufferSize,
       );
     } finally {
       // C境界を跨いだメモリは確保側が解放する。パスはネイティブ側が
@@ -129,6 +131,7 @@ class FfiEmulatorSession implements EmulatorSession {
   final AudioSink? _audio;
   final FddMechanicalSoundSink? _fddMechanicalSound;
   final RecordingControl? _recording;
+  final AudioBufferSize _audioBufferSize;
 
   Pointer<BfmSession> _handle;
   Timer? _pollTimer;
@@ -144,6 +147,7 @@ class FfiEmulatorSession implements EmulatorSession {
   Pointer<Int16>? _audioScratch;
   int _audioScratchFrames = 0;
   int _audioChannels = 2;
+  Pointer<Uint32>? _audioFramesRead;
 
   final StreamController<EmulatorEvent> _events =
       StreamController<EmulatorEvent>.broadcast();
@@ -201,7 +205,7 @@ class FfiEmulatorSession implements EmulatorSession {
   }
 
   /// [_audio] があれば`bfm_get_audio_format`で得たフォーマットで再生を始め、
-  /// [_audioPullInterval] ごとに`bfm_read_audio`で引き出して供給する。
+  /// [_audioPullInterval] ごとに`bfm_read_audio_available`で引き出して供給する。
   /// 音声側からVMを進めることはない（design.md 16.1「音声はVMの駆動源に
   /// しない」）。この引き出しはメインisolateの`Timer`が行うだけで、
   /// 実時間制約のある音声ミキシングのコールバックそのものではない
@@ -219,10 +223,24 @@ class FfiEmulatorSession implements EmulatorSession {
         return;
       }
       _audioChannels = channels.value;
-      _audioScratchFrames =
-          (sampleRate.value * _audioPullInterval.inMilliseconds / 1000).round();
+      // 1回で読み切れる上限。コアはオーディオバッファ設定の長さ単位で
+      // まとめて生成するため、最大設定（300ms）のまとまりが引き出しの
+      // 遅れで2つ重なっても1回で取り切れる量にしておく（0.5秒）。
+      _audioScratchFrames = sampleRate.value ~/ 2;
       _audioScratch = calloc<Int16>(_audioScratchFrames * _audioChannels);
-      await audio.start(sampleRate: sampleRate.value, channels: _audioChannels);
+      _audioFramesRead = calloc<Uint32>();
+      // 再生開始（とアンダーラン後の再開）までに溜める量。PCMは
+      // オーディオバッファ設定の長さのまとまりで届き、それを
+      // [_audioPullInterval]周期で拾うため、1まとまり分に引き出し周期の
+      // ぶれ（2周期分）を足しておかないと、次のまとまりが届く前に再生側が
+      // 枯れて途切れる。
+      final prebuffer =
+          audioBufferSizeDuration(_audioBufferSize) + _audioPullInterval * 2;
+      await audio.start(
+        sampleRate: sampleRate.value,
+        channels: _audioChannels,
+        prebuffer: prebuffer,
+      );
       _audioTimer ??= Timer.periodic(_audioPullInterval, (_) => _pullAudio());
     } finally {
       calloc.free(sampleRate);
@@ -232,17 +250,30 @@ class FfiEmulatorSession implements EmulatorSession {
 
   void _pullAudio() {
     final scratch = _audioScratch;
+    final framesRead = _audioFramesRead;
     final audio = _audio;
-    // 一時停止中はコアがPCMを作らない。引き出すとアンダーランの無音が
-    // 再生と録音（AUD-06）へ流れ込むため、何も渡さず再生側を枯らす。
-    if (_disposed || _paused || scratch == null || audio == null) {
+    // 一時停止中はコアがPCMを作らない。何も渡さず再生側を枯らす。
+    if (_disposed ||
+        _paused ||
+        scratch == null ||
+        framesRead == null ||
+        audio == null) {
       return;
     }
-    final result = _bindings.readAudio(_handle, scratch, _audioScratchFrames);
-    if (result != BfmResult.ok) {
+    // 溜まっている分だけを読む。固定量を無音埋めで読むと、コアが
+    // オーディオバッファ設定の長さ単位でまとめて生成する隙間ごとに無音が
+    // 挟まって音が途切れ、Timerの遅れ（tickの取りこぼし）はそのまま
+    // 欠落になる。足りない間の扱いは再生側のバッファに任せる。
+    final result = _bindings.readAudioAvailable(
+      _handle,
+      scratch,
+      _audioScratchFrames,
+      framesRead,
+    );
+    if (result != BfmResult.ok || framesRead.value == 0) {
       return;
     }
-    final byteLength = _audioScratchFrames * _audioChannels * 2;
+    final byteLength = framesRead.value * _audioChannels * 2;
     // ネイティブ領域そのままではなく複製を渡す。scratchは次のtickで
     // 上書きするため、非同期に処理されても壊れない値を渡す必要がある。
     final bytes = Uint8List.fromList(
@@ -258,6 +289,11 @@ class FfiEmulatorSession implements EmulatorSession {
     _audioScratch = null;
     if (scratch != null) {
       calloc.free(scratch);
+    }
+    final framesRead = _audioFramesRead;
+    _audioFramesRead = null;
+    if (framesRead != null) {
+      calloc.free(framesRead);
     }
     await _audio?.stop();
   }

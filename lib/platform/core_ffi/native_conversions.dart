@@ -61,6 +61,15 @@ int audioBufferSizeToNative(AudioBufferSize size) => switch (size) {
   AudioBufferSize.ms300 => BfmAudioLatency.ms300,
 };
 
+/// [AudioBufferSize] の長さ。コアはこの長さ単位でPCMを生成する
+/// （`kAudioLatencyOptionsSeconds`、native/bridge/src/pcm_ring.h）。
+Duration audioBufferSizeDuration(AudioBufferSize size) => switch (size) {
+  AudioBufferSize.ms50 => const Duration(milliseconds: 50),
+  AudioBufferSize.ms100 => const Duration(milliseconds: 100),
+  AudioBufferSize.ms200 => const Duration(milliseconds: 200),
+  AudioBufferSize.ms300 => const Duration(milliseconds: 300),
+};
+
 /// [CpuType] を `bfm_cpu_type` へ変換する。
 int cpuTypeToNative(CpuType type) => switch (type) {
   CpuType.fast => BfmCpuType.fast,

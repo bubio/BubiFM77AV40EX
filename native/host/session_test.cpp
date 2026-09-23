@@ -1490,6 +1490,19 @@ void test_audio()
 	check(bfm_read_audio(nullptr, nullptr, 0) == BFM_ERR_INVALID_ARGUMENT,
 	      "sessionがnullなら invalidArgument");
 
+	uint32_t available_frames = 123;
+	std::vector<int16_t> untouched(200 * 2, 0x1234);
+	check(bfm_read_audio_available(nullptr, untouched.data(), 100, &available_frames)
+	          == BFM_ERR_INVALID_ARGUMENT,
+	      "read_audio_available: sessionがnullなら invalidArgument");
+	check(bfm_read_audio_available(session, untouched.data(), 100, nullptr)
+	          == BFM_ERR_INVALID_ARGUMENT,
+	      "read_audio_available: out_framesがnullなら invalidArgument");
+	check(bfm_read_audio_available(session, untouched.data(), 100, &available_frames)
+	              == BFM_OK
+	          && available_frames == 0 && untouched[0] == 0x1234,
+	      "起動前のread_audio_availableは0フレームで無音埋めしない");
+
 	std::vector<int16_t> silent(200 * 2, 0x1234);
 	check(bfm_read_audio(session, silent.data(), 100) == BFM_OK,
 	      "起動前でも読める（無音で埋まる）");
@@ -1520,6 +1533,16 @@ void test_audio()
 	            static_cast<unsigned long long>(stats.audio_frames_produced),
 	            static_cast<unsigned long long>(stats.audio_underrun_frames),
 	            static_cast<unsigned long long>(stats.audio_overrun_frames));
+
+	// 溜まっている分だけ読む経路でも、コアのPCMが取り出せる。
+	uint64_t available_total = 0;
+	for (int i = 0; i < 10; ++i) {
+		uint32_t got = 0;
+		bfm_read_audio_available(session, buffer.data(), 4800, &got);
+		available_total += got;
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	}
+	check(available_total > 0, "read_audio_availableでPCMを読める");
 
 	bfm_stop(session);
 

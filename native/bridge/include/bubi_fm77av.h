@@ -717,6 +717,18 @@ BFM_API bfm_result bfm_read_audio(bfm_session* session, int16_t* out,
                                   uint32_t frame_capacity);
 
 /*
+ * bfm_read_audioと同じリングから、溜まっている分だけ最大frame_capacity分を
+ * 読み、読んだフレーム数を*out_framesへ返す。無音で埋めず、
+ * bfm_stats.audio_underrun_framesも増やさない。コアのPCMはaudio_latency分の
+ * まとまりで届くため、再生側のバッファへ流し込む用途ではこちらを使う
+ * （足りない分の扱いは再生側のバッファに任せる）。どのスレッドから
+ * 呼んでもよい。VMには触れない。
+ */
+BFM_API bfm_result bfm_read_audio_available(bfm_session* session, int16_t* out,
+                                            uint32_t frame_capacity,
+                                            uint32_t* out_frames);
+
+/*
  * 出力フォーマット（サンプルレート、チャネル数）。プロセス内で固定であり、
  * セッションの状態に関わらず得られる。
  */

@@ -31,7 +31,11 @@ class FddMechanicalAudioSink implements AudioSink, FddMechanicalSoundSink {
   int _channels = 2;
 
   @override
-  Future<void> start({required int sampleRate, required int channels}) {
+  Future<void> start({
+    required int sampleRate,
+    required int channels,
+    Duration prebuffer = const Duration(milliseconds: 90),
+  }) {
     _channels = channels;
     if (_injectedSynth == null) {
       // `bfm_get_audio_format`が返す実際のサンプルレート（既定48kHz、
@@ -39,7 +43,11 @@ class FddMechanicalAudioSink implements AudioSink, FddMechanicalSoundSink {
       // トーン周波数・クールダウンがすべて実際の再生速度からずれる。
       _synth = FddMechanicalSound(sampleRate: sampleRate);
     }
-    return _inner.start(sampleRate: sampleRate, channels: channels);
+    return _inner.start(
+      sampleRate: sampleRate,
+      channels: channels,
+      prebuffer: prebuffer,
+    );
   }
 
   @override

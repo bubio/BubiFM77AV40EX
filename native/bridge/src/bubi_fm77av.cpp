@@ -1955,6 +1955,18 @@ BFM_API bfm_result bfm_read_audio(bfm_session* session, int16_t* out, uint32_t f
 	return BFM_OK;
 }
 
+BFM_API bfm_result bfm_read_audio_available(bfm_session* session, int16_t* out,
+                                            uint32_t frame_capacity,
+                                            uint32_t* out_frames)
+{
+	if (session == nullptr || out == nullptr || out_frames == nullptr) {
+		return BFM_ERR_INVALID_ARGUMENT;
+	}
+	*out_frames = static_cast<uint32_t>(
+	    session->audio.pop_available(out, frame_capacity));
+	return BFM_OK;
+}
+
 /*
  * FD1/FD2アクセス状態のread-and-clearポーリング（design.md WP5、
  * accumulate_media_accessの注記）。ビット0=FD1、ビット1=FD2。

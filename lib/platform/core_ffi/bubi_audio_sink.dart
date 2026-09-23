@@ -22,7 +22,11 @@ class BubiAudioSink implements AudioSink {
   double _pendingVolume = 1.0;
 
   @override
-  Future<void> start({required int sampleRate, required int channels}) async {
+  Future<void> start({
+    required int sampleRate,
+    required int channels,
+    Duration prebuffer = const Duration(milliseconds: 90),
+  }) async {
     final channelsEnum = channels == 1 ? Channels.mono : Channels.stereo;
     if (!_soloud.isInitialized) {
       await _soloud.init(sampleRate: sampleRate, channels: channelsEnum);
@@ -31,14 +35,14 @@ class BubiAudioSink implements AudioSink {
     // ため、再生済みデータを溜めずに解放する BufferingType.released を使う。
     //
     // bufferingTimeNeedsは再生開始（とアンダーラン後の再開）までに溜める量で、
-    // そのまま定常の音声遅延になる。供給は20ms周期（FfiEmulatorSessionの
-    // _audioPullInterval）で一定量ずつ届くため、その2周期分あれば途切れない。
-    // 0.1秒では、コア側の50ms単位の生成遅延と合わせて映像より音が約150〜200ms
-    // 遅れ、曲に同期した演出（イースのOP等）で画像の先行が目に見えていた。
+    // そのまま定常の音声遅延になる。コアのPCMはオーディオバッファ設定の
+    // 長さのまとまりで届くため、呼び手（FfiEmulatorSession）がその長さに
+    // 引き出し周期のぶれを足して[prebuffer]に渡す。これより小さいと、次の
+    // まとまりが届く前に枯れて音が途切れる（Linuxで顕著だった）。
     final source = _soloud.setBufferStream(
       maxBufferSizeDuration: const Duration(seconds: 2),
       bufferingType: BufferingType.released,
-      bufferingTimeNeeds: 0.02,
+      bufferingTimeNeeds: prebuffer.inMicroseconds / 1e6,
       sampleRate: sampleRate,
       channels: channelsEnum,
       format: BufferType.s16le,

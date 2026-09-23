@@ -10,7 +10,11 @@ class _FakeAudioSink implements AudioSink {
   bool stopped = false;
 
   @override
-  Future<void> start({required int sampleRate, required int channels}) async {}
+  Future<void> start({
+    required int sampleRate,
+    required int channels,
+    Duration prebuffer = const Duration(milliseconds: 90),
+  }) async {}
 
   @override
   void setVolume(double volume) {}

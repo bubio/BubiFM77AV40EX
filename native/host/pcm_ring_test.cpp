@@ -131,6 +131,23 @@ int main()
 		check(all_silent, "停止直後の読み出しはクラッシュせず無音を返す");
 	}
 
+	group("pop_availableは溜まっている分だけ返し、無音で埋めない");
+	{
+		PcmRing ring;
+		std::vector<int16_t> out(200 * kAudioChannels, 0x1234);
+		check(ring.pop_available(out.data(), 100) == 0, "空なら0フレーム");
+		check(out[0] == 0x1234, "空のときは出力を書き換えない");
+		const auto tone = make_tone(60, 500);
+		ring.push(tone.data(), 60);
+		check(ring.pop_available(out.data(), 100) == 60, "溜まっている60フレームだけ返す");
+		check(out[0] == 500 && out[59 * 2 + 1] == -500, "中身がそのまま取り出される");
+		check(out[60 * 2] == 0x1234, "返した数より後ろは書き換えない");
+		check(ring.total_underrun_frames() == 0, "アンダーランに数えない");
+		ring.push(tone.data(), 60);
+		check(ring.pop_available(out.data(), 40) == 40, "上限で打ち切る");
+		check(ring.occupied_frames() == 20, "残りはリングに残る");
+	}
+
 	if (failures == 0) {
 		std::printf("\nすべて合格\n");
 		return 0;
