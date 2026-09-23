@@ -14,6 +14,31 @@ struct _MyApplication {
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
+// ウィンドウアイコンを正本PNG（assets/branding/app_icon.png）から設定する。
+// pubspec.yamlのassetsとしてbundleの data/flutter_assets/ に入っているものを
+// 使い、Linux用の生成済み画像は持たない（design.md 15.3）。インストールせず
+// bundleを直接起動したときや、X11のタスクバー／Alt+Tabで使われる。
+// Waylandではdesktop entry側のアイコン（scripts/package_linux.sh）が使われる。
+static void set_window_icon(GtkWindow* window) {
+  g_autofree gchar* exe = g_file_read_link("/proc/self/exe", nullptr);
+  if (exe == nullptr) {
+    return;
+  }
+  g_autofree gchar* dir = g_path_get_dirname(exe);
+  g_autofree gchar* path =
+      g_build_filename(dir, "data", "flutter_assets", "assets", "branding",
+                       "app_icon.png", nullptr);
+
+  g_autoptr(GError) error = nullptr;
+  g_autoptr(GdkPixbuf) icon =
+      gdk_pixbuf_new_from_file_at_size(path, 256, 256, &error);
+  if (icon == nullptr) {
+    g_warning("Failed to load window icon %s: %s", path, error->message);
+    return;
+  }
+  gtk_window_set_icon(window, icon);
+}
+
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
@@ -46,6 +71,7 @@ static void my_application_activate(GApplication* application) {
   } else {
     gtk_window_set_title(window, "BubiFM77AV40EX");
   }
+  set_window_icon(window);
 
   // x1（640x400のゲスト画面にメニューバーとステータスバーを加えた大きさ）。
   // 実際の大きさはDart側（WindowScaleController）が倍率に合わせて決める。
