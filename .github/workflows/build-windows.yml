@@ -1,0 +1,95 @@
+name: Build Windows (x64 ZIP)
+
+# アプリのビルド結果に影響するファイルだけで起動する。
+# 他のワークフローやドキュメント、テストだけの変更では走らせない。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/**'
+      - 'native/**'
+      - 'packages/**'
+      - 'assets/**'
+      - 'shaders/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'l10n.yaml'
+      - '.fvmrc'
+      - 'LICENSE'
+      - 'tool/collect_licenses.dart'
+      - 'windows/**'
+      - 'scripts/build_native_core.sh'
+      - 'scripts/build_windows.ps1'
+      - '.github/actions/setup-fvm/**'
+      - '.github/workflows/build-windows.yml'
+      - '.github/workflows/publish-release-assets.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/**'
+      - 'native/**'
+      - 'packages/**'
+      - 'assets/**'
+      - 'shaders/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'l10n.yaml'
+      - '.fvmrc'
+      - 'LICENSE'
+      - 'tool/collect_licenses.dart'
+      - 'windows/**'
+      - 'scripts/build_native_core.sh'
+      - 'scripts/build_windows.ps1'
+      - '.github/actions/setup-fvm/**'
+      - '.github/workflows/build-windows.yml'
+      - '.github/workflows/publish-release-assets.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Windows (x64)
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Use HTTPS for submodule fetch
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      # build_native_core.sh はbash。Actionsの shell: bash はGit Bashを使う。
+      - name: Fetch pinned emulation core
+        shell: bash
+        run: ./scripts/build_native_core.sh fetch
+
+      - uses: ./.github/actions/setup-fvm
+
+      - name: Build ZIP
+        shell: pwsh
+        run: ./scripts/build_windows.ps1
+
+      - name: Upload ZIP
+        uses: actions/upload-artifact@v7
+        with:
+          name: BubiFM77AV40EX-windows-x64
+          path: build/windows/dist/*.zip
+          if-no-files-found: error
+
+  publish-release:
+    if: github.event_name == 'release'
+    needs: build
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-release-assets.yml
+    with:
+      asset-patterns: |
+        *.zip

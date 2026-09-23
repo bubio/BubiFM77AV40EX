@@ -1,0 +1,122 @@
+name: Build Linux (amd64/arm64 DEB/RPM/AppImage)
+
+# アプリのビルド結果に影響するファイルだけで起動する。
+# 他のワークフローやドキュメント、テストだけの変更では走らせない。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/**'
+      - 'native/**'
+      - 'packages/**'
+      - 'assets/**'
+      - 'shaders/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'l10n.yaml'
+      - '.fvmrc'
+      - 'LICENSE'
+      - 'tool/collect_licenses.dart'
+      - 'linux/**'
+      - 'scripts/build_native_core.sh'
+      - 'scripts/generate_license_list.sh'
+      - 'scripts/build_linux.sh'
+      - 'scripts/package_linux.sh'
+      - '.github/actions/setup-fvm/**'
+      - '.github/workflows/build-linux.yml'
+      - '.github/workflows/publish-release-assets.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/**'
+      - 'native/**'
+      - 'packages/**'
+      - 'assets/**'
+      - 'shaders/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'l10n.yaml'
+      - '.fvmrc'
+      - 'LICENSE'
+      - 'tool/collect_licenses.dart'
+      - 'linux/**'
+      - 'scripts/build_native_core.sh'
+      - 'scripts/generate_license_list.sh'
+      - 'scripts/build_linux.sh'
+      - 'scripts/package_linux.sh'
+      - '.github/actions/setup-fvm/**'
+      - '.github/workflows/build-linux.yml'
+      - '.github/workflows/publish-release-assets.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Linux (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Flutterはクロスビルドできないため、各アーキテクチャのランナーで作る。
+          - arch: amd64
+            runs-on: ubuntu-24.04
+          - arch: arm64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Use HTTPS for submodule fetch
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            liblzma-dev \
+            libstdc++-12-dev \
+            imagemagick \
+            desktop-file-utils \
+            rpm
+
+      - uses: ./.github/actions/setup-fvm
+
+      - name: Build
+        run: ./scripts/build_linux.sh release
+
+      - name: Package DEB/RPM/AppImage
+        run: ./scripts/package_linux.sh
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: BubiFM77AV40EX-linux-${{ matrix.arch }}
+          path: build/linux/dist/*
+          if-no-files-found: error
+
+  publish-release:
+    if: github.event_name == 'release'
+    needs: build
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-release-assets.yml
+    with:
+      asset-patterns: |
+        *.deb
+        *.rpm
+        *.AppImage

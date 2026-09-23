@@ -1,0 +1,9 @@
+version: 2
+updates:
+  # ワークフローと .github/actions/ 配下の複合アクションが使うアクションを更新する。
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    schedule:
+      interval: "weekly"

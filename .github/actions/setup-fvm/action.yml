@@ -1,0 +1,25 @@
+name: Set up FVM
+description: Install FVM and the Flutter SDK pinned in .fvmrc.
+
+runs:
+  using: composite
+  steps:
+    - uses: dart-lang/setup-dart@v1
+
+    # 版は .fvmrc を正とする。ワークフロー側に版を書かない。
+    # fvm の実行ファイルはOSで名前が違う（Windowsは fvm.bat）ため、
+    # 導入直後の呼び出しは dart pub global run で行う。
+    - name: Install FVM and pinned Flutter SDK
+      shell: bash
+      env:
+        CI: true
+        FLUTTER_SUPPRESS_ANALYTICS: true
+      run: |
+        dart pub global activate fvm
+        if [ "${RUNNER_OS}" = "Windows" ]; then
+          pub_bin="${PUB_CACHE:-${LOCALAPPDATA}\\Pub\\Cache}\\bin"
+        else
+          pub_bin="${PUB_CACHE:-${HOME}/.pub-cache}/bin"
+        fi
+        echo "${pub_bin}" >> "${GITHUB_PATH}"
+        dart pub global run fvm:main install --setup

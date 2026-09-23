@@ -1,0 +1,104 @@
+name: Build macOS (Apple Silicon/Intel DMG)
+
+# アプリのビルド結果に影響するファイルだけで起動する。
+# 他のワークフローやドキュメント、テストだけの変更では走らせない。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/**'
+      - 'native/**'
+      - 'packages/**'
+      - 'assets/**'
+      - 'shaders/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'l10n.yaml'
+      - '.fvmrc'
+      - 'LICENSE'
+      - 'tool/collect_licenses.dart'
+      - 'macos/**'
+      - 'scripts/build_native_core.sh'
+      - 'scripts/generate_license_list.sh'
+      - 'scripts/build_macos.sh'
+      - 'scripts/build_macos_dmg.sh'
+      - '.github/actions/setup-fvm/**'
+      - '.github/workflows/build-macos.yml'
+      - '.github/workflows/publish-release-assets.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/**'
+      - 'native/**'
+      - 'packages/**'
+      - 'assets/**'
+      - 'shaders/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'l10n.yaml'
+      - '.fvmrc'
+      - 'LICENSE'
+      - 'tool/collect_licenses.dart'
+      - 'macos/**'
+      - 'scripts/build_native_core.sh'
+      - 'scripts/generate_license_list.sh'
+      - 'scripts/build_macos.sh'
+      - 'scripts/build_macos_dmg.sh'
+      - '.github/actions/setup-fvm/**'
+      - '.github/workflows/build-macos.yml'
+      - '.github/workflows/publish-release-assets.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: macOS (Apple Silicon / Intel)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      # .gitmodules はSSHで記述しているがCIには鍵がない。コアのリポジトリは
+      # 公開のため、取得URLだけをHTTPSへ読み替える（docs/dev は取得しない）。
+      - name: Use HTTPS for submodule fetch
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - uses: ./.github/actions/setup-fvm
+
+      # 1回のUniversalビルドから、arm64用とx86_64用の.appを切り出して
+      # それぞれDMGにする。資格情報を渡していないため署名はad-hoc、公証は省略。
+      - name: Build DMGs
+        run: ./scripts/build_macos_dmg.sh arm64 x86_64
+
+      - name: Upload Apple Silicon DMG
+        uses: actions/upload-artifact@v7
+        with:
+          name: BubiFM77AV40EX-macos-apple-silicon
+          path: build/macos/dmg/*-macos-apple-silicon.dmg
+          if-no-files-found: error
+
+      - name: Upload Intel DMG
+        uses: actions/upload-artifact@v7
+        with:
+          name: BubiFM77AV40EX-macos-intel
+          path: build/macos/dmg/*-macos-intel.dmg
+          if-no-files-found: error
+
+  publish-release:
+    if: github.event_name == 'release'
+    needs: build
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-release-assets.yml
+    with:
+      asset-patterns: |
+        *.dmg

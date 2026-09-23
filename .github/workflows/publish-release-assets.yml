@@ -1,0 +1,60 @@
+name: Publish Release Assets
+
+# 各ビルドワークフローから呼ぶ。単独では起動しない。
+on:
+  workflow_call:
+    inputs:
+      asset-patterns:
+        description: Newline-separated filename globs to upload as release assets.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # タグとアプリ版を一致させる（design.md 15.2）。v0.1.0 / 0.1.0 の両方を受け付ける。
+      - name: Verify tag matches app version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="$(grep -m1 '^version:' pubspec.yaml | sed 's/^version:[[:space:]]*//' | cut -d '+' -f1)"
+          if [ "${RELEASE_TAG#v}" != "${VERSION}" ]; then
+            echo "error: リリースタグ ${RELEASE_TAG} が pubspec.yaml の版 ${VERSION} と一致しません" >&2
+            exit 1
+          fi
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          ASSET_PATTERNS: ${{ inputs.asset-patterns }}
+        run: |
+          assets=()
+          while IFS= read -r pattern; do
+            [ -z "${pattern}" ] && continue
+            while IFS= read -r -d '' file; do
+              assets+=("${file}")
+            done < <(find release-assets -type f -name "${pattern}" -print0)
+          done <<< "${ASSET_PATTERNS}"
+
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "error: アップロードする成果物がありません" >&2
+            exit 1
+          fi
+
+          printf '%s\n' "${assets[@]}"
+          gh release upload "${RELEASE_TAG}" "${assets[@]}" --clobber
