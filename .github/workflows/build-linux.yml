@@ -94,6 +94,7 @@ jobs:
             desktop-file-utils \
             rpm
 
+      - uses: dart-lang/setup-dart@v1
       - uses: ./.github/actions/setup-fvm
 
       - name: Build

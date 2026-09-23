@@ -72,6 +72,7 @@ jobs:
       - name: Use HTTPS for submodule fetch
         run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
+      - uses: dart-lang/setup-dart@v1
       - uses: ./.github/actions/setup-fvm
 
       # 1回のUniversalビルドから、arm64用とx86_64用の.appを切り出して

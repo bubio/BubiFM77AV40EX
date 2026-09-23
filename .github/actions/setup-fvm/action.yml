@@ -1,11 +1,12 @@
 name: Set up FVM
-description: Install FVM and the Flutter SDK pinned in .fvmrc.
+description: Install FVM and the Flutter SDK pinned in .fvmrc. Requires a Dart SDK (dart-lang/setup-dart) set up beforehand.
 
+# dart-lang/setup-dart はここでは呼ばない。複合アクションの中から呼ぶと、
+# 同梱の dart-analyzer.json をこの複合アクションのディレクトリから探して
+# 失敗する。各ワークフローで直前に呼ぶ。
 runs:
   using: composite
   steps:
-    - uses: dart-lang/setup-dart@v1
-
     # 版は .fvmrc を正とする。ワークフロー側に版を書かない。
     # fvm の実行ファイルはOSで名前が違う（Windowsは fvm.bat）ため、
     # 導入直後の呼び出しは dart pub global run で行う。

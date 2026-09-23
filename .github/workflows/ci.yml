@@ -68,6 +68,7 @@ jobs:
           submodules: false
 
       # SDKの取得はFVMへ一本化する。版は .fvmrc を正とする。
+      - uses: dart-lang/setup-dart@v1
       - uses: ./.github/actions/setup-fvm
 
       # ローカルと同じ入口を呼ぶ（development_plan.md 11.1）
@@ -111,6 +112,7 @@ jobs:
         run: ./scripts/build_native_core.sh test
 
       # Dart FFI 検証に必要。
+      - uses: dart-lang/setup-dart@v1
       - uses: ./.github/actions/setup-fvm
 
       # 製品用C ABIのリーク検査とDart FFI検証（development_plan.md 6 WP1）。
