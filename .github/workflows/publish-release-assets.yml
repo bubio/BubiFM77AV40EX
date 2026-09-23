@@ -31,10 +31,13 @@ jobs:
             exit 1
           fi
 
+      # 成果物は archive: false の単体ファイル。展開すると .zip の中身が出てしまうため、
+      # skip-decompress でアップロード時のファイルのまま受け取る。
       - name: Download build artifacts
         uses: actions/download-artifact@v8
         with:
           path: release-assets
+          skip-decompress: true
 
       - name: Upload release assets
         env:
