@@ -104,11 +104,37 @@ jobs:
       - name: Package DEB/RPM/AppImage
         run: ./scripts/package_linux.sh
 
-      - name: Upload packages
+      # CIの成果物は版なし（BubiFM77AV40EX-<platform>-<arch>.<ext>）、
+      # リリースは版付き（BubiFM77AV40EX-<version>-<platform>-<arch>.<ext>）にする。
+      - name: Drop the version from CI artifact names
+        if: github.event_name != 'release'
+        shell: bash
+        run: |
+          VERSION="$(grep -m1 '^version:' pubspec.yaml | sed 's/^version:[[:space:]]*//' | cut -d '+' -f1)"
+          for f in build/linux/dist/*; do
+            mv "$f" "${f/-${VERSION}-/-}"
+          done
+
+      # archive: false でzipに包まず1ファイルずつ上げる（成果物名はファイル名になる）。
+      - name: Upload DEB
         uses: actions/upload-artifact@v7
         with:
-          name: BubiFM77AV40EX-linux-${{ matrix.arch }}
-          path: build/linux/dist/*
+          path: build/linux/dist/*.deb
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload RPM
+        uses: actions/upload-artifact@v7
+        with:
+          path: build/linux/dist/*.rpm
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v7
+        with:
+          path: build/linux/dist/*.AppImage
+          archive: false
           if-no-files-found: error
 
   publish-release:

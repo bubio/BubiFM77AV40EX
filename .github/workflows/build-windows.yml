@@ -78,11 +78,23 @@ jobs:
         shell: pwsh
         run: ./scripts/build_windows.ps1
 
+      # CIの成果物は版なし（BubiFM77AV40EX-<platform>-<arch>.<ext>）、
+      # リリースは版付き（BubiFM77AV40EX-<version>-<platform>-<arch>.<ext>）にする。
+      - name: Drop the version from CI artifact names
+        if: github.event_name != 'release'
+        shell: bash
+        run: |
+          VERSION="$(grep -m1 '^version:' pubspec.yaml | sed 's/^version:[[:space:]]*//' | cut -d '+' -f1)"
+          for f in build/windows/dist/*.zip; do
+            mv "$f" "${f/-${VERSION}-/-}"
+          done
+
+      # archive: false でzipに包まず1ファイルずつ上げる（成果物名はファイル名になる）。
       - name: Upload ZIP
         uses: actions/upload-artifact@v7
         with:
-          name: BubiFM77AV40EX-windows-x64
           path: build/windows/dist/*.zip
+          archive: false
           if-no-files-found: error
 
   publish-release:

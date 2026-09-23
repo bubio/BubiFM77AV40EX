@@ -80,18 +80,30 @@ jobs:
       - name: Build DMGs
         run: ./scripts/build_macos_dmg.sh arm64 x86_64
 
+      # CIの成果物は版なし（BubiFM77AV40EX-<platform>-<arch>.<ext>）、
+      # リリースは版付き（BubiFM77AV40EX-<version>-<platform>-<arch>.<ext>）にする。
+      - name: Drop the version from CI artifact names
+        if: github.event_name != 'release'
+        shell: bash
+        run: |
+          VERSION="$(grep -m1 '^version:' pubspec.yaml | sed 's/^version:[[:space:]]*//' | cut -d '+' -f1)"
+          for f in build/macos/dmg/*.dmg; do
+            mv "$f" "${f/-${VERSION}-/-}"
+          done
+
+      # archive: false でzipに包まず1ファイルずつ上げる（成果物名はファイル名になる）。
       - name: Upload Apple Silicon DMG
         uses: actions/upload-artifact@v7
         with:
-          name: BubiFM77AV40EX-macos-apple-silicon
           path: build/macos/dmg/*-macos-apple-silicon.dmg
+          archive: false
           if-no-files-found: error
 
       - name: Upload Intel DMG
         uses: actions/upload-artifact@v7
         with:
-          name: BubiFM77AV40EX-macos-intel
           path: build/macos/dmg/*-macos-intel.dmg
+          archive: false
           if-no-files-found: error
 
   publish-release:
